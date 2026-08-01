@@ -1,0 +1,26 @@
+---
+status: accepted
+owner: developer-experience
+last_reviewed: 2026-08-01
+normative: true
+milestone: Gate 0
+---
+
+# 配置参考
+
+| 变量                      | 默认值                                     | 约束/用途                        |
+| ------------------------- | ------------------------------------------ | -------------------------------- |
+| `NODE_ENV`                | `development`                              | development/test/production      |
+| `LOG_LEVEL`               | `info`                                     | Pino level，敏感 header redacted |
+| `APP_VERSION`             | `0.0.0`                                    | `/version` build version         |
+| `GIT_COMMIT`              | `development`                              | `/version` provenance            |
+| `API_HOST`                | `127.0.0.1`                                | 宿主开发不可改公网               |
+| `API_PORT`                | `3001`                                     | 1–65535                          |
+| `DATABASE_URL`            | `postgres://…@127.0.0.1:15432/intenttrace` | PostgreSQL URL                   |
+| `REDIS_URL`               | `redis://127.0.0.1:16379`                  | Redis URL                        |
+| `ARTIFACT_ROOT`           | `.intenttrace/artifacts`                   | resolve 为绝对本地路径           |
+| `PROVIDER_MODE`           | `mock`                                     | Gate 0 只允许 mock               |
+| `PROVIDER_EGRESS_ENABLED` | `false`                                    | Gate 0 true 时 fail-fast         |
+| `INTENTTRACE_API_ORIGIN`  | `http://127.0.0.1:3001`                    | web server-side health proxy     |
+
+配置 loader 忽略无关环境变量但严格校验已知字段。`.env.example` 可提交，`.env` 与任何 key 不提交。Compose 容器内部 API 可监听 `0.0.0.0`，但宿主映射必须是 `127.0.0.1`；二者不是同一安全边界。

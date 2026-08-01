@@ -1,0 +1,40 @@
+{
+  "name": "intenttrace",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@11.18.0",
+  "engines": {
+    "node": ">=24.0.0 <25",
+    "pnpm": "11.18.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:contract": "vitest run --config vitest.contract.config.ts",
+    "test:e2e": "playwright test",
+    "docs:check": "node scripts/check-docs.mjs",
+    "schema:generate": "pnpm --filter @intenttrace/schema generate && pnpm --filter @intenttrace/api openapi:generate",
+    "schema:check": "pnpm --filter @intenttrace/schema generate -- --check && pnpm --filter @intenttrace/api openapi:generate -- --check && pnpm --filter @intenttrace/db schema:check",
+    "db:generate": "pnpm --filter @intenttrace/db generate",
+    "db:migrate": "pnpm --filter @intenttrace/config build && pnpm --filter @intenttrace/db migrate"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.62.1",
+    "@types/node": "24.13.3",
+    "eslint": "10.8.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.1",
+    "turbo": "2.10.8",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

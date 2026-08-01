@@ -1,0 +1,140 @@
+# Generated from implemented Fastify routes. Do not edit manually.
+openapi: 3.1.0
+info:
+  title: IntentTrace API
+  description: Implemented Gate 0 routes only. Planned trace APIs are not exposed.
+  version: 0.0.0
+components:
+  schemas: {}
+paths:
+  /healthz:
+    get:
+      operationId: getHealth
+      summary: Process liveness
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    enum:
+                      - api
+                  status:
+                    type: string
+                    enum:
+                      - ok
+                  gate:
+                    type: number
+                    enum:
+                      - 0
+                required:
+                  - service
+                  - status
+                  - gate
+                additionalProperties: false
+  /readyz:
+    get:
+      operationId: getReadiness
+      summary: PostgreSQL and Redis readiness
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    enum:
+                      - api
+                  status:
+                    type: string
+                    enum:
+                      - ready
+                      - degraded
+                  dependencies:
+                    type: object
+                    properties:
+                      postgres:
+                        type: string
+                      redis:
+                        type: string
+                    required:
+                      - postgres
+                      - redis
+                    additionalProperties: false
+                required:
+                  - service
+                  - status
+                  - dependencies
+                additionalProperties: false
+        "503":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    enum:
+                      - api
+                  status:
+                    type: string
+                    enum:
+                      - ready
+                      - degraded
+                  dependencies:
+                    type: object
+                    properties:
+                      postgres:
+                        type: string
+                      redis:
+                        type: string
+                    required:
+                      - postgres
+                      - redis
+                    additionalProperties: false
+                required:
+                  - service
+                  - status
+                  - dependencies
+                additionalProperties: false
+  /version:
+    get:
+      operationId: getVersion
+      summary: Build and schema version
+      responses:
+        "200":
+          description: Default Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    enum:
+                      - api
+                  version:
+                    type: string
+                  gitCommit:
+                    type: string
+                  schemaVersion:
+                    type: string
+                    enum:
+                      - 1.0.0
+                required:
+                  - service
+                  - version
+                  - gitCommit
+                  - schemaVersion
+                additionalProperties: false
+servers:
+  - url: http://127.0.0.1:3001
+    description: loopback development

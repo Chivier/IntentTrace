@@ -1,0 +1,10 @@
+.git
+.next
+.turbo
+node_modules
+.pnpm-store
+.git
+dist
+playwright-report
+test-results
+docs/design/source/package
