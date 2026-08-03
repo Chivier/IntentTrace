@@ -12,7 +12,11 @@
   },
   "dependencies": {
     "@intenttrace/config": "workspace:*",
+    "@intenttrace/db": "workspace:*",
+    "@intenttrace/intent-reducer": "workspace:*",
+    "@intenttrace/summarizer": "workspace:*",
     "bullmq": "6.0.3",
-    "ioredis": "6.0.0"
+    "ioredis": "6.0.0",
+    "postgres": "3.4.9"
   }
 }

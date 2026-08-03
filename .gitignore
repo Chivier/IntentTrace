@@ -13,3 +13,5 @@ test-results/
 *.log
 *.tsbuildinfo
 .intenttrace/
+apps/desktop/src-tauri/resources/intenttrace-stack.tar.gz
+apps/desktop/src-tauri/target/

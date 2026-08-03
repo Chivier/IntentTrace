@@ -168,6 +168,30 @@
           "type": "null"
         }
       ]
+    },
+    "layout": {
+      "default": null,
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "x": {
+              "type": "number"
+            },
+            "y": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -184,7 +208,8 @@
     "artifactIds",
     "pinnedByHuman",
     "startedAt",
-    "endedAt"
+    "endedAt",
+    "layout"
   ],
   "additionalProperties": false
 }

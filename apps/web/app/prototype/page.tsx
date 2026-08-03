@@ -5,7 +5,7 @@ export default function PrototypePage() {
   return (
     <main>
       <Link className="back" href="/">
-        ← 返回 Gate 0 状态
+        ← 返回项目状态
       </Link>
       <header className="hero prototype-heading">
         <div>

@@ -15,6 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@intenttrace/schema": "workspace:*"
+    "@intenttrace/schema": "workspace:*",
+    "zod": "4.4.3"
   }
 }

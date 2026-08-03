@@ -1,4 +1,6 @@
 import { loadRuntimeConfig } from "@intenttrace/config";
+import { IntentTraceRepository } from "@intenttrace/db";
+import { FileArtifactStore } from "@intenttrace/storage";
 import { Redis } from "ioredis";
 import postgres from "postgres";
 
@@ -6,6 +8,8 @@ import { buildApp, type ReadinessResult } from "./app.js";
 
 const config = loadRuntimeConfig();
 const sql = postgres(config.DATABASE_URL, { max: 2, idle_timeout: 20 });
+const repository = new IntentTraceRepository(sql);
+const artifactStore = new FileArtifactStore(config.ARTIFACT_ROOT);
 const redis = new Redis(config.REDIS_URL, {
   lazyConnect: true,
   maxRetriesPerRequest: 1,
@@ -40,6 +44,7 @@ const app = buildApp({
   readiness,
   version: config.APP_VERSION,
   gitCommit: config.GIT_COMMIT,
+  services: { repository, artifactStore },
 });
 
 app.addHook("onClose", async () => {

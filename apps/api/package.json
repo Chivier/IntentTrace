@@ -20,8 +20,11 @@
   "dependencies": {
     "@fastify/swagger": "9.8.1",
     "@fastify/swagger-ui": "6.1.1",
+    "@intenttrace/adapters": "workspace:*",
     "@intenttrace/config": "workspace:*",
+    "@intenttrace/db": "workspace:*",
     "@intenttrace/schema": "workspace:*",
+    "@intenttrace/storage": "workspace:*",
     "fastify": "5.11.0",
     "fastify-type-provider-zod": "7.0.0",
     "ioredis": "6.0.0",

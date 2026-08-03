@@ -1,7 +1,7 @@
 ---
-status: draft
+status: accepted
 owner: quality
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 1
 ---
@@ -12,4 +12,4 @@ milestone: Gate 1
 
 每条事件有 stable source identity、source/source-ingest time、lineage、payload hash/ref；包含重复、乱序、迟到、缺省可选字段与 rotation 边界。Golden manifest 记录 generator version、seed、event count、agent count、文件 hash，不提交真实 session 或 secret。
 
-Gate 0 只提交 manifest contract 和极小 foundation event，明确标记大 fixture 未实现；禁止用 1-event 示例宣称 acceptance 通过。
+`generateAcceptanceFixture(2048)` 已实现固定 seed、六 Agent、并行 lane、handoff、failure/repair、malformed ID observation、join 和 final marker；`pnpm demo:load` 通过实际 Web→API 路径导入。四 adapter 各有三份匿名 fixture。当前 generator 的重复/迟到变体由 repository/环境场景另测，不把合成故事当作真实 semantic quality 证据。

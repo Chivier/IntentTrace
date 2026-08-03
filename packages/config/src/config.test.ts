@@ -10,9 +10,27 @@ describe("runtime config", () => {
     expect(config.PROVIDER_EGRESS_ENABLED).toBe(false);
   });
 
-  it("fails closed when provider egress is enabled", () => {
-    expect(() => loadRuntimeConfig({ PROVIDER_EGRESS_ENABLED: "true" })).toThrow(
-      "Provider egress is locked",
+  it("allows the mock path even if a deployment preauthorizes egress", () => {
+    expect(loadRuntimeConfig({ PROVIDER_EGRESS_ENABLED: "true" }).PROVIDER_MODE).toBe("mock");
+  });
+
+  it("fails closed unless cloud egress, credentials, explicit model, and budget are set", () => {
+    expect(() => loadRuntimeConfig({ PROVIDER_MODE: "openai" })).toThrow(
+      "Invalid IntentTrace configuration",
     );
+    expect(() =>
+      loadRuntimeConfig({ PROVIDER_MODE: "deepseek", PROVIDER_EGRESS_ENABLED: "true" }),
+    ).toThrow("Invalid IntentTrace configuration");
+  });
+
+  it("accepts an explicitly gated cloud provider configuration", () => {
+    const config = loadRuntimeConfig({
+      PROVIDER_MODE: "openai",
+      PROVIDER_EGRESS_ENABLED: "true",
+      PROVIDER_DAILY_BUDGET_USD: "1",
+      OPENAI_API_KEY: "test-only",
+      OPENAI_MODEL: "gpt-5.6-sol",
+    });
+    expect(config.PROVIDER_MODE).toBe("openai");
   });
 });

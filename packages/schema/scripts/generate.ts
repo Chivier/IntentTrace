@@ -7,11 +7,16 @@ import { z } from "zod";
 import {
   ProblemDetailsSchema,
   ProviderIntentGraphPatchSchema,
+  RawEventPageSchema,
+  RawTraceEventInputSchema,
   RawTraceEventSchema,
+  SemanticGraphSnapshotSchema,
   SemanticNodeVersionSchema,
   SemanticRevisionSchema,
   SseEnvelopeSchema,
   SummaryJobEnvelopeSchema,
+  TraceListSchema,
+  TraceSnapshotSchema,
 } from "../src/index.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -22,8 +27,13 @@ const schemas = {
   "problem-details.schema.json": ProblemDetailsSchema,
   "intent-graph-patch.schema.json": ProviderIntentGraphPatchSchema,
   "raw-trace-event.schema.json": RawTraceEventSchema,
+  "raw-trace-event-input.schema.json": RawTraceEventInputSchema,
+  "raw-event-page.schema.json": RawEventPageSchema,
   "semantic-node-version.schema.json": SemanticNodeVersionSchema,
   "semantic-revision.schema.json": SemanticRevisionSchema,
+  "semantic-graph-snapshot.schema.json": SemanticGraphSnapshotSchema,
+  "trace-list.schema.json": TraceListSchema,
+  "trace-snapshot.schema.json": TraceSnapshotSchema,
   "sse-envelope.schema.json": SseEnvelopeSchema,
   "summary-job-envelope.schema.json": SummaryJobEnvelopeSchema,
 };

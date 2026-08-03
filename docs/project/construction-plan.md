@@ -1,7 +1,7 @@
 ---
 status: accepted
 owner: program
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 0-Gate 5
 ---
@@ -49,3 +49,13 @@ milestone: Gate 0-Gate 5
 ## 关键依赖顺序
 
 数据库事务/ID → adapters/Collector → raw query/UI → outbox/replay → revision/reducer → mock semantic/layout → egress security → real providers → release hardening。任何 UI 不能领先契约制造假状态，任何 provider 不能领先安全门。
+
+## 2026-08-03 施工结果
+
+- Gate 0：已完成并提交原始基线。
+- Gate 1：四 adapter、Collector import/follow、artifact、幂等与 2,048-event fixture 已实现并在 Docker 路径执行。
+- Gate 2：trace/raw/Gantt/replay/artifact/SSE 已实现；停 Redis/worker 时 raw query 仍为 200。
+- Gate 3：revision/reducer/mock/BullMQ/React Flow/ELK worker/human evidence 已实现；并发导入暴露的 stale-base 问题经 transaction rebase 修复。
+- Gate 4：真实 adapter、安全门、redaction、allowlist、budget audit 与 raw-only failure 已实现；无 key 的本轮没有真实付费 canary。
+- Gate 5：human revision、删除、backup/restore、synthetic scale、a11y baseline 和 one-command demo 已实现；稳定 DB/UI 性能 SLA 未建立。
+- macOS：Tauri 源码、服务归档、动态端口启动和 universal DMG workflow 已完成；Linux 不能生成/签名/公证 DMG。

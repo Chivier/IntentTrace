@@ -1,7 +1,7 @@
 export const SUMMARY_QUEUE_NAME = "intenttrace-summary";
 
 export const WorkerFoundationPolicy = Object.freeze({
-  consumesJobs: false,
+  consumesJobs: true,
   providerCallsAllowed: false,
-  note: "Gate 0 verifies queue connectivity only; semantic jobs are not consumed.",
+  note: "BullMQ dispatches at-least-once work; PostgreSQL claims and commits are authoritative.",
 });

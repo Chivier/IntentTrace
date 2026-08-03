@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@intenttrace/graph-layout": "workspace:*",
     "@intenttrace/ui": "workspace:*",
     "@tailwindcss/postcss": "4.3.3",
     "@xyflow/react": "12.11.2",

@@ -53,6 +53,10 @@
           "type": "null"
         }
       ]
+    },
+    "stale": {
+      "default": false,
+      "type": "boolean"
     }
   },
   "required": [
@@ -62,7 +66,8 @@
     "branchKind",
     "eventWatermark",
     "createdAt",
-    "sourceJobId"
+    "sourceJobId",
+    "stale"
   ],
   "additionalProperties": false
 }

@@ -9,6 +9,9 @@ import {
 } from "fastify-type-provider-zod";
 import { z } from "zod";
 
+import { createUnavailableApiServices, type ApiServices } from "./services.js";
+import { registerTraceRoutes } from "./trace-routes.js";
+
 export interface ReadinessResult {
   ready: boolean;
   postgres: "ok" | "error" | "skipped";
@@ -20,10 +23,11 @@ export interface BuildAppOptions {
   readiness?: () => Promise<ReadinessResult>;
   version?: string;
   gitCommit?: string;
+  services?: ApiServices;
 }
 
 const HealthSchema = z
-  .object({ service: z.literal("api"), status: z.literal("ok"), gate: z.literal(0) })
+  .object({ service: z.literal("api"), status: z.literal("ok"), gate: z.literal(5) })
   .strict();
 const ReadySchema = z
   .object({
@@ -42,9 +46,19 @@ const VersionSchema = z
   .strict();
 
 export function buildApp(options: BuildAppOptions = {}) {
-  const app = Fastify({ logger: options.logger ?? false });
+  const app = Fastify({
+    logger: options.logger ?? false,
+    genReqId: () => randomUUID(),
+    bodyLimit: 16 * 1024 * 1024,
+  });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  app.addHook("preParsing", async (request, _reply, payload) => {
+    if (request.headers["content-encoding"] !== "gzip") return payload;
+    request.headers["content-encoding"] = "identity";
+    delete request.headers["content-length"];
+    return payload.pipe(createGunzip());
+  });
   app.setErrorHandler((error, request, reply) => {
     if (hasZodFastifySchemaValidationErrors(error)) {
       void reply.status(400).send({
@@ -71,7 +85,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       openapi: "3.1.0",
       info: {
         title: "IntentTrace API",
-        description: "Implemented Gate 0 routes only. Planned trace APIs are not exposed.",
+        description: "Implemented local IntentTrace MVP routes; planned APIs are not exposed.",
         version: options.version ?? "0.0.0",
       },
       servers: [{ url: "http://127.0.0.1:3001", description: "loopback development" }],
@@ -81,6 +95,7 @@ export function buildApp(options: BuildAppOptions = {}) {
   void app.register(swaggerUi, { routePrefix: "/documentation" });
 
   void app.register(async function implementedRoutes(routes) {
+    const startedAt = Date.now();
     routes.get(
       "/healthz",
       {
@@ -90,7 +105,20 @@ export function buildApp(options: BuildAppOptions = {}) {
           response: { 200: HealthSchema },
         },
       },
-      async () => ({ service: "api" as const, status: "ok" as const, gate: 0 as const }),
+      async () => ({ service: "api" as const, status: "ok" as const, gate: 5 as const }),
+    );
+
+    routes.get(
+      "/metrics",
+      {
+        schema: { operationId: "getMetrics", summary: "Minimal Prometheus process metrics" },
+      },
+      async (_request, reply) =>
+        reply
+          .type("text/plain; version=0.0.4; charset=utf-8")
+          .send(
+            `# HELP intenttrace_api_up API process liveness\n# TYPE intenttrace_api_up gauge\nintenttrace_api_up 1\n# HELP intenttrace_api_uptime_seconds Process uptime\n# TYPE intenttrace_api_uptime_seconds counter\nintenttrace_api_uptime_seconds ${Math.floor((Date.now() - startedAt) / 1000)}\n`,
+          ),
     );
 
     routes.get(
@@ -136,5 +164,9 @@ export function buildApp(options: BuildAppOptions = {}) {
     );
   });
 
+  void app.register(registerTraceRoutes, options.services ?? createUnavailableApiServices());
+
   return app;
 }
+import { randomUUID } from "node:crypto";
+import { createGunzip } from "node:zlib";

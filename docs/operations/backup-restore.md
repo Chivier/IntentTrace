@@ -1,7 +1,7 @@
 ---
-status: draft
+status: accepted
 owner: operations
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 5
 ---
@@ -12,4 +12,4 @@ milestone: Gate 5
 
 演练：停止写入或取得一致 watermark → 备份 DB/artifact → 在空目录启动锁定版本 → restore DB → restore artifacts → migrate no-op → 校验 row counts/hash/revision memberships → 启动服务 → raw/status/SSE smoke。原环境保留到校验完成。
 
-Gate 0 只有设计，尚无环境验证；在真实 backup/restore 自动化与故障演练通过前 release readiness 为 blocked。备份文件按 trace 同等敏感处理。
+`pnpm backup -- <directory>` 创建 PostgreSQL custom dump、artifact tar 和逐文件 SHA-256 manifest。`pnpm backup:verify -- <directory>` 校验 hash/tar，并恢复到临时隔离数据库核对 trace/raw/revision counts，最后删除临时库。2026-08-03 合成环境演练通过；它不等于用户真实磁盘故障恢复证据。备份文件按 trace 同等敏感处理。

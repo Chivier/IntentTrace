@@ -1,24 +1,24 @@
 ---
-status: draft
+status: current
 owner: quality
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 1-Gate 5
 ---
 
 # 强制验收矩阵
 
-| 场景                            | 最晚 Gate | 关键断言                              |
-| ------------------------------- | --------- | ------------------------------------- |
-| 重复/乱序/迟到 event            | 1/3       | 幂等、sequence、final stale/new final |
-| file append/rotation/truncation | 1         | checkpoint 无丢失、无越界读取         |
-| worker 崩溃与重投               | 3         | 单一 revision、无重复 outbox          |
-| 恶意 patch/prompt injection     | 3/4       | 整体拒绝、无 proposed 泄漏            |
-| SSE gap/过期 cursor             | 2         | 补发或 410 + snapshot                 |
-| Redis/worker/provider outage    | 2/4       | raw browse 可用、ingest 不阻塞        |
-| secret/stored XSS               | 4         | egress/log/UI 均不泄漏/执行           |
-| backup restore                  | 5         | hash/count/revision 一致              |
-| 10k raw / 1.5k nodes            | 5         | 达到已记录预算                        |
-| keyboard/200%/reduced motion    | 3/5       | WCAG 交互基线                         |
+| 场景                            | 状态                       | 证据                                                                  |
+| ------------------------------- | -------------------------- | --------------------------------------------------------------------- |
+| 重复/乱序/迟到 event            | automated + environment    | ingest tests；late final Docker drill；monotonic DB sequence          |
+| file append/rotation/truncation | automated                  | `apps/collector/tests/collector.test.ts`                              |
+| worker 崩溃与重投               | environment                | 2,048-event concurrent stale-job rebase；DB source-job idempotency    |
+| 恶意 patch/prompt injection     | automated                  | reducer property tests；summarizer provider safety tests              |
+| SSE gap/过期 cursor             | implemented + environment  | outbox cursor/Last-Event-ID；expired cursor emits `resync.required`   |
+| Redis/worker/provider outage    | environment + automated    | stopped Redis/worker: raw events HTTP 200；provider failure unit path |
+| secret/stored XSS               | automated                  | redaction tests；Playwright escaped payload；artifact attachment/CSP  |
+| backup restore                  | environment                | isolated `pg_restore`, hash/tar/count drill                           |
+| 10k raw / 1.5k nodes            | synthetic smoke only       | `pnpm performance:smoke`;不是 DB/UI SLA                               |
+| keyboard/200%/reduced motion    | automated browser baseline | `tests/e2e/workbench.spec.ts`                                         |
 
-矩阵每一格需链接自动测试或环境演练产物；只有计划文字时状态为 planned。
+真实 provider canary、真实 macOS DMG 安装/签名/公证和长期 DB/UI 性能仍分别列在 release blockers；不能由上述 mock/synthetic 证据替代。

@@ -114,6 +114,7 @@ export const rawEvents = pgTable(
     adapterVersion: text("adapter_version").notNull(),
     sourceInstanceId: text("source_instance_id").notNull(),
     sourceEventId: text("source_event_id").notNull(),
+    eventHash: char("event_hash", { length: 64 }).notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
     ingestedAt: timestamp("ingested_at", { withTimezone: true }).defaultNow().notNull(),
     kind: text("kind").notNull(),
@@ -145,6 +146,7 @@ export const rawEvents = pgTable(
     index("raw_events_trace_time_idx").on(table.traceId, table.occurredAt),
     index("raw_events_trace_agent_idx").on(table.traceId, table.agentId, table.occurredAt),
     check("raw_events_ingest_seq_positive", sql`${table.ingestSeq} > 0`),
+    check("raw_events_event_hash_format", sql`${table.eventHash} ~ '^[a-f0-9]{64}$'`),
     check(
       "raw_events_payload_hash_format",
       sql`${table.payloadSha256} is null or ${table.payloadSha256} ~ '^[a-f0-9]{64}$'`,
@@ -189,6 +191,7 @@ export const semanticRevisions = pgTable(
     branchSequence: integer("branch_sequence").notNull(),
     eventWatermark: bigint("event_watermark", { mode: "bigint" }).notNull(),
     sourceJobId: uuid("source_job_id"),
+    stale: boolean("stale").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -225,6 +228,7 @@ export const semanticNodeVersions = pgTable(
     pinnedByHuman: boolean("pinned_by_human").notNull().default(false),
     startedAt: timestamp("started_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
+    layout: jsonb("layout"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
@@ -326,6 +330,8 @@ export const summaryJobs = pgTable(
     baseRevisionId: uuid("base_revision_id").notNull(),
     jobNonce: uuid("job_nonce").notNull().unique(),
     inputHash: char("input_hash", { length: 64 }).notNull(),
+    eventWatermark: bigint("event_watermark", { mode: "bigint" }).notNull(),
+    branchKind: semanticBranchKind("branch_kind").notNull(),
     promptVersion: text("prompt_version").notNull(),
     policyVersion: text("policy_version").notNull(),
     status: summaryJobStatus("status").notNull().default("pending"),
@@ -338,6 +344,7 @@ export const summaryJobs = pgTable(
     uniqueIndex("summary_jobs_trace_input_uidx").on(table.traceId, table.inputHash),
     index("summary_jobs_status_attempt_idx").on(table.status, table.nextAttemptAt),
     check("summary_jobs_attempt_count_nonnegative", sql`${table.attemptCount} >= 0`),
+    check("summary_jobs_event_watermark_nonnegative", sql`${table.eventWatermark} >= 0`),
     check("summary_jobs_input_hash_format", sql`${table.inputHash} ~ '^[a-f0-9]{64}$'`),
   ],
 );

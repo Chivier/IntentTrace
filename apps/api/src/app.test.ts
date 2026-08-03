@@ -5,13 +5,13 @@ import { buildApp } from "./app.js";
 const apps: ReturnType<typeof buildApp>[] = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
-describe("Gate 0 API", () => {
-  it("reports liveness without claiming product completion", async () => {
+describe("local MVP API", () => {
+  it("reports liveness and completed construction gate", async () => {
     const app = buildApp();
     apps.push(app);
     const response = await app.inject({ method: "GET", url: "/healthz" });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ service: "api", status: "ok", gate: 0 });
+    expect(response.json()).toEqual({ service: "api", status: "ok", gate: 5 });
   });
 
   it("reports degraded readiness with HTTP 503", async () => {

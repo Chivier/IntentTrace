@@ -1,10 +1,12 @@
 .git
-.next
-.turbo
-node_modules
+**/.next
+**/.turbo
+**/node_modules
 .pnpm-store
-.git
-dist
+**/dist
+**/target
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/resources/intenttrace-stack.tar.gz
 playwright-report
 test-results
 docs/design/source/package

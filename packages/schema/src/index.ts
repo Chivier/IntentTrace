@@ -38,6 +38,7 @@ export const RawEventKindSchema = z.enum([
 export type RawEventKind = z.infer<typeof RawEventKindSchema>;
 
 export const EventStatusSchema = z.enum(["unset", "ok", "error"]);
+export type EventStatus = z.infer<typeof EventStatusSchema>;
 
 export const RawTraceEventSchema = z
   .object({
@@ -80,6 +81,69 @@ export const RawTraceEventSchema = z
   .strict();
 export type RawTraceEvent = z.infer<typeof RawTraceEventSchema>;
 
+export const RawTraceEventInputSchema = RawTraceEventSchema.omit({
+  id: true,
+  ingestSeq: true,
+  ingestedAt: true,
+})
+  .extend({
+    workspaceName: z.string().min(1).max(120).optional(),
+    projectName: z.string().min(1).max(120).optional(),
+    traceTitle: z.string().min(1).max(240).optional(),
+    payload: z.unknown().optional(),
+  })
+  .strict();
+export type RawTraceEventInput = z.infer<typeof RawTraceEventInputSchema>;
+
+export const IngestResultSchema = z
+  .object({
+    event: RawTraceEventSchema,
+    duplicate: z.boolean(),
+    traceStale: z.boolean(),
+  })
+  .strict();
+export type IngestResult = z.infer<typeof IngestResultSchema>;
+
+export const TraceSummarySchema = z
+  .object({
+    id: UuidSchema,
+    projectId: UuidSchema,
+    title: z.string().min(1).max(240),
+    status: z.enum(["active", "completed", "stale", "failed"]),
+    eventCount: NonnegativeIntegerStringSchema,
+    latestIngestSeq: NonnegativeIntegerStringSchema,
+    latestRevisionId: UuidSchema.nullable(),
+    createdAt: TimestampSchema,
+    updatedAt: TimestampSchema,
+  })
+  .strict();
+export type TraceSummary = z.infer<typeof TraceSummarySchema>;
+
+export const TraceListSchema = z
+  .object({
+    traces: z.array(TraceSummarySchema),
+    nextCursor: z.string().nullable(),
+  })
+  .strict();
+
+export const RawEventPageSchema = z
+  .object({
+    events: z.array(RawTraceEventSchema),
+    nextCursor: PositiveIntegerStringSchema.nullable(),
+  })
+  .strict();
+
+export const AgentTimelineLaneSchema = z
+  .object({
+    agentId: IdentifierSchema,
+    displayName: z.string().min(1).max(120),
+    eventIds: z.array(UuidSchema),
+    startedAt: TimestampSchema,
+    endedAt: TimestampSchema,
+    errorCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const SemanticNodeKindSchema = z.enum([
   "request",
   "goal",
@@ -89,6 +153,7 @@ export const SemanticNodeKindSchema = z.enum([
   "handoff",
   "result",
 ]);
+export type SemanticNodeKind = z.infer<typeof SemanticNodeKindSchema>;
 export const SemanticNodeStatusSchema = z.enum([
   "proposed",
   "active",
@@ -97,9 +162,13 @@ export const SemanticNodeStatusSchema = z.enum([
   "abandoned",
   "superseded",
 ]);
+export type SemanticNodeStatus = z.infer<typeof SemanticNodeStatusSchema>;
 export const ProvenanceSchema = z.enum(["stated", "inferred", "mixed"]);
+export type Provenance = z.infer<typeof ProvenanceSchema>;
 export const ConfidenceSchema = z.enum(["high", "medium", "low"]);
+export type Confidence = z.infer<typeof ConfidenceSchema>;
 export const ClaimKindSchema = z.enum(["intent", "action", "outcome"]);
+export type ClaimKind = z.infer<typeof ClaimKindSchema>;
 
 export const ProviderClaimSchema = z
   .object({
@@ -110,10 +179,12 @@ export const ProviderClaimSchema = z
     evidenceEventIds: z.array(UuidSchema).min(1).max(64),
   })
   .strict();
+export type ProviderClaim = z.infer<typeof ProviderClaimSchema>;
 
 export const CanonicalClaimSchema = ProviderClaimSchema.omit({ suggestedConfidence: true })
   .extend({ confidence: ConfidenceSchema })
   .strict();
+export type CanonicalClaim = z.infer<typeof CanonicalClaimSchema>;
 
 export const SemanticEdgeKindSchema = z.enum([
   "decomposes_to",
@@ -127,6 +198,7 @@ export const SemanticEdgeKindSchema = z.enum([
   "produces",
   "supersedes",
 ]);
+export type SemanticEdgeKind = z.infer<typeof SemanticEdgeKindSchema>;
 
 export const SemanticRevisionSchema = z
   .object({
@@ -137,6 +209,16 @@ export const SemanticRevisionSchema = z
     eventWatermark: NonnegativeIntegerStringSchema,
     createdAt: TimestampSchema,
     sourceJobId: UuidSchema.nullable(),
+    stale: z.boolean().default(false),
+  })
+  .strict();
+
+export const TraceSnapshotSchema = z
+  .object({
+    trace: TraceSummarySchema,
+    raw: RawEventPageSchema,
+    agents: z.array(AgentTimelineLaneSchema),
+    revision: SemanticRevisionSchema.nullable(),
   })
   .strict();
 
@@ -156,8 +238,34 @@ export const SemanticNodeVersionSchema = z
     pinnedByHuman: z.boolean(),
     startedAt: TimestampSchema.nullable(),
     endedAt: TimestampSchema.nullable(),
+    layout: z
+      .object({ x: z.number().finite(), y: z.number().finite() })
+      .strict()
+      .nullable()
+      .default(null),
   })
   .strict();
+
+export const SemanticEdgeVersionSchema = z
+  .object({
+    id: UuidSchema,
+    logicalEdgeId: UuidSchema,
+    traceId: UuidSchema,
+    sourceNodeId: UuidSchema,
+    targetNodeId: UuidSchema,
+    kind: SemanticEdgeKindSchema,
+    retired: z.boolean(),
+  })
+  .strict();
+
+export const SemanticGraphSnapshotSchema = z
+  .object({
+    revision: SemanticRevisionSchema,
+    nodes: z.array(SemanticNodeVersionSchema),
+    edges: z.array(SemanticEdgeVersionSchema),
+  })
+  .strict();
+export type SemanticGraphSnapshot = z.infer<typeof SemanticGraphSnapshotSchema>;
 
 const AddNodeOperationSchema = z
   .object({
@@ -336,4 +444,55 @@ export const ProblemDetailsSchema = z
     code: IdentifierSchema,
     requestId: UuidSchema,
   })
+  .strict();
+
+export const HumanNodeEditSchema = z
+  .object({
+    baseRevisionId: UuidSchema,
+    title: z.string().min(3).max(80).optional(),
+    status: SemanticNodeStatusSchema.optional(),
+    pinned: z.boolean().optional(),
+    feedback: z.string().min(1).max(1000).optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.title !== undefined ||
+      value.status !== undefined ||
+      value.pinned !== undefined ||
+      value.feedback !== undefined,
+    { message: "human edit must change at least one field" },
+  );
+export type HumanNodeEdit = z.infer<typeof HumanNodeEditSchema>;
+
+export const OtlpPartialSuccessSchema = z
+  .object({
+    partialSuccess: z
+      .object({
+        rejectedSpans: z.number().int().nonnegative(),
+        errorMessage: z.string(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const ProviderCallAuditSchema = z
+  .object({
+    id: UuidSchema,
+    summaryJobId: UuidSchema,
+    provider: IdentifierSchema,
+    model: z.string().min(1).max(240),
+    status: IdentifierSchema,
+    inputTokens: NonnegativeIntegerStringSchema.nullable(),
+    outputTokens: NonnegativeIntegerStringSchema.nullable(),
+    costUsd: z
+      .string()
+      .regex(/^\d+(?:\.\d+)?$/u)
+      .nullable(),
+    createdAt: TimestampSchema,
+  })
+  .strict();
+
+export const ProviderCallAuditListSchema = z
+  .object({ calls: z.array(ProviderCallAuditSchema) })
   .strict();

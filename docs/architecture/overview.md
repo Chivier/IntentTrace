@@ -1,7 +1,7 @@
 ---
 status: accepted
 owner: architecture
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 0-Gate 5
 ---
@@ -12,4 +12,4 @@ milestone: Gate 0-Gate 5
 
 PostgreSQL 是事实、revision、job 幂等和 outbox 的权威。Redis/BullMQ 只做投递，不是正确性源。ArtifactStore 保存 raw payload/大对象，默认 filesystem named volume，接口保留 S3 adapter。Graph 布局在 web worker 计算并尊重 pinned/稳定增量位置。
 
-Gate 0 的 API 仅有 `/healthz`、`/readyz`、`/version` 和对应 OpenAPI；worker 不消费任务，Collector 不读取内容，web 只是状态页。计划中的 `/api/v1`、`/v1/traces` 和 SSE 不得提前暴露假实现。
+当前 API 已公开实际实现的 `/api/v1/events`、trace/raw/snapshot/graph/artifact/provider audit/human edit/delete、durable SSE 及 OTLP `POST /v1/traces`；生成 OpenAPI 是路由事实源。Worker 消费 BullMQ 任务，但 PostgreSQL job claim、input hash、base revision 和 commit transaction 才是幂等权威。Tauri 壳不复制数据库到宿主端口，而是启动同一隔离 Compose 栈。

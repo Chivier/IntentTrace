@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "IntentTrace",
+  "version": "0.0.0",
+  "identifier": "local.intenttrace.desktop",
+  "build": {
+    "frontendDist": "../frontend",
+    "beforeBuildCommand": "pnpm --dir ../.. desktop:prepare"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost http://127.0.0.1:*"
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "IntentTrace",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 720,
+        "center": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "resources": ["resources/intenttrace-stack.tar.gz"],
+    "category": "DeveloperTool",
+    "shortDescription": "Evidence-backed local agent trace workbench",
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "dmg": {
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 180, "y": 220 },
+        "applicationFolderPosition": { "x": 480, "y": 220 }
+      }
+    }
+  }
+}

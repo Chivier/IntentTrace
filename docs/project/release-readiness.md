@@ -1,23 +1,24 @@
 ---
 status: current
 owner: release
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 0-Gate 5
 ---
 
 # 发布就绪
 
-当前目标是 Gate 0 initialization，不是产品 release。状态：**NOT RELEASE READY**。
+当前结论：**LOCAL MVP CANDIDATE；MACOS DISTRIBUTION / REAL PROVIDER QUALIFICATION BLOCKED**。
 
-- [x] Gate 0 全部命令和 Compose/migration 环境验收完成
-- [ ] Gate 1 ingestion/fixture/rotation 完成
-- [ ] Gate 2 raw-only/SSE/replay 完成
-- [ ] Gate 3 reducer/mock graph/a11y 完成
-- [ ] Gate 4 egress/provider/security 完成
-- [ ] Gate 5 backup/restore/fault/performance 完成
-- [ ] 强制 acceptance matrix 每项有证据
-- [ ] clean checkout 一条命令 demo
-- [ ] release notes 明确 Linux single-host、loopback、no HA
+- [x] Gate 0 engineering/docs/Compose/migration baseline
+- [x] Gate 1 四 adapter、Collector、artifact、幂等、2,048-event fixture
+- [x] Gate 2 raw list/inspector/Gantt/replay、durable SSE、raw-only degraded drill
+- [x] Gate 3 reducer/mock revision/BullMQ/React Flow/ELK/evidence/a11y baseline
+- [x] Gate 4 adapter code、redaction、allowlist、budget gate、outage/bad JSON raw-only tests
+- [ ] Gate 4 真实 provider key/canary/账单环境证据（本轮未授权 key 或付费调用）
+- [x] Gate 5 human revision/delete/backup restore/synthetic scale/one-command demo
+- [ ] 稳定 DB/UI 性能 SLA（当前只有明确标注的 synthetic smoke）
+- [x] macOS Tauri source、Docker service archive、dynamic loopback 和 universal DMG workflow
+- [ ] 在真实 macOS 生成、安装、codesign、notarize DMG（需要 Apple environment/credentials）
 
-Gate 0 完成后只能标记 foundation verified。历史原型、mock 数据、静态类型或成功 build 都不能单独提升此结论。
+可发布范围仅限：开发者控制的本地 Linux single-host、loopback、无 auth/no HA、默认 mock provider。不得把 mock semantic 质量、合成性能、Linux Rust metadata check 或未运行的 macOS workflow描述为真实 provider 质量、生产 SLA 或已签名 DMG。
