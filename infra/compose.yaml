@@ -130,7 +130,3 @@ volumes:
   postgres-data:
   redis-data:
   artifact-data:
-
-networks:
-  default:
-    name: intenttrace-private

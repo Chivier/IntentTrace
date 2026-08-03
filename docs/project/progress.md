@@ -40,6 +40,7 @@ milestone: Gate 5
 - `pnpm demo:load` 导入固定 seed 六 Agent 2,048 events；raw count 2,048；并发 stale-base job 缺陷被观测并修为 transaction rebase；修复后 43 jobs 全部 committed，最终 `final` revision watermark `2048`、42 semantic nodes。
 - 完成后追加迟到 correction：首次 HTTP 201、相同内容重试 200/同 event ID、冲突内容 409；旧 final watermark `2048` 单向标为 stale，新 final watermark `2049` 提交，44 jobs 全部 committed。最终数据库计数为 2,050 raw facts、46 revisions；数据库实测拒绝 revision 内容更新和 `stale true → false`。
 - 停止 Redis 和 worker 后，已入库 raw event query 返回 HTTP 200；readiness 正确返回 503；重启后 worker恢复。
+- 干净 checkout 双栈验收发现固定 bridge name 会让不同 `-p` 项目共享 DNS alias；已改为 project-scoped default network，并由 `docker:check` 拒绝 fixed/external network reuse。
 - backup manifest/hash/tar 校验并恢复到临时 PostgreSQL：2 traces、2,049 raw events、45 revisions；临时库随后删除。
 - 未读取真实 Codex/Claude session，未配置 provider key，未发起付费模型调用。
 

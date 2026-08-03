@@ -10,7 +10,7 @@ milestone: Gate 5
 
 正式验证拓扑是 Linux x86_64 单主机 Docker Compose。macOS Tauri 壳复用同一拓扑并要求 Docker Desktop。默认只有 Web 发布到 Docker 自动分配的 `127.0.0.1` 临时端口；API、PostgreSQL、Redis、worker 和 migrate 均无宿主端口。PostgreSQL、Redis 与 artifacts 各用 named volume；Redis 开 AOF、`appendfsync everysec` 和 `noeviction`。
 
-Redis 在命名的 `intenttrace-private` Compose bridge 内监听容器接口，因此 `protected-mode` 关闭以允许 API/worker 连接；宿主、LAN 和公网均不可直接访问 Redis。PostgreSQL 与 API 采用同样的 internal-only 发布策略。扩大网络边界前必须增加认证和新的安全 ADR。
+Redis 在 project-scoped Compose bridge 内监听容器接口，因此 `protected-mode` 关闭以允许同项目 API/worker 连接；宿主、LAN 和公网均不可直接访问 Redis。网络不得设置固定全局 name 或 external reuse，以免两个 Compose project 的 `api`/`postgres` DNS alias 混用。PostgreSQL 与 API 采用同样的 internal-only 发布策略。扩大网络边界前必须增加认证和新的安全 ADR。
 
 ```bash
 docker compose config --quiet

@@ -33,8 +33,12 @@ if (webPort?.target !== 3000) failures.push("web host port must target container
 if (webPort?.published !== undefined) {
   failures.push("web host port must be dynamically allocated when INTENTTRACE_WEB_PORT is unset");
 }
-if (config.networks?.default?.name !== "intenttrace-private") {
-  failures.push("default Compose network must be named intenttrace-private");
+const expectedNetworkName = `${config.name}_default`;
+if (config.networks?.default?.name !== expectedNetworkName) {
+  failures.push(`default Compose network must be project-scoped as ${expectedNetworkName}`);
+}
+if (config.networks?.default?.external === true) {
+  failures.push("default Compose network must not reuse an external network");
 }
 
 if (failures.length > 0) {
@@ -43,5 +47,5 @@ if (failures.length > 0) {
 }
 
 process.stdout.write(
-  "Compose topology check passed: one dynamic loopback Web port; all other services internal.\n",
+  "Compose topology check passed: one dynamic loopback Web port; all other services are internal on a project-scoped network.\n",
 );
