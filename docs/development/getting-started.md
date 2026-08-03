@@ -1,7 +1,7 @@
 ---
 status: current
 owner: developer-experience
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 0
 ---
@@ -14,14 +14,12 @@ milestone: Gate 0
 corepack enable
 corepack prepare pnpm@11.18.0 --activate
 pnpm install --frozen-lockfile
-cp .env.example .env
-docker compose up -d postgres redis
-pnpm db:migrate
-pnpm dev
+pnpm docker:up
+pnpm docker:url
 ```
 
-Web 为 `127.0.0.1:3000`，API 为 `127.0.0.1:3001`。也可用 `docker compose up -d --build` 启动全栈。Collector Gate 0 示例 `pnpm --filter @intenttrace/collector dev -- --help`；路径命令只做校验，不读取内容。
+默认全栈全部运行在 Docker 中，命令打印唯一的动态 loopback Web 地址。浏览器通过 Web 的 `/api/status` 观察 API readiness；API 本身不发布宿主端口。Collector Gate 0 示例 `pnpm --filter @intenttrace/collector dev -- --help`；路径命令只做校验，不读取内容。
 
-Compose 把 PostgreSQL 与 Redis 分别映射到 `127.0.0.1:15432` 和 `127.0.0.1:16379`，避免占用宿主已有的标准端口；容器网络内部仍使用 5432/6379。
+API、PostgreSQL 和 Redis 只通过 `intenttrace-private` 网络及服务 DNS 名互联，容器内部端口分别为 3001、5432 和 6379，宿主没有对应 listener。只有确需调试宿主进程时才使用显式、临时的 Compose override；不得把固定数据库端口重新加入默认拓扑。
 
-提交前运行 README/CI 中的完整质量命令。Node 版本不一致时停止，不用 `--ignore-engines` 绕过。
+源码检查与构建仍可在宿主运行。提交前执行 README/CI 中的完整质量命令；Node 版本不一致时停止，不用 `--ignore-engines` 绕过。

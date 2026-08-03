@@ -1,7 +1,7 @@
 ---
 status: accepted
 owner: developer-experience
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 0
 ---
@@ -22,5 +22,6 @@ milestone: Gate 0
 | `PROVIDER_MODE`           | `mock`                                     | Gate 0 只允许 mock               |
 | `PROVIDER_EGRESS_ENABLED` | `false`                                    | Gate 0 true 时 fail-fast         |
 | `INTENTTRACE_API_ORIGIN`  | `http://127.0.0.1:3001`                    | web server-side health proxy     |
+| `INTENTTRACE_WEB_PORT`    | 空                                         | Compose 专用；空则自动分配端口   |
 
-配置 loader 忽略无关环境变量但严格校验已知字段。`.env.example` 可提交，`.env` 与任何 key 不提交。Compose 容器内部 API 可监听 `0.0.0.0`，但宿主映射必须是 `127.0.0.1`；二者不是同一安全边界。
+配置 loader 忽略无关环境变量但严格校验已知字段。`.env.example` 可提交，`.env` 与任何 key 不提交。表中的 host-run 默认 URL 只用于显式的本地进程开发；默认 Compose 会注入 `postgres:5432`、`redis:6379` 与 `api:3001` 服务地址且不发布这些端口。Compose 容器内部 API 可监听 `0.0.0.0`，但唯一 Web 宿主映射必须是 `127.0.0.1`；二者不是同一安全边界。

@@ -1,14 +1,14 @@
 ---
 status: current
 owner: program
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-03
 normative: true
 milestone: Gate 0
 ---
 
 # 实施进度
 
-证据日期 2026-08-01；环境 Linux x86_64，workspace `/home/chivier/Projects/IntentTrace`。初始化 commit 以本地 repository HEAD 为准。
+证据日期 2026-08-03；环境 Linux x86_64，workspace `/home/chivier/Projects/IntentTrace`。初始化 commit 以本地 repository HEAD 为准。
 
 ## Planned
 
@@ -20,6 +20,7 @@ milestone: Gate 0
 - 状态页、API 三个真实路由、worker queue-only 骨架、Collector explicit-path validator。
 - Zod/domain/provider patch、config、storage、ingest、adapter、summarizer、reducer、layout/UI/fixture contracts。
 - Drizzle schema、Compose/Redis policy、CI、原始设计 archive/source/prototype lock、完整文档基线。
+- 默认 Compose 端口隔离：API/PostgreSQL/Redis 仅限私有 bridge，Web 使用动态 loopback 端口；`docker:up/url/status/down/check` 封装启动、发现与拓扑防回归。
 
 ## Automated verified
 
@@ -42,12 +43,13 @@ milestone: Gate 0
 - Docs check：61 个规范 Markdown 文件、必需目录/内链、11 个 ADR、配置键、原始 ZIP 与逐文件 SHA-256 全部通过。
 - Schema check：7 个生成 JSON Schema、实际 Fastify OpenAPI 与 Drizzle migration 无 drift；OpenAPI 只有 `/healthz`、`/readyz`、`/version`。
 - Collector `--help` 显示固定 import/follow 命令并声明 `validated_not_read` Gate 0 边界；路径/symlink 行为由 3 个 unit tests 验证。
+- 2026-08-03 变更后重新执行全部必需质量命令，format、lint、typecheck、unit、contract、E2E、build、docs 与 schema 均退出 0；`docker:check` 额外验证默认拓扑只有一个动态 loopback Web 发布端口。
 
 ## Environment verified
 
-- `docker compose config --quiet` 与 `docker compose up -d --build` 退出 0；web/api/PostgreSQL/Redis health 均为 healthy，worker 日志确认只连接 queue 且不消费任务。
-- `curl` 验证 API liveness、PostgreSQL/Redis readiness、version/schema version，以及 web status/health 页面；页面明确写明“尚未实现完整 Trace Viewer”。
-- 宿主发布地址仅为 `127.0.0.1:3000`、`:3001`、`:15432`、`:16379`。因宿主已有服务占用 5432/6379，IntentTrace 使用独立 loopback 映射；容器内部仍是标准端口。
+- `docker compose config --quiet` 与 `pnpm docker:up` 退出 0；web/api/PostgreSQL/Redis health 均为 healthy，worker 只连接 queue 且不消费任务。
+- 本次 Docker 自动选择 `127.0.0.1:32784` 作为 Web 入口；`/healthz` 与 `/api/status` 均返回成功。该端口只记录本次证据，重建后应通过 `pnpm docker:url` 重新发现。
+- `docker inspect` 显示 API、PostgreSQL 与 Redis 的 `PortBindings` 均为 `{}`，只有 Web 的容器 3000 发布到动态 loopback 端口；容器内 API liveness/readiness 验证 PostgreSQL 与 Redis 均为 `ok`。
 - 锁定并运行 PostgreSQL `18.4`、Redis `7.2.14` 与 Node `24.18.0` image digest；Redis AOF、named volume、`noeviction` 生效。
 - 新 named volume 上 migration 首次成功；随后宿主连续两次 `pnpm db:migrate` 均安全 no-op。数据库有 19 个业务表和 8 个 immutable-update trigger。
 - 未配置 provider key、未发起模型调用、未读取真实 Codex/Claude session。

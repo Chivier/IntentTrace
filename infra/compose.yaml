@@ -22,8 +22,8 @@ services:
       POSTGRES_DB: intenttrace
       POSTGRES_USER: intenttrace
       POSTGRES_PASSWORD: intenttrace
-    ports:
-      - "127.0.0.1:15432:5432"
+    expose:
+      - "5432"
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -39,8 +39,8 @@ services:
       dockerfile: Dockerfile.redis
     image: intenttrace-redis:0.0.0
     command: ["redis-server", "/etc/intenttrace-redis.conf"]
-    ports:
-      - "127.0.0.1:16379:6379"
+    expose:
+      - "6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -66,8 +66,8 @@ services:
       <<: *runtime-environment
       API_HOST: 0.0.0.0
       API_PORT: 3001
-    ports:
-      - "127.0.0.1:3001:3001"
+    expose:
+      - "3001"
     volumes:
       - artifact-data:/var/lib/intenttrace/artifacts
     depends_on:
@@ -109,7 +109,7 @@ services:
       INTENTTRACE_API_ORIGIN: http://api:3001
       NEXT_TELEMETRY_DISABLED: "1"
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:${INTENTTRACE_WEB_PORT:-}:3000"
     depends_on:
       api:
         condition: service_healthy
@@ -130,3 +130,7 @@ volumes:
   postgres-data:
   redis-data:
   artifact-data:
+
+networks:
+  default:
+    name: intenttrace-private

@@ -53,7 +53,7 @@ export default function HomePage() {
 
       <nav className="actions" aria-label="Project references">
         <Link href="/prototype">查看历史视觉原型</Link>
-        <a href="http://127.0.0.1:3001/documentation">查看已实现 API</a>
+        <Link href="/api/status">查看实际 API 状态</Link>
       </nav>
     </main>
   );

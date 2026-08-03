@@ -52,5 +52,5 @@ jobs:
       - run: pnpm build
       - run: pnpm docs:check
       - run: pnpm schema:check
-      - run: docker compose config --quiet
+      - run: pnpm docker:check
       - run: pnpm db:migrate && pnpm db:migrate
