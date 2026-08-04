@@ -124,3 +124,40 @@ export function objectRecord(value: unknown): Record<string, unknown> | null {
     ? (value as Record<string, unknown>)
     : null;
 }
+
+export function visibleText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        const object = objectRecord(item);
+        if (object) {
+          if (typeof object.text === "string") return object.text;
+          if (object.content !== undefined) return visibleText(object.content);
+          if (object.output !== undefined) return visibleText(object.output);
+        }
+        return visibleText(item);
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (value && typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
+export function displayPreview(value: unknown, limit = 200): string {
+  const normalized = visibleText(value).replaceAll(/\s+/gu, " ").trim();
+  return normalized.slice(0, limit);
+}
+
+export function displayName(label: string, value?: unknown): string {
+  const preview = value === undefined ? "" : displayPreview(value);
+  return preview ? `${label} · ${preview}` : label;
+}

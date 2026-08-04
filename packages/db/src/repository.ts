@@ -756,16 +756,31 @@ export class IntentTraceRepository {
     });
     if (!job) return null;
 
-    const [eventRows, artifactRows, agentRows, snapshot] = await Promise.all([
+    const priorWatermarks = await this.sql<Array<{ watermark: string | bigint }>>`
+      select coalesce(max(event_watermark), 0)::bigint as watermark
+      from summary_jobs
+      where trace_id = ${job.trace_id} and event_watermark < ${String(job.event_watermark)}
+    `;
+    const chunkAfter = String(priorWatermarks[0]?.watermark ?? 0);
+    const [eventRows, agentRows, snapshot] = await Promise.all([
       this.sql<
-        Array<{ id: string; kind: string; name: string; agent_id: string | null; status: string }>
+        Array<{
+          id: string;
+          kind: string;
+          name: string;
+          agent_id: string | null;
+          status: string;
+          payload_ref: string | null;
+          artifact_refs: string[];
+          attributes: Record<string, unknown>;
+        }>
       >`
-        select id, kind, name, agent_id, status from raw_events
-        where trace_id = ${job.trace_id} and ingest_seq <= ${String(job.event_watermark)}
+        select id, kind, name, agent_id, status, payload_ref, artifact_refs, attributes
+        from raw_events
+        where trace_id = ${job.trace_id}
+          and ingest_seq > ${chunkAfter}
+          and ingest_seq <= ${String(job.event_watermark)}
         order by ingest_seq
-      `,
-      this.sql<Array<{ id: string }>>`
-        select id from artifacts where trace_id = ${job.trace_id} order by created_at, id
       `,
       this.sql<Array<{ source_agent_id: string }>>`
         select source_agent_id from agents where trace_id = ${job.trace_id} order by created_at, id
@@ -788,11 +803,33 @@ export class IntentTraceRepository {
       promptVersion: job.prompt_version,
       policyVersion: job.policy_version,
       allowedEventIds: eventRows.map((row) => row.id),
-      allowedArtifactIds: artifactRows.map((row) => row.id),
+      allowedArtifactIds: [
+        ...new Set(
+          eventRows.flatMap((row) => [
+            ...(row.payload_ref ? [row.payload_ref] : []),
+            ...(row.artifact_refs ?? []),
+          ]),
+        ),
+      ],
       allowedAgentIds: agentRows.map((row) => row.source_agent_id),
-      eventSketch: eventRows.map(
-        (row) =>
-          `${row.id}|${row.kind}|${row.status}|${row.agent_id ?? "system"}|${row.name.replaceAll("|", "/")}`,
+      eventSketch: eventRows.map((row) =>
+        JSON.stringify({
+          eventId: row.id,
+          kind: row.kind,
+          status: row.status,
+          agentId: row.agent_id ?? "system",
+          name: row.name,
+          contentType:
+            typeof row.attributes?.contentType === "string"
+              ? row.attributes.contentType
+              : "unknown",
+          artifactIds: [
+            ...new Set([
+              ...(row.payload_ref ? [row.payload_ref] : []),
+              ...(row.artifact_refs ?? []),
+            ]),
+          ],
+        }),
       ),
       graph: {
         nodes: snapshot.nodes.map((node) => ({

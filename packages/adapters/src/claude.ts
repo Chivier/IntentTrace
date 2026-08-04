@@ -1,6 +1,13 @@
 import type { RawEventKind } from "@intenttrace/schema";
 
-import { decodeAdapterBytes, normalizeEvent, objectRecord, parseJsonLines } from "./common.js";
+import {
+  decodeAdapterBytes,
+  displayName,
+  displayPreview,
+  normalizeEvent,
+  objectRecord,
+  parseJsonLines,
+} from "./common.js";
 import {
   MalformedAdapterInputError,
   UnsupportedAdapterVersionError,
@@ -30,7 +37,7 @@ const recognizedRecordTypes = new Set([
   "queue-operation",
   "summary",
 ]);
-const sensitiveKeys = new Set(["reasoning", "signature", "thinking"]);
+const sensitiveKeys = new Set(["reasoning", "thinking"]);
 const sensitiveBlockTypes = new Set(["redacted_thinking", "thinking"]);
 
 interface SanitizedValue {
@@ -84,6 +91,7 @@ function claudeContentTypes(object: Record<string, unknown>): Set<string> {
 }
 
 function claudeKind(type: string, object: Record<string, unknown>): RawEventKind {
+  if (object.is_error === true || object.isApiErrorMessage === true || object.error) return "error";
   const contentTypes = claudeContentTypes(object);
   if (type === "user") return contentTypes.has("tool_result") ? "tool_result" : "user_message";
   if (type === "assistant") return contentTypes.has("tool_use") ? "tool_call" : "assistant_message";
@@ -93,10 +101,73 @@ function claudeKind(type: string, object: Record<string, unknown>): RawEventKind
   return "log";
 }
 
+function claudeDisplay(
+  type: string,
+  object: Record<string, unknown>,
+): {
+  name: string;
+  toolName?: string;
+  contentType: string;
+} {
+  const message = objectRecord(object.message);
+  const content = Array.isArray(message?.content) ? message.content : message?.content;
+  const firstBlock = Array.isArray(content) ? objectRecord(content[0]) : null;
+  if (type === "user") {
+    if (firstBlock?.type === "tool_result") {
+      return {
+        name: displayName("Tool result", firstBlock.content),
+        contentType: "tool_result",
+      };
+    }
+    return { name: displayName("User", content), contentType: "user_message" };
+  }
+  if (type === "assistant") {
+    if (object.is_error === true || object.isApiErrorMessage === true || object.error) {
+      return {
+        name: displayName("Claude error", object.error ?? content),
+        contentType: "error",
+      };
+    }
+    if (firstBlock?.type === "tool_use") {
+      const toolName = String(firstBlock.name ?? "tool");
+      return {
+        name: displayName(`Tool call: ${toolName}`, firstBlock.input),
+        toolName,
+        contentType: "tool_call",
+      };
+    }
+    return { name: displayName("Assistant", content), contentType: "assistant_message" };
+  }
+  if (type === "system")
+    return { name: displayName("System", object.content), contentType: "system" };
+  if (type === "mode") return { name: displayName("Mode", object.mode), contentType: "metadata" };
+  if (type === "permission-mode")
+    return {
+      name: displayName("Permission mode", object.permissionMode),
+      contentType: "metadata",
+    };
+  if (type === "progress")
+    return {
+      name: displayName("Progress", object.content ?? object.data),
+      contentType: "progress",
+    };
+  if (type === "tool_use") {
+    const toolName = String(object.name ?? "tool");
+    return {
+      name: displayName(`Tool call: ${toolName}`, object.input),
+      toolName,
+      contentType: "tool_call",
+    };
+  }
+  if (type === "tool_result")
+    return { name: displayName("Tool result", object.content), contentType: "tool_result" };
+  return { name: displayName(`Claude ${type}`, object), contentType: "metadata" };
+}
+
 export class ClaudeSessionAdapter implements TraceAdapter {
   readonly manifest: AdapterManifest = {
     source: "claude",
-    adapterVersion: "1.0.0",
+    adapterVersion: "2.0.0",
     supportedFormatVersions: ["claude-jsonl-v1"],
     status: "implemented",
   };
@@ -117,6 +188,13 @@ export class ClaudeSessionAdapter implements TraceAdapter {
     } catch (error) {
       throw new MalformedAdapterInputError("claude", String(error));
     }
+    const firstRequest = records.find((record) => {
+      const candidate = objectRecord(record.value);
+      return candidate?.type === "user" && objectRecord(candidate.message)?.role === "user";
+    });
+    const firstRequestContent = objectRecord(objectRecord(firstRequest?.value)?.message)?.content;
+    const tracePreview = displayPreview(firstRequestContent, 120);
+    const traceTitle = tracePreview ? `Claude · ${tracePreview}` : "Claude session";
     for (const record of records) {
       const object = objectRecord(record.value);
       if (!object || typeof object.type !== "string") {
@@ -155,8 +233,16 @@ export class ClaudeSessionAdapter implements TraceAdapter {
           sourceEventId: eventId,
         };
       }
-      const message = objectRecord(sanitizedObject.message);
-      const name = String(message?.role ?? object.type);
+      const sanitizedMessage = objectRecord(sanitizedObject.message);
+      if (
+        object.type === "assistant" &&
+        Array.isArray(sanitizedMessage?.content) &&
+        sanitizedMessage.content.length === 0 &&
+        sanitized.omitted > 0
+      ) {
+        continue;
+      }
+      const display = claudeDisplay(object.type, sanitizedObject);
       yield {
         type: "event",
         event: normalizeEvent(
@@ -165,14 +251,14 @@ export class ClaudeSessionAdapter implements TraceAdapter {
             formatVersion: version,
             adapterVersion: this.manifest.adapterVersion,
             sourceIdentity: input.sourceIdentity,
-            sessionId,
+            sessionId: `${sessionId}@${this.manifest.adapterVersion}`,
             line: record.line,
           },
           {
             sourceEventId: eventId,
             occurredAt: typeof object.timestamp === "string" ? object.timestamp : undefined,
             kind: claudeKind(object.type, sanitizedObject),
-            name,
+            name: display.name,
             status:
               object.is_error === true || object.isApiErrorMessage === true || object.error
                 ? "error"
@@ -180,12 +266,14 @@ export class ClaudeSessionAdapter implements TraceAdapter {
             agentId: typeof object.agentId === "string" ? object.agentId : "claude",
             attributes: {
               recordType: object.type,
+              contentType: display.contentType,
+              ...(display.toolName ? { toolName: display.toolName } : {}),
               ...(declaredVersion && !declaredVersion.startsWith("claude-jsonl-")
                 ? { clientVersion: declaredVersion }
                 : {}),
             },
             payload: sanitizedObject,
-            traceTitle: `Claude session ${sessionId}`,
+            traceTitle,
           },
         ),
       };

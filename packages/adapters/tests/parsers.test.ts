@@ -59,8 +59,15 @@ describe("implemented trace adapters", () => {
   it("omits Codex reasoning, encrypted blocks, and world state from events and artifacts", async () => {
     const records = await parse(new CodexSessionAdapter(), await fixture("codex", "privacy.jsonl"));
     const events = records.filter((record) => record.type === "event");
-    expect(events).toHaveLength(3);
+    expect(events).toHaveLength(4);
     expect(events.some((record) => record.event.kind === "tool_result")).toBe(true);
+    expect(events.some((record) => record.event.name.includes("Visible answer"))).toBe(true);
+    expect(events.some((record) => record.event.name.includes("visible.txt"))).toBe(true);
+    expect(events.some((record) => record.event.name.includes("Tool result: read_file"))).toBe(
+      true,
+    );
+    expect(new Set(events.map((record) => record.event.traceId))).toHaveLength(1);
+    expect(events[0]?.event.source.adapterVersion).toBe("2.0.0");
     expect(
       records.filter(
         (record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted",
@@ -90,6 +97,10 @@ describe("implemented trace adapters", () => {
     await expect(adapter.sniff({ bytes, sourceIdentity: "anonymous-fixture" })).resolves.toBe(true);
     const records = await parse(adapter, bytes);
     expect(records.filter((record) => record.type === "event")).toHaveLength(3);
+    const events = records.filter((record) => record.type === "event");
+    expect(events.some((record) => record.event.name.includes("Visible request"))).toBe(true);
+    expect(events.some((record) => record.event.name.includes("Visible answer"))).toBe(true);
+    expect(events[0]?.event.source.adapterVersion).toBe("2.0.0");
     expect(
       records.filter(
         (record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted",

@@ -4,6 +4,7 @@ const traceId = "33333333-3333-4333-8333-333333333333";
 const revisionId = "44444444-4444-4444-8444-444444444444";
 const eventId = "55555555-5555-4555-8555-555555555555";
 const nodeId = "66666666-6666-4666-8666-666666666666";
+const artifactId = "88888888-8888-4888-8888-888888888888";
 
 test("serves the honest local MVP status and machine health", async ({ page, request }) => {
   await page.goto("/");
@@ -35,6 +36,13 @@ test("links Graph, Gantt, raw evidence, and replay with stable IDs", async ({ pa
               name: "Escaped <script>alert(1)</script>",
               status: "ok",
               agentId: "backend",
+              payloadRef: {
+                artifactId,
+                sha256: "a".repeat(64),
+                byteLength: 92,
+              },
+              artifactRefs: [artifactId],
+              attributes: { contentType: "tool_result" },
             },
           ],
           nextCursor: null,
@@ -106,14 +114,27 @@ test("links Graph, Gantt, raw evidence, and replay with stable IDs", async ({ pa
       },
     }),
   );
+  await page.route(`**/api/v1/traces/${traceId}/artifacts/${artifactId}**`, async (route) =>
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        type: "response_item",
+        payload: { type: "tool_result", output: "Concrete visible result from the session" },
+      }),
+    }),
+  );
   await page.goto(`/traces/${traceId}`);
   await expect(page.getByRole("heading", { name: "Intent Graph" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Agent Gantt" })).toBeVisible();
   await page.getByText("RESULT · Verified result").click();
   await expect(page.getByText("The test passed")).toBeVisible();
   await page.getByRole("button", { name: /#1 Escaped/ }).click();
+  await expect(page.getByText("Concrete visible result from the session")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open sanitized source payload" })).toBeVisible();
   await expect(page.locator("main script")).toHaveCount(0);
-  await expect(page.getByText("Escaped <script>alert(1)</script>", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Escaped <script>alert(1)</script>" }),
+  ).toBeVisible();
   await page.getByLabel("Known at ingest watermark 1").fill("0");
   await expect(page.getByText("0 immutable facts")).toBeVisible();
 });

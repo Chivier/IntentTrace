@@ -4,6 +4,7 @@
 **/node_modules
 .pnpm-store
 **/dist
+**/*.tsbuildinfo
 **/target
 apps/desktop/src-tauri/target
 apps/desktop/src-tauri/resources/intenttrace-stack.tar.gz

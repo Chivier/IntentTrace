@@ -28,15 +28,16 @@ milestone: Gate 5
 ## Automated verified
 
 - Adapter/parser、Collector import/follow/rotation/truncation、config/security、storage/ingest、reducer property、ELK stability、provider redaction/Structured Outputs/JSON-mode validation、API payload ordering/OTLP gzip、schema/OpenAPI/Drizzle contracts均有 tests。
-- 增加匿名 privacy fixtures：Codex reasoning/encrypted/world-state 与 Claude thinking/file-history 不产生 raw event/artifact 内容；普通 Claude/Codex client semver 不会误判为未知 source format；tool output 方向和离线 completion marker 有回归覆盖。Unit 当前为 `17 files / 45 tests`。
+- 增加匿名 privacy/content fixtures：Codex reasoning/encrypted/world-state 与 Claude thinking/file-history 不产生 raw event/artifact 内容；纯 thinking 不生成空 event；普通 Claude/Codex client semver 不会误判为未知 source format；可见 message/tool input/output preview、tool result 配对、chunk 内容选择、artifact detail 和离线 completion marker 有回归覆盖。Unit 当前为 `17 files / 46 tests`。
 - `pnpm performance:smoke`：10,000 raw fixture 与 1,500-node reducer correctness smoke；最终复跑约 `11.29ms` / `4.18ms`，仅为 synthetic algorithm smoke，不是 DB/UI SLA。
-- Required suite 全绿：format、lint；typecheck `26/26` tasks；unit `17 files / 45 tests`；contract `6 files / 11 tests`；Playwright `3/3`；build `16/16` tasks；docs `62` normative files；JSON Schema/OpenAPI/Drizzle drift 通过。
+- Required suite 在本次内容修复前的基线全绿；修复后的最终 required suite 证据见本节后续条目，不能沿用旧结果。
+- Adapter v2 内容修复后重新执行 required suite：`format:check`、ESLint、typecheck `26/26`、unit `17 files / 46 tests`、contract `6 files / 11 tests`、Playwright `3/3`、build `16/16`、docs `62` normative files、JSON Schema/OpenAPI/Drizzle drift 全部通过。
 - `pnpm audit --prod` 为 `No known vulnerabilities found`；Next `16.2.12` 的受漏洞影响传递依赖通过精确 override 固定到 `postcss 8.5.25`、`sharp 0.35.0`，并完成 build/E2E 回归。
 - `pnpm licenses list --prod` 已人工复核；没有 AGPL，`elkjs` 采用其 EPL-2.0 选项，Sharp 的预编译 libvips 为 LGPL-3.0-or-later。任何对外 DMG 发布仍需随发布产物完成第三方 notices/compliance 审核。
 
 ## Environment verified
 
-- `docker compose up -d --build` 成功；最后一次重建的动态入口为 `127.0.0.1:32772→3000`，API/PostgreSQL/Redis internal-only；migration 首次和重复 no-op 均成功。该端口不是配置常量，重建后必须重新执行 `pnpm docker:url`。
+- `docker compose up -d --build` 成功；最后一次内容修复重建的动态入口为 `127.0.0.1:32774→3000`，API/PostgreSQL/Redis internal-only；migration 首次和重复 no-op 均成功。该端口不是配置常量，重建后必须重新执行 `pnpm docker:url`。干净镜像构建曾因宿主 `*.tsbuildinfo` 被复制而跳过已忽略的 `dist` emit，现由 `.dockerignore` 同时排除两者并通过 clean rebuild。
 - Collector 通过 Web 入口导入 1-event canonical fixture，mock worker 提交 evidence-backed live revision。
 - `pnpm demo:load` 导入固定 seed 六 Agent 2,048 events；raw count 2,048；并发 stale-base job 缺陷被观测并修为 transaction rebase；修复后 43 jobs 全部 committed，最终 `final` revision watermark `2048`、42 semantic nodes。
 - 完成后追加迟到 correction：首次 HTTP 201、相同内容重试 200/同 event ID、冲突内容 409；旧 final watermark `2048` 单向标为 stale，新 final watermark `2049` 提交，44 jobs 全部 committed。最终数据库计数为 2,050 raw facts、46 revisions；数据库实测拒绝 revision 内容更新和 `stale true → false`。
@@ -44,8 +45,9 @@ milestone: Gate 5
 - 干净 checkout 双栈验收发现固定 bridge name 会让不同 `-p` 项目共享 DNS alias；已改为 project-scoped default network，并由 `docker:check` 拒绝 fixed/external network reuse。
 - 代码提交 `b776c9b` 的独立 worktree 完成 frozen install、九项 required suite、production audit、desktop check 与 Compose check；全新 `intenttrace-clean_default` 栈返回空 trace list，raw/revision 均为 0，两次重复 migration 安全成功，同时主栈仍保有 2 traces，证明 network/volume 未交叉。
 - backup manifest/hash/tar 校验并恢复到临时 PostgreSQL：2 traces、2,049 raw events、45 revisions；临时库随后删除。
-- 经用户在 2026-08-04 显式授权，Collector 各读取一个明确指定、非 symlink、非活跃写入中的本机 Codex/Claude JSONL；路径、session ID 和正文未写入仓库或命令摘要。Codex 导入 2,583 可见事件 + 1 completion marker，丢弃 842 reasoning、87 sensitive fields、133 unsupported metadata；Claude 导入 1,169 可见事件 + 1 marker，丢弃 155 thinking blocks、242 unsupported metadata。
-- 两个真实文件完整重放分别得到 2,584/1,170 duplicates、0 inserts、0 integrity conflicts；最终 final watermarks 为 2,584/1,170，53/25 summary jobs 全部 committed，Trace/Graph 页面 HTTP 200。内容寻址 volume 结构扫描为 0 forbidden reasoning/thinking/encrypted fields，3,602 个去重 artifact 文件均为 mode `0600`。未配置 provider key，未发起付费模型调用。
+- 经用户在 2026-08-04 显式授权，Collector 各读取一个明确指定、非 symlink、非活跃写入中的本机 Codex/Claude JSONL；路径、session ID 和正文未写入仓库或命令摘要。首次 adapter v1 验收只证明结构落盘、幂等和禁存字段为零，但没有验证 readable event name、payload UI 或 semantic node 内容；其 “HTTP 200 即可用” 结论不成立，保留为已被否定的历史证据。
+- Adapter v2 内容修复重新导入独立 trace：Codex 为 2,583 可见事件 + 1 marker、2,031 个不同 readable names、0 空/占位 name；Claude 丢弃 155 条纯 thinking 空壳后为 1,014 可见事件 + 1 marker、807 个不同 readable names、0 空/占位 name。dry-run event/artifact 结构扫描均为 0 forbidden fields；完整重放分别得到 2,584/1,015 duplicates、0 inserts、0 integrity conflicts。
+- v2 的 75 个 summary jobs 全部 committed；最终 Codex/Claude revision 均为 non-stale final，watermark 2,584/1,015，节点 53/22、generic title 0、claim evidence links 54/23、所有节点均有 artifact。真实 Chromium 在 1440×900 加载全部 2,584/1,015 raw rows并选择 user event，分别渲染 10,398/659 字符的有效 JSON payload，图节点 53/22；单次交互约 542/284ms，仅为本机观测，不作为 SLA。未配置 provider key，未发起付费模型调用。
 
 ## Deferred
 

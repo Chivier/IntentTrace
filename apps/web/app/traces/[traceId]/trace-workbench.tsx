@@ -14,7 +14,9 @@ interface RawEvent {
   name: string;
   status: string;
   agentId?: string;
-  payloadRef?: { artifactId: string };
+  payloadRef?: { artifactId: string; sha256: string; byteLength: number };
+  artifactRefs: string[];
+  attributes: Record<string, unknown>;
 }
 interface AgentLane {
   agentId: string;
@@ -50,7 +52,7 @@ interface SemanticEdge {
 }
 interface Snapshot {
   trace: { id: string; title: string; status: string; latestIngestSeq: string };
-  raw: { events: RawEvent[] };
+  raw: { events: RawEvent[]; nextCursor: string | null };
   agents: AgentLane[];
   revision: { id: string; eventWatermark: string; branchKind: string; stale: boolean } | null;
 }
@@ -58,6 +60,21 @@ interface Graph {
   revision: NonNullable<Snapshot["revision"]>;
   nodes: SemanticNode[];
   edges: SemanticEdge[];
+}
+
+interface ArtifactDetail {
+  eventId: string;
+  text: string;
+  truncated: boolean;
+  error: string | null;
+}
+
+function prettyPayload(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2);
+  } catch {
+    return text;
+  }
 }
 
 export function TraceWorkbench({ traceId }: { traceId: string }) {
@@ -73,6 +90,7 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
     {},
   );
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [artifactDetail, setArtifactDetail] = useState<ArtifactDetail | null>(null);
 
   const refresh = useCallback(async () => {
     const [snapshotResponse, graphResponse] = await Promise.all([
@@ -81,6 +99,19 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
     ]);
     if (!snapshotResponse.ok) throw new Error(`snapshot ${snapshotResponse.status}`);
     const nextSnapshot = (await snapshotResponse.json()) as Snapshot;
+    const allEvents = [...nextSnapshot.raw.events];
+    let cursor = nextSnapshot.raw.nextCursor;
+    while (cursor) {
+      const pageResponse = await fetch(
+        `/api/v1/traces/${traceId}/events?after=${encodeURIComponent(cursor)}&limit=1000`,
+        { cache: "no-store" },
+      );
+      if (!pageResponse.ok) throw new Error(`raw events ${pageResponse.status}`);
+      const page = (await pageResponse.json()) as Snapshot["raw"];
+      allEvents.push(...page.events);
+      cursor = page.nextCursor;
+    }
+    nextSnapshot.raw = { events: allEvents, nextCursor: null };
     const nextGraph =
       graphResponse.status === 204
         ? null
@@ -101,12 +132,22 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
   }, [refresh]);
   useEffect(() => {
     const events = new EventSource(`/api/v1/traces/${traceId}/stream`);
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        void refresh();
+      }, 250);
+    };
     events.onopen = () => setConnection("live");
-    events.onmessage = () => void refresh();
     for (const type of ["raw_event.appended", "trace.completed", "semantic_revision.created"])
-      events.addEventListener(type, () => void refresh());
+      events.addEventListener(type, scheduleRefresh);
     events.onerror = () => setConnection("reconnecting");
-    return () => events.close();
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      events.close();
+    };
   }, [refresh, traceId]);
   useEffect(() => {
     if (!graph || graph.nodes.length === 0) return;
@@ -144,11 +185,51 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
   );
   const eventById = useMemo(() => new Map(raw.map((event) => [event.id, event])), [raw]);
   const selectedNode = graph?.nodes.find((node) => node.logicalNodeId === selectedNodeId) ?? null;
+  const selectedEvent = selectedEventId ? (eventById.get(selectedEventId) ?? null) : null;
   const selectedEvidence =
     selectedNode?.claims
       .flatMap((claim) => claim.evidenceEventIds)
       .map((id) => eventById.get(id))
       .filter((event): event is RawEvent => Boolean(event)) ?? [];
+  useEffect(() => {
+    if (!selectedEvent?.payloadRef) {
+      setArtifactDetail(null);
+      return;
+    }
+    const payloadRef = selectedEvent.payloadRef;
+    const readLength = Math.min(payloadRef.byteLength, 8_388_608);
+    const controller = new AbortController();
+    setArtifactDetail({
+      eventId: selectedEvent.id,
+      text: "Loading sanitized payload…",
+      truncated: false,
+      error: null,
+    });
+    void fetch(
+      `/api/v1/traces/${traceId}/artifacts/${payloadRef.artifactId}?offset=0&length=${readLength}`,
+      { cache: "no-store", signal: controller.signal },
+    )
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`artifact ${response.status}`);
+        const text = await response.text();
+        setArtifactDetail({
+          eventId: selectedEvent.id,
+          text: prettyPayload(text),
+          truncated: readLength < payloadRef.byteLength,
+          error: null,
+        });
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
+        setArtifactDetail({
+          eventId: selectedEvent.id,
+          text: "",
+          truncated: false,
+          error: reason instanceof Error ? reason.message : String(reason),
+        });
+      });
+    return () => controller.abort();
+  }, [selectedEvent, traceId]);
   const flowNodes: Node[] = (graph?.nodes ?? []).map((node, index) => ({
     id: node.logicalNodeId,
     position: node.layout ??
@@ -301,7 +382,14 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
                   </header>
                   <p>{claim.text}</p>
                   {claim.evidenceEventIds.map((id) => (
-                    <button type="button" key={id} onClick={() => setSelectedEventId(id)}>
+                    <button
+                      type="button"
+                      key={id}
+                      onClick={() => {
+                        setSelectedEventId(id);
+                        setInspectorOpen(true);
+                      }}
+                    >
                       #{eventById.get(id)?.ingestSeq ?? "outside playhead"}{" "}
                       {eventById.get(id)?.name ?? id}
                     </button>
@@ -314,6 +402,52 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
           )}
           {selectedEvidence.length > 0 ? (
             <small>{selectedEvidence.length} evidence facts visible at this watermark</small>
+          ) : null}
+          {selectedEvent ? (
+            <article className="raw-detail" aria-label="Selected raw event detail">
+              <header>
+                <div>
+                  <small>Raw event #{selectedEvent.ingestSeq}</small>
+                  <h3>{selectedEvent.name}</h3>
+                </div>
+                <span>{selectedEvent.kind}</span>
+              </header>
+              <dl>
+                <div>
+                  <dt>Agent</dt>
+                  <dd>{selectedEvent.agentId ?? "system"}</dd>
+                </div>
+                <div>
+                  <dt>Status</dt>
+                  <dd>{selectedEvent.status}</dd>
+                </div>
+              </dl>
+              {selectedEvent.payloadRef ? (
+                <>
+                  <a
+                    href={`/api/v1/traces/${traceId}/artifacts/${selectedEvent.payloadRef.artifactId}?offset=0&length=${Math.min(selectedEvent.payloadRef.byteLength, 8_388_608)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open sanitized source payload
+                  </a>
+                  {artifactDetail?.eventId === selectedEvent.id ? (
+                    artifactDetail.error ? (
+                      <p role="alert">Payload unavailable: {artifactDetail.error}</p>
+                    ) : (
+                      <>
+                        <pre>{artifactDetail.text}</pre>
+                        {artifactDetail.truncated ? (
+                          <small>Payload exceeds the 8 MiB inline viewer limit.</small>
+                        ) : null}
+                      </>
+                    )
+                  ) : null}
+                </>
+              ) : (
+                <p className="muted">This marker has no source payload.</p>
+              )}
+            </article>
           ) : null}
         </section>
         <section className="gantt-panel" aria-label="Agent Gantt">
@@ -335,7 +469,10 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
                       left: `${Math.max(2, (index / Math.max(1, lane.eventIds.length - 1)) * 94)}%`,
                     }}
                     key={id}
-                    onClick={() => setSelectedEventId(id)}
+                    onClick={() => {
+                      setSelectedEventId(id);
+                      setInspectorOpen(true);
+                    }}
                     aria-label={`Select event ${id}`}
                   />
                 ))}
@@ -356,7 +493,10 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
                 role="listitem"
                 key={event.id}
                 className={selectedEventId === event.id ? "raw-row raw-row--selected" : "raw-row"}
-                onClick={() => setSelectedEventId(event.id)}
+                onClick={() => {
+                  setSelectedEventId(event.id);
+                  setInspectorOpen(true);
+                }}
               >
                 <code>#{event.ingestSeq}</code>
                 <span>{event.kind}</span>

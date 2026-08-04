@@ -81,37 +81,48 @@ export class FoundationMockSummaryProvider implements SummaryProvider {
   }
 
   async summarizeChunk(input: ChunkSummaryInput): Promise<ProviderIntentGraphPatch> {
-    const latest = parseSketch(input.eventSketch.at(-1));
-    if (!latest || !input.allowedEventIds.includes(latest.eventId)) {
+    const events = input.eventSketch
+      .map((value) => parseSketch(value))
+      .filter((event): event is SketchEvent => event !== null)
+      .filter((event) => input.allowedEventIds.includes(event.eventId));
+    const completion = events.findLast((event) => event.kind === "trace_complete");
+    const selected = selectSemanticEvent(events);
+    if (!selected) {
       return this.emptyPatch(input.jobNonce, input.baseRevisionId, "no eligible event in chunk");
     }
-    const isFinal = latest.kind === "trace_complete";
+    const isFinal = Boolean(completion);
+    const isError = selected.status === "error" || selected.contentType === "error";
+    const isRequest = selected.kind === "user_message" || selected.contentType === "user_message";
     const priorNode = input.allowedNodeIds.at(-1);
+    const evidenceEventIds = [
+      selected.eventId,
+      ...(completion && completion.eventId !== selected.eventId ? [completion.eventId] : []),
+    ];
     const operations: ProviderIntentGraphPatch["operations"] = [
       {
         op: "add_node",
         ref: "tmp:1",
         node: {
-          kind: isFinal ? "result" : latest.status === "error" ? "issue" : "work",
-          status: isFinal ? "completed" : latest.status === "error" ? "blocked" : "active",
-          title: clipTitle(latest.name, isFinal ? "Trace result" : "Observed work"),
+          kind: isFinal ? "result" : isError ? "issue" : isRequest ? "request" : "work",
+          status: isFinal ? "completed" : isError ? "blocked" : "active",
+          title: clipTitle(selected.name, isFinal ? "Trace result" : "Observed work"),
           claims: [
             {
-              kind: isFinal ? "outcome" : "action",
-              text: latest.name.slice(0, 480),
+              kind: isFinal ? "outcome" : isRequest ? "intent" : "action",
+              text: selected.name.slice(0, 480),
               provenance: "stated",
               suggestedConfidence: "high",
-              evidenceEventIds: [latest.eventId],
+              evidenceEventIds,
             },
           ],
           primaryParentRef: priorNode,
-          primaryAgentId: input.allowedAgentIds.includes(latest.agentId)
-            ? latest.agentId
+          primaryAgentId: input.allowedAgentIds.includes(selected.agentId)
+            ? selected.agentId
             : undefined,
-          participantAgentIds: input.allowedAgentIds.includes(latest.agentId)
-            ? [latest.agentId]
+          participantAgentIds: input.allowedAgentIds.includes(selected.agentId)
+            ? [selected.agentId]
             : [],
-          artifactIds: [],
+          artifactIds: selected.artifactIds.filter((id) => input.allowedArtifactIds.includes(id)),
         },
       },
     ];
@@ -122,7 +133,7 @@ export class FoundationMockSummaryProvider implements SummaryProvider {
         sourceRef: priorNode,
         targetRef: "tmp:1",
         kind: isFinal ? "produces" : "attempts",
-        evidenceEventIds: [latest.eventId],
+        evidenceEventIds,
       });
     }
     return ProviderIntentGraphPatchSchema.parse({
@@ -159,15 +170,78 @@ function clipTitle(value: string, fallback: string): string {
   return candidate.slice(0, 80);
 }
 
-function parseSketch(value: string | undefined): {
+interface SketchEvent {
   eventId: string;
   kind: string;
   status: string;
   agentId: string;
   name: string;
-} | null {
+  contentType: string;
+  artifactIds: string[];
+}
+
+function parseSketch(value: string | undefined): SketchEvent | null {
   if (!value) return null;
+  if (value.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      if (
+        typeof parsed.eventId !== "string" ||
+        typeof parsed.kind !== "string" ||
+        typeof parsed.status !== "string" ||
+        typeof parsed.agentId !== "string" ||
+        typeof parsed.name !== "string"
+      )
+        return null;
+      return {
+        eventId: parsed.eventId,
+        kind: parsed.kind,
+        status: parsed.status,
+        agentId: parsed.agentId,
+        name: parsed.name,
+        contentType: typeof parsed.contentType === "string" ? parsed.contentType : "unknown",
+        artifactIds: Array.isArray(parsed.artifactIds)
+          ? parsed.artifactIds.filter((id): id is string => typeof id === "string")
+          : [],
+      };
+    } catch {
+      return null;
+    }
+  }
   const [eventId, kind, status, agentId, ...name] = value.split("|");
   if (!eventId || !kind || !status || !agentId || name.length === 0) return null;
-  return { eventId, kind, status, agentId, name: name.join("|") };
+  return {
+    eventId,
+    kind,
+    status,
+    agentId,
+    name: name.join("|"),
+    contentType: "unknown",
+    artifactIds: [],
+  };
+}
+
+function selectSemanticEvent(events: readonly SketchEvent[]): SketchEvent | null {
+  let selected: SketchEvent | null = null;
+  let selectedScore = -1;
+  for (const event of events) {
+    if (event.kind === "trace_complete") continue;
+    const score = semanticScore(event);
+    if (score >= selectedScore) {
+      selected = event;
+      selectedScore = score;
+    }
+  }
+  return selected ?? events.at(-1) ?? null;
+}
+
+function semanticScore(event: SketchEvent): number {
+  if (event.status === "error" || event.contentType === "error") return 100;
+  if (event.kind === "user_message" || event.contentType === "user_message") return 90;
+  if (event.kind === "assistant_message" || event.contentType === "assistant_message") return 80;
+  if (event.kind === "tool_result" || event.contentType === "tool_result") return 70;
+  if (event.kind === "tool_call" || event.contentType === "tool_call") return 60;
+  if (event.contentType === "agent_activity") return 50;
+  if (["telemetry", "metadata", "context"].includes(event.contentType)) return 5;
+  return 30;
 }

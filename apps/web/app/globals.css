@@ -359,6 +359,60 @@ button:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.raw-detail {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #090e18;
+}
+.raw-detail > header,
+.raw-detail dl,
+.raw-detail dl > div {
+  display: flex;
+  gap: 10px;
+}
+.raw-detail > header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.raw-detail h3 {
+  margin: 4px 0 10px;
+  overflow-wrap: anywhere;
+}
+.raw-detail header > span,
+.raw-detail dt,
+.raw-detail small {
+  color: var(--muted);
+}
+.raw-detail dl {
+  flex-wrap: wrap;
+  margin: 8px 0 12px;
+}
+.raw-detail dl > div {
+  align-items: baseline;
+}
+.raw-detail dd {
+  margin: 0;
+}
+.raw-detail a {
+  display: inline-block;
+  margin-bottom: 10px;
+}
+.raw-detail pre {
+  max-height: 520px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: #d7deeb;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid #202b3e;
+  border-radius: 8px;
+  background: #05070c;
+}
 .human-controls {
   display: grid;
   gap: 8px;

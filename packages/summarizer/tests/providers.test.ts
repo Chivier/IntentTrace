@@ -4,6 +4,7 @@ import { SchemaVersion } from "@intenttrace/schema";
 
 import {
   DeepSeekJsonSummaryProvider,
+  FoundationMockSummaryProvider,
   OpenAIResponsesSummaryProvider,
   redactProviderText,
 } from "../src/index.js";
@@ -31,6 +32,44 @@ const input = {
 };
 
 describe("provider safety boundary", () => {
+  it("selects visible semantic content instead of trailing telemetry", async () => {
+    const provider = new FoundationMockSummaryProvider();
+    const artifactId = "019fbbb3-4324-7d43-8f9c-cd489a92cb31";
+    const completionId = "019fbbb3-4324-7d43-8f9c-cd489a92cb32";
+    const result = await provider.summarizeChunk({
+      ...input,
+      eventSketch: [
+        JSON.stringify({
+          eventId,
+          kind: "assistant_message",
+          status: "ok",
+          agentId: "agent",
+          name: "Assistant · Implemented durable session content extraction",
+          contentType: "assistant_message",
+          artifactIds: [artifactId],
+        }),
+        JSON.stringify({
+          eventId: completionId,
+          kind: "trace_complete",
+          status: "ok",
+          agentId: "system",
+          name: "Offline import complete",
+          contentType: "lifecycle",
+          artifactIds: [],
+        }),
+      ],
+      allowedEventIds: [eventId, completionId],
+      allowedArtifactIds: [artifactId],
+    });
+    const node = result.operations.find((operation) => operation.op === "add_node");
+    expect(node?.op === "add_node" ? node.node.title : null).toContain("durable session content");
+    expect(node?.op === "add_node" ? node.node.artifactIds : null).toEqual([artifactId]);
+    expect(node?.op === "add_node" ? node.node.claims[0]?.evidenceEventIds : null).toEqual([
+      eventId,
+      completionId,
+    ]);
+  });
+
   it("redacts common secrets before egress", () => {
     const result = redactProviderText(
       "Authorization: Bearer abcdefghijklmnopqrstuvwxyz token=super-secret-value",
