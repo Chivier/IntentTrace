@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, readdir, stat, watch } from "node:fs/promises";
 import { basename, join } from "node:path";
 
@@ -5,6 +6,7 @@ import { createAdapter } from "@intenttrace/adapters";
 import {
   IngestResultSchema,
   RawTraceEventInputSchema,
+  type RawTraceEventInput,
   type TraceSourceKind,
 } from "@intenttrace/schema";
 
@@ -54,6 +56,7 @@ async function ingestFile(
   source: TraceSourceKind,
   filePath: string,
   apiOrigin: string,
+  markComplete: boolean,
   dependencies: CollectorDependencies,
 ): Promise<{ inserted: number; duplicates: number; warnings: number }> {
   const adapter = createAdapter(source);
@@ -64,15 +67,9 @@ async function ingestFile(
   let inserted = 0;
   let duplicates = 0;
   let warnings = 0;
+  let lastEvent: RawTraceEventInput | null = null;
 
-  for await (const record of adapter.parse({ bytes, sourceIdentity })) {
-    if (record.type === "warning") {
-      warnings += 1;
-      dependencies.output(JSON.stringify({ level: "warning", ...record, path: filePath }));
-      continue;
-    }
-    if (record.type !== "event") continue;
-    const event = RawTraceEventInputSchema.parse(record.event);
+  const send = async (event: RawTraceEventInput): Promise<void> => {
     const response = await dependencies.fetch(new URL("/api/v1/events", apiOrigin), {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -87,6 +84,47 @@ async function ingestFile(
     const result = IngestResultSchema.parse(payload);
     if (result.duplicate) duplicates += 1;
     else inserted += 1;
+  };
+
+  for await (const record of adapter.parse({ bytes, sourceIdentity })) {
+    if (record.type === "warning") {
+      warnings += 1;
+      dependencies.output(JSON.stringify({ level: "warning", ...record, path: filePath }));
+      continue;
+    }
+    if (record.type !== "event") continue;
+    const event = RawTraceEventInputSchema.parse(record.event);
+    await send(event);
+    lastEvent = event;
+  }
+
+  if (markComplete && lastEvent) {
+    const contentHash = createHash("sha256").update(bytes).digest("hex");
+    const completion = { ...lastEvent };
+    delete completion.agentId;
+    delete completion.spanId;
+    delete completion.parentSpanId;
+    delete completion.subjectId;
+    delete completion.causationEventId;
+    delete completion.payload;
+    delete completion.payloadRef;
+    await send(
+      RawTraceEventInputSchema.parse({
+        ...completion,
+        source: {
+          ...completion.source,
+          sourceEventId: `import-complete-${contentHash.slice(0, 32)}`,
+        },
+        kind: "trace_complete",
+        name: "Offline import complete",
+        status: "ok",
+        artifactRefs: [],
+        attributes: {
+          collectorMarker: "offline_import_complete",
+          contentSha256: contentHash,
+        },
+      }),
+    );
   }
   return { inserted, duplicates, warnings };
 }
@@ -99,7 +137,7 @@ async function importPath(
 ): Promise<void> {
   const totals = { inserted: 0, duplicates: 0, warnings: 0, files: 0 };
   for (const file of await explicitFiles(path)) {
-    const result = await ingestFile(source, file, apiOrigin, dependencies);
+    const result = await ingestFile(source, file, apiOrigin, true, dependencies);
     totals.files += 1;
     totals.inserted += result.inserted;
     totals.duplicates += result.duplicates;
@@ -127,7 +165,7 @@ async function followPath(
     const rotated = checkpoint !== null && checkpoint.fileIdentity !== fileIdentity;
     const truncated = checkpoint !== null && info.size < checkpoint.byteOffset;
     if (!checkpoint || rotated || truncated || info.size > checkpoint.byteOffset) {
-      const result = await ingestFile(source, path.realPath, apiOrigin, dependencies);
+      const result = await ingestFile(source, path.realPath, apiOrigin, false, dependencies);
       checkpoint = await saveCheckpoint(stateRoot, source, path.realPath, info);
       dependencies.output(
         JSON.stringify({

@@ -85,7 +85,7 @@ describe("collector path boundary", () => {
         environment: {},
       }),
     ).resolves.toBe(0);
-    expect(output.at(-1)).toContain('"inserted":1');
+    expect(output.at(-1)).toContain('"inserted":2');
   });
 
   it("records append, truncation, and rotation checkpoints without scanning directories", async () => {

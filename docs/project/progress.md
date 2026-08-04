@@ -1,14 +1,14 @@
 ---
 status: current
 owner: program
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-04
 normative: true
 milestone: Gate 5
 ---
 
 # 实施进度
 
-证据日期 2026-08-03；workspace `/home/chivier/Projects/IntentTrace`；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.0`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
+证据更新至 2026-08-04；workspace `/home/chivier/Projects/IntentTrace`；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.0`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
 
 ## Planned
 
@@ -28,8 +28,9 @@ milestone: Gate 5
 ## Automated verified
 
 - Adapter/parser、Collector import/follow/rotation/truncation、config/security、storage/ingest、reducer property、ELK stability、provider redaction/Structured Outputs/JSON-mode validation、API payload ordering/OTLP gzip、schema/OpenAPI/Drizzle contracts均有 tests。
+- 增加匿名 privacy fixtures：Codex reasoning/encrypted/world-state 与 Claude thinking/file-history 不产生 raw event/artifact 内容；普通 Claude/Codex client semver 不会误判为未知 source format；tool output 方向和离线 completion marker 有回归覆盖。Unit 当前为 `17 files / 45 tests`。
 - `pnpm performance:smoke`：10,000 raw fixture 与 1,500-node reducer correctness smoke；最终复跑约 `11.29ms` / `4.18ms`，仅为 synthetic algorithm smoke，不是 DB/UI SLA。
-- Required suite 全绿：format、lint；typecheck `26/26` tasks；unit `17 files / 43 tests`；contract `6 files / 11 tests`；Playwright `3/3`；build `16/16` tasks；docs `62` normative files；JSON Schema/OpenAPI/Drizzle drift 通过。
+- Required suite 全绿：format、lint；typecheck `26/26` tasks；unit `17 files / 45 tests`；contract `6 files / 11 tests`；Playwright `3/3`；build `16/16` tasks；docs `62` normative files；JSON Schema/OpenAPI/Drizzle drift 通过。
 - `pnpm audit --prod` 为 `No known vulnerabilities found`；Next `16.2.12` 的受漏洞影响传递依赖通过精确 override 固定到 `postcss 8.5.25`、`sharp 0.35.0`，并完成 build/E2E 回归。
 - `pnpm licenses list --prod` 已人工复核；没有 AGPL，`elkjs` 采用其 EPL-2.0 选项，Sharp 的预编译 libvips 为 LGPL-3.0-or-later。任何对外 DMG 发布仍需随发布产物完成第三方 notices/compliance 审核。
 
@@ -43,7 +44,8 @@ milestone: Gate 5
 - 干净 checkout 双栈验收发现固定 bridge name 会让不同 `-p` 项目共享 DNS alias；已改为 project-scoped default network，并由 `docker:check` 拒绝 fixed/external network reuse。
 - 代码提交 `b776c9b` 的独立 worktree 完成 frozen install、九项 required suite、production audit、desktop check 与 Compose check；全新 `intenttrace-clean_default` 栈返回空 trace list，raw/revision 均为 0，两次重复 migration 安全成功，同时主栈仍保有 2 traces，证明 network/volume 未交叉。
 - backup manifest/hash/tar 校验并恢复到临时 PostgreSQL：2 traces、2,049 raw events、45 revisions；临时库随后删除。
-- 未读取真实 Codex/Claude session，未配置 provider key，未发起付费模型调用。
+- 经用户在 2026-08-04 显式授权，Collector 各读取一个明确指定、非 symlink、非活跃写入中的本机 Codex/Claude JSONL；路径、session ID 和正文未写入仓库或命令摘要。Codex 导入 2,583 可见事件 + 1 completion marker，丢弃 842 reasoning、87 sensitive fields、133 unsupported metadata；Claude 导入 1,169 可见事件 + 1 marker，丢弃 155 thinking blocks、242 unsupported metadata。
+- 两个真实文件完整重放分别得到 2,584/1,170 duplicates、0 inserts、0 integrity conflicts；最终 final watermarks 为 2,584/1,170，53/25 summary jobs 全部 committed，Trace/Graph 页面 HTTP 200。内容寻址 volume 结构扫描为 0 forbidden reasoning/thinking/encrypted fields，3,602 个去重 artifact 文件均为 mode `0600`。未配置 provider key，未发起付费模型调用。
 
 ## Deferred
 

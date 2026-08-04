@@ -12,3 +12,4 @@ All notable project changes are recorded here. The project has no public release
 - Implement Gate 5 human pin/feedback revisions, deletion confirmation, backup/restore drills, synthetic scale smoke and accessibility checks.
 - Add a Tauri 2 macOS Docker-service launcher and macOS universal DMG workflow; signing/notarization requires external Apple credentials.
 - Override transitive dependencies to `postcss 8.5.25` and `sharp 0.35.0`; the production dependency audit reports no known vulnerabilities.
+- Validate explicit local Codex/Claude imports, omit hidden reasoning/thinking and internal snapshots before persistence, distinguish CLI versions from source format versions, and add content-hash completion markers for offline imports.

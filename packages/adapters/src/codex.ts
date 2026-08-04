@@ -10,14 +10,74 @@ import {
   type TraceAdapter,
 } from "./types.js";
 
+const supportedRecordTypes = new Set([
+  "session_meta",
+  "turn_context",
+  "event_msg",
+  "response_item",
+]);
+const sensitivePayloadTypes = new Set(["reasoning", "agent_reasoning", "reasoning_raw_content"]);
+const sensitiveKeys = new Set([
+  "base_instructions",
+  "encrypted_content",
+  "instructions",
+  "reasoning",
+  "summary",
+  "thinking",
+]);
+const sensitiveBlockTypes = new Set(["encrypted_content", "reasoning", "thinking"]);
+
+interface SanitizedValue {
+  value: unknown;
+  omitted: number;
+}
+
+function sanitizeCodexValue(value: unknown): SanitizedValue {
+  if (Array.isArray(value)) {
+    const output: unknown[] = [];
+    let omitted = 0;
+    for (const item of value) {
+      const itemObject = objectRecord(item);
+      if (itemObject && sensitiveBlockTypes.has(String(itemObject.type ?? ""))) {
+        omitted += 1;
+        continue;
+      }
+      const sanitized = sanitizeCodexValue(item);
+      output.push(sanitized.value);
+      omitted += sanitized.omitted;
+    }
+    return { value: output, omitted };
+  }
+  const object = objectRecord(value);
+  if (object) {
+    const output: Record<string, unknown> = {};
+    let omitted = 0;
+    for (const [key, item] of Object.entries(object)) {
+      if (sensitiveKeys.has(key)) {
+        omitted += 1;
+        continue;
+      }
+      const sanitized = sanitizeCodexValue(item);
+      output[key] = sanitized.value;
+      omitted += sanitized.omitted;
+    }
+    return { value: output, omitted };
+  }
+  return { value, omitted: 0 };
+}
+
 function codexKind(type: string, payload: Record<string, unknown> | null): RawEventKind {
   if (type === "session_meta") return "agent_start";
-  if (type === "turn_context") return "user_message";
-  if (type === "event_msg") return payload?.type === "task_complete" ? "trace_complete" : "log";
+  if (type === "turn_context") return "log";
+  if (type === "event_msg") {
+    if (payload?.type === "user_message") return "user_message";
+    if (payload?.type === "agent_message") return "assistant_message";
+    return "log";
+  }
   if (type === "response_item") {
     const itemType = String(payload?.type ?? "");
+    if (/function_call_output|tool_call_output|tool_result/iu.test(itemType)) return "tool_result";
     if (/function_call|tool_call/iu.test(itemType)) return "tool_call";
-    if (/function_call_output|tool_result/iu.test(itemType)) return "tool_result";
     if (/message/iu.test(itemType))
       return payload?.role === "user" ? "user_message" : "assistant_message";
   }
@@ -61,7 +121,10 @@ export class CodexSessionAdapter implements TraceAdapter {
         };
         continue;
       }
-      const version = typeof object.version === "string" ? object.version : "codex-jsonl-v1";
+      const declaredVersion = typeof object.version === "string" ? object.version : undefined;
+      const version = declaredVersion?.startsWith("codex-jsonl-")
+        ? declaredVersion
+        : "codex-jsonl-v1";
       if (!this.manifest.supportedFormatVersions.includes(version)) {
         throw new UnsupportedAdapterVersionError("codex", version);
       }
@@ -74,6 +137,29 @@ export class CodexSessionAdapter implements TraceAdapter {
             ? payload.id
             : `${sessionId}-${record.line}`;
       const name = String(payload?.name ?? payload?.type ?? object.type);
+      const payloadType = String(payload?.type ?? "");
+      if (!supportedRecordTypes.has(object.type) || sensitivePayloadTypes.has(payloadType)) {
+        yield {
+          type: "warning",
+          code: sensitivePayloadTypes.has(payloadType)
+            ? "sensitive_reasoning_omitted"
+            : "unsupported_record_omitted",
+          message: `line ${record.line} ${object.type}/${payloadType || "none"} was omitted`,
+          sourceEventId: eventId,
+        };
+        continue;
+      }
+      const sanitized = sanitizeCodexValue(object);
+      const sanitizedObject = objectRecord(sanitized.value) ?? { type: object.type };
+      const sanitizedPayload = objectRecord(sanitizedObject.payload);
+      if (sanitized.omitted > 0) {
+        yield {
+          type: "warning",
+          code: "sensitive_content_omitted",
+          message: `line ${record.line} omitted ${sanitized.omitted} sensitive field(s)`,
+          sourceEventId: eventId,
+        };
+      }
       yield {
         type: "event",
         event: normalizeEvent(
@@ -88,12 +174,18 @@ export class CodexSessionAdapter implements TraceAdapter {
           {
             sourceEventId: eventId,
             occurredAt: typeof object.timestamp === "string" ? object.timestamp : undefined,
-            kind: codexKind(object.type, payload),
+            kind: codexKind(object.type, sanitizedPayload),
             name,
             status: object.type === "event_msg" && payload?.type === "error" ? "error" : "ok",
             agentId: typeof payload?.agent_id === "string" ? payload.agent_id : "codex",
-            attributes: { recordType: object.type },
-            payload: object,
+            attributes: {
+              recordType: object.type,
+              ...(payloadType ? { payloadType } : {}),
+              ...(declaredVersion && !declaredVersion.startsWith("codex-jsonl-")
+                ? { clientVersion: declaredVersion }
+                : {}),
+            },
+            payload: sanitizedObject,
             traceTitle: `Codex session ${sessionId}`,
           },
         ),
@@ -101,7 +193,7 @@ export class CodexSessionAdapter implements TraceAdapter {
       yield {
         type: "artifact",
         sourceEventId: eventId,
-        bytes: record.bytes,
+        bytes: new TextEncoder().encode(JSON.stringify(sanitizedObject)),
         mediaType: "application/json",
       };
     }

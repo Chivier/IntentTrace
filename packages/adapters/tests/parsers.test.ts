@@ -56,11 +56,54 @@ describe("implemented trace adapters", () => {
     expect(unknown.some((record) => record.type === "warning")).toBe(true);
   });
 
+  it("omits Codex reasoning, encrypted blocks, and world state from events and artifacts", async () => {
+    const records = await parse(new CodexSessionAdapter(), await fixture("codex", "privacy.jsonl"));
+    const events = records.filter((record) => record.type === "event");
+    expect(events).toHaveLength(3);
+    expect(events.some((record) => record.event.kind === "tool_result")).toBe(true);
+    expect(
+      records.filter(
+        (record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted",
+      ),
+    ).toHaveLength(1);
+    const serialized = records
+      .map((record) =>
+        record.type === "artifact"
+          ? new TextDecoder().decode(record.bytes)
+          : JSON.stringify(record),
+      )
+      .join("\n");
+    expect(serialized).toContain("Visible answer");
+    expect(serialized).not.toContain("must-not-persist");
+  });
+
   it("parses Claude records including visible errors", async () => {
     const adapter = new ClaudeSessionAdapter();
     const records = await parse(adapter, await fixture("claude", "error.jsonl"));
     const event = records.find((record) => record.type === "event");
     expect(event?.type === "event" ? event.event.status : null).toBe("error");
+  });
+
+  it("accepts Claude client versions while omitting thinking and file snapshots", async () => {
+    const adapter = new ClaudeSessionAdapter();
+    const bytes = await fixture("claude", "privacy.jsonl");
+    await expect(adapter.sniff({ bytes, sourceIdentity: "anonymous-fixture" })).resolves.toBe(true);
+    const records = await parse(adapter, bytes);
+    expect(records.filter((record) => record.type === "event")).toHaveLength(3);
+    expect(
+      records.filter(
+        (record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted",
+      ),
+    ).toHaveLength(1);
+    const serialized = records
+      .map((record) =>
+        record.type === "artifact"
+          ? new TextDecoder().decode(record.bytes)
+          : JSON.stringify(record),
+      )
+      .join("\n");
+    expect(serialized).toContain("Visible answer");
+    expect(serialized).not.toContain("must-not-persist");
   });
 
   it.each([
