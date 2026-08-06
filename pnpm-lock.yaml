@@ -108,6 +108,9 @@ importers:
       '@intenttrace/graph-layout':
         specifier: workspace:*
         version: link:../../packages/graph-layout
+      '@intenttrace/schema':
+        specifier: workspace:*
+        version: link:../../packages/schema
       '@intenttrace/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -117,6 +120,9 @@ importers:
       '@xyflow/react':
         specifier: 12.11.2
         version: 12.11.2(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      elkjs:
+        specifier: 0.12.0
+        version: 0.12.0
       next:
         specifier: 16.2.12
         version: 16.2.12(@playwright/test@1.62.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -132,6 +138,9 @@ importers:
       tailwindcss:
         specifier: 4.3.3
         version: 4.3.3
+      zustand:
+        specifier: 4.5.7
+        version: 4.5.7(@types/react@19.2.18)(react@19.2.8)
     devDependencies:
       '@types/react':
         specifier: 19.2.18

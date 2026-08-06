@@ -9,6 +9,7 @@ import {
   type RawTraceEvent,
   type RawTraceEventInput,
   type SemanticGraphSnapshot,
+  type SemanticRevision,
   type TraceSummary,
 } from "@intenttrace/schema";
 
@@ -634,6 +635,36 @@ export class IntentTraceRepository {
       where created_at >= date_trunc('day', now()) and status = 'committed'
     `;
     return Number(rows[0]?.total ?? 0);
+  }
+
+  async listRevisions(traceId: string, limit: number): Promise<SemanticRevision[]> {
+    const rows = await this.sql<
+      Array<{
+        id: string;
+        trace_id: string;
+        parent_revision_id: string | null;
+        branch_kind: string;
+        event_watermark: string | bigint;
+        created_at: Date;
+        source_job_id: string | null;
+        stale: boolean;
+      }>
+    >`
+      select id, trace_id, parent_revision_id, branch_kind, event_watermark,
+        created_at, source_job_id, stale
+      from semantic_revisions where trace_id = ${traceId}
+      order by created_at desc, id desc limit ${limit}
+    `;
+    return rows.map((row) => ({
+      id: row.id,
+      traceId: row.trace_id,
+      parentRevisionId: row.parent_revision_id,
+      branchKind: row.branch_kind as SemanticRevision["branchKind"],
+      eventWatermark: String(row.event_watermark),
+      createdAt: toIso(row.created_at),
+      sourceJobId: row.source_job_id,
+      stale: Boolean(row.stale),
+    }));
   }
 
   async getGraph(traceId: string, revisionId?: string): Promise<SemanticGraphSnapshot | null> {

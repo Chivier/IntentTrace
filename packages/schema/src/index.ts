@@ -14,6 +14,94 @@ export const NodeRefSchema = z.union([UuidSchema, TemporaryNodeRefSchema]);
 export const TraceSourceKindSchema = z.enum(["jsonl", "otlp", "codex", "claude", "custom"]);
 export type TraceSourceKind = z.infer<typeof TraceSourceKindSchema>;
 
+export const SessionCatalogIdSchema = z.string().regex(/^[a-f0-9]{24}$/u);
+export const SessionCatalogEntrySchema = z
+  .object({
+    id: SessionCatalogIdSchema,
+    source: TraceSourceKindSchema,
+    title: z.string().min(1).max(240),
+    projectHint: z.string().min(1).max(120).nullable(),
+    firstPromptPreview: z.string().min(1).max(160).nullable(),
+    lastPromptPreview: z.string().min(1).max(160).nullable(),
+    lastActivityAt: TimestampSchema,
+    byteLength: z.number().int().nonnegative(),
+    eventCount: z.number().int().positive(),
+    warningCount: z.number().int().nonnegative(),
+    modifiedAt: TimestampSchema,
+  })
+  .strict();
+export type SessionCatalogEntry = z.infer<typeof SessionCatalogEntrySchema>;
+
+export const SessionCatalogFailureCodeSchema = z.enum([
+  "preflight_failed",
+  "unsupported_version",
+  "no_visible_events",
+  "stale_session",
+  "file_too_large",
+]);
+export const SessionCatalogFailureSchema = z
+  .object({
+    id: SessionCatalogIdSchema,
+    code: SessionCatalogFailureCodeSchema,
+    message: z.string().min(1).max(500),
+  })
+  .strict();
+export type SessionCatalogFailure = z.infer<typeof SessionCatalogFailureSchema>;
+
+export const SessionCatalogSchema = z
+  .object({
+    catalogVersion: z.literal(1),
+    command: z.enum(["discover", "import"]),
+    source: TraceSourceKindSchema,
+    dryRun: z.literal(true).optional(),
+    matchedFiles: z.number().int().nonnegative(),
+    selectedFiles: z.number().int().nonnegative(),
+    sessions: z.array(SessionCatalogEntrySchema),
+    failed: z.array(SessionCatalogFailureSchema),
+    skippedByLimit: z.number().int().nonnegative(),
+    unreadableDirectories: z.number().int().nonnegative(),
+    rejectedFiles: z.number().int().nonnegative(),
+    missingSessionIds: z.array(SessionCatalogIdSchema),
+  })
+  .strict();
+export type SessionCatalog = z.infer<typeof SessionCatalogSchema>;
+
+export const SessionImportOutcomeSchema = z
+  .object({
+    protocolVersion: z.literal(1),
+    level: z.literal("result"),
+    command: z.enum(["import", "follow"]),
+    sessionId: SessionCatalogIdSchema,
+    traceId: UuidSchema,
+    inserted: z.number().int().nonnegative(),
+    duplicates: z.number().int().nonnegative(),
+    warnings: z.number().int().nonnegative(),
+  })
+  .strict();
+export type SessionImportOutcome = z.infer<typeof SessionImportOutcomeSchema>;
+
+export const SessionImportSummarySchema = z
+  .object({
+    protocolVersion: z.literal(1),
+    level: z.literal("summary"),
+    command: z.literal("import"),
+    source: TraceSourceKindSchema,
+    files: z.number().int().nonnegative(),
+    imported: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+    inserted: z.number().int().nonnegative(),
+    duplicates: z.number().int().nonnegative(),
+    warnings: z.number().int().nonnegative(),
+    matchedFiles: z.number().int().nonnegative(),
+    skippedByLimit: z.number().int().nonnegative(),
+    unreadableDirectories: z.number().int().nonnegative(),
+    rejectedFiles: z.number().int().nonnegative(),
+    missingSessionIds: z.array(SessionCatalogIdSchema),
+    firstError: z.string().min(1).max(500).optional(),
+  })
+  .strict();
+export type SessionImportSummary = z.infer<typeof SessionImportSummarySchema>;
+
 export const RawEventKindSchema = z.enum([
   "user_message",
   "assistant_message",
@@ -125,6 +213,7 @@ export const TraceListSchema = z
     nextCursor: z.string().nullable(),
   })
   .strict();
+export type TraceList = z.infer<typeof TraceListSchema>;
 
 export const RawEventPageSchema = z
   .object({
@@ -132,6 +221,7 @@ export const RawEventPageSchema = z
     nextCursor: PositiveIntegerStringSchema.nullable(),
   })
   .strict();
+export type RawEventPage = z.infer<typeof RawEventPageSchema>;
 
 export const AgentTimelineLaneSchema = z
   .object({
@@ -143,6 +233,7 @@ export const AgentTimelineLaneSchema = z
     errorCount: z.number().int().nonnegative(),
   })
   .strict();
+export type AgentTimelineLane = z.infer<typeof AgentTimelineLaneSchema>;
 
 export const SemanticNodeKindSchema = z.enum([
   "request",
@@ -212,6 +303,12 @@ export const SemanticRevisionSchema = z
     stale: z.boolean().default(false),
   })
   .strict();
+export type SemanticRevision = z.infer<typeof SemanticRevisionSchema>;
+
+export const SemanticRevisionListSchema = z
+  .object({ revisions: z.array(SemanticRevisionSchema) })
+  .strict();
+export type SemanticRevisionList = z.infer<typeof SemanticRevisionListSchema>;
 
 export const TraceSnapshotSchema = z
   .object({
@@ -221,6 +318,7 @@ export const TraceSnapshotSchema = z
     revision: SemanticRevisionSchema.nullable(),
   })
   .strict();
+export type TraceSnapshot = z.infer<typeof TraceSnapshotSchema>;
 
 export const SemanticNodeVersionSchema = z
   .object({
@@ -245,6 +343,7 @@ export const SemanticNodeVersionSchema = z
       .default(null),
   })
   .strict();
+export type SemanticNodeVersion = z.infer<typeof SemanticNodeVersionSchema>;
 
 export const SemanticEdgeVersionSchema = z
   .object({
@@ -257,6 +356,7 @@ export const SemanticEdgeVersionSchema = z
     retired: z.boolean(),
   })
   .strict();
+export type SemanticEdgeVersion = z.infer<typeof SemanticEdgeVersionSchema>;
 
 export const SemanticGraphSnapshotSchema = z
   .object({
@@ -433,6 +533,8 @@ export const SseEnvelopeSchema = z
     payload: z.record(z.string(), z.unknown()),
   })
   .strict();
+export type SseEventType = z.infer<typeof SseEventTypeSchema>;
+export type SseEnvelope = z.infer<typeof SseEnvelopeSchema>;
 
 export const ProblemDetailsSchema = z
   .object({
@@ -492,7 +594,9 @@ export const ProviderCallAuditSchema = z
     createdAt: TimestampSchema,
   })
   .strict();
+export type ProviderCallAudit = z.infer<typeof ProviderCallAuditSchema>;
 
 export const ProviderCallAuditListSchema = z
   .object({ calls: z.array(ProviderCallAuditSchema) })
   .strict();
+export type ProviderCallAuditList = z.infer<typeof ProviderCallAuditListSchema>;

@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "packageManager": "pnpm@11.18.0",
   "engines": {
     "node": ">=24.0.0 <25",
@@ -26,6 +26,7 @@
     "docker:down": "node scripts/docker-stack.mjs down",
     "docker:check": "node scripts/check-compose.mjs",
     "demo:load": "tsx scripts/load-demo.ts",
+    "screenshots:readme": "node scripts/capture-readme-screenshots.mjs",
     "desktop:prepare": "node scripts/prepare-desktop-stack.mjs",
     "desktop:check": "pnpm desktop:prepare && pnpm --filter @intenttrace/desktop check",
     "desktop:dev": "pnpm --filter @intenttrace/desktop tauri dev",

@@ -19,7 +19,7 @@ milestone: Gate 5
 | `DATABASE_URL`              | `postgres://…@127.0.0.1:15432/intenttrace` | PostgreSQL URL                   |
 | `REDIS_URL`                 | `redis://127.0.0.1:16379`                  | Redis URL                        |
 | `ARTIFACT_ROOT`             | `.intenttrace/artifacts`                   | resolve 为绝对本地路径           |
-| `PROVIDER_MODE`             | `mock`                                     | `mock                            | openai | deepseek` |
+| `PROVIDER_MODE`             | `mock`                                     | `mock`、`openai` 或 `deepseek`   |
 | `PROVIDER_EGRESS_ENABLED`   | `false`                                    | cloud mode 必须显式 true         |
 | `PROVIDER_DAILY_BUDGET_USD` | `0`                                        | cloud mode 必须为正              |
 | `PROVIDER_TIMEOUT_MS`       | `30000`                                    | 1000–120000                      |

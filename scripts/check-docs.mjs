@@ -11,12 +11,13 @@ const required = [
   "design/source-package.md",
   "design/product-spec.md",
   "design/interaction-spec.md",
+  "design/import-experience-research.md",
   "architecture/overview.md",
   "architecture/invariants.md",
   "architecture/data-flow-and-sequences.md",
   "architecture/adr/README.md",
   ...Array.from(
-    { length: 11 },
+    { length: 12 },
     (_, index) => `architecture/adr/${String(index + 1).padStart(4, "0")}`,
   ),
   "contracts/domain-model.md",
@@ -61,12 +62,15 @@ const required = [
   "project/progress.md",
   "project/risk-register.md",
   "project/release-readiness.md",
+  "project/open-source-readiness.md",
   "reference/configuration.md",
   "reference/glossary.md",
   "design/source/IntentTrace_Design_Package.zip",
   "design/source/manifest.sha256",
   "design/prototype/intenttrace_ui_prototype.html",
   "design/prototype/intenttrace_ui_preview.png",
+  "assets/trace-list.png",
+  "assets/workbench.png",
 ];
 
 const failures = [];
@@ -206,6 +210,62 @@ for (const [manifestPath, section, name, expectedVersion] of baselineVersions) {
 }
 if ((await readFile(join(root, ".node-version"), "utf8")).trim() !== "24.18.0") {
   failures.push(".node-version must be 24.18.0");
+}
+
+const expectedLicenseHash = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0";
+const licenseBytes = await readFile(join(root, "LICENSE"));
+const licenseHash = createHash("sha256").update(licenseBytes).digest("hex");
+if (licenseHash !== expectedLicenseHash) {
+  failures.push(`LICENSE must be the verified GNU AGPLv3 text: ${licenseHash}`);
+}
+if (!licenseBytes.toString("utf8").includes("13. Remote Network Interaction")) {
+  failures.push("LICENSE is missing GNU AGPLv3 section 13");
+}
+
+const communityFiles = [
+  "LICENSE",
+  "NOTICE",
+  "CODE_OF_CONDUCT.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "SUPPORT.md",
+  "THIRD_PARTY_NOTICES.md",
+  ".github/CODEOWNERS",
+  ".github/dependabot.yml",
+  ".github/ISSUE_TEMPLATE/bug_report.yml",
+  ".github/ISSUE_TEMPLATE/feature_request.yml",
+];
+for (const path of communityFiles) {
+  try {
+    const info = await stat(join(root, path));
+    if (!info.isFile() || info.size < 100)
+      failures.push(`Missing substantive community file: ${path}`);
+  } catch {
+    failures.push(`Missing community file: ${path}`);
+  }
+}
+
+const packageManifests = [
+  "package.json",
+  ...(await readdir(join(root, "apps"), { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `apps/${entry.name}/package.json`),
+  ...(await readdir(join(root, "packages"), { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => `packages/${entry.name}/package.json`),
+];
+for (const manifestPath of packageManifests) {
+  const manifest = JSON.parse(await readFile(join(root, manifestPath), "utf8"));
+  if (manifest.license !== "AGPL-3.0-only") {
+    failures.push(`${manifestPath}: license must be AGPL-3.0-only`);
+  }
+}
+const cargoManifest = await readFile(
+  join(root, "apps", "desktop", "src-tauri", "Cargo.toml"),
+  "utf8",
+);
+if (!/^license = "AGPL-3.0-only"$/mu.test(cargoManifest)) {
+  failures.push("apps/desktop/src-tauri/Cargo.toml: license must be AGPL-3.0-only");
 }
 
 if (failures.length > 0) {

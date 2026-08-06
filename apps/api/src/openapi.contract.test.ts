@@ -16,6 +16,7 @@ describe("generated OpenAPI", () => {
       "/api/v1/traces/{traceId}/graph",
       "/api/v1/traces/{traceId}/nodes/{nodeId}",
       "/api/v1/traces/{traceId}/provider-calls",
+      "/api/v1/traces/{traceId}/revisions",
       "/api/v1/traces/{traceId}/snapshot",
       "/api/v1/traces/{traceId}/stream",
       "/healthz",

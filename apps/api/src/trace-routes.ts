@@ -14,6 +14,7 @@ import {
   RawEventPageSchema,
   RawTraceEventInputSchema,
   SemanticGraphSnapshotSchema,
+  SemanticRevisionListSchema,
   TraceListSchema,
   TraceSnapshotSchema,
   TraceSummarySchema,
@@ -37,6 +38,9 @@ const TraceListQuerySchema = z
   .object({ limit: z.coerce.number().int().min(1).max(200).default(50) })
   .strict();
 const GraphQuerySchema = z.object({ revisionId: UuidSchema.optional() }).strict();
+const RevisionListQuerySchema = z
+  .object({ limit: z.coerce.number().int().min(1).max(500).default(100) })
+  .strict();
 const ArtifactQuerySchema = z
   .object({
     offset: z.coerce.number().int().nonnegative().default(0),
@@ -359,6 +363,24 @@ export async function registerTraceRoutes(
         return problem(reply, request, 404, "not_found", "semantic graph revision was not found");
       }
       return graph;
+    },
+  );
+
+  app.get(
+    "/api/v1/traces/:traceId/revisions",
+    {
+      schema: {
+        operationId: "listSemanticRevisions",
+        summary: "List committed semantic revisions, newest first",
+        params: TraceParamsSchema,
+        querystring: RevisionListQuerySchema,
+        response: { 200: SemanticRevisionListSchema },
+      },
+    },
+    async (request) => {
+      const { traceId } = TraceParamsSchema.parse(request.params);
+      const query = RevisionListQuerySchema.parse(request.query);
+      return { revisions: await services.repository.listRevisions(traceId, query.limit) };
     },
   );
 

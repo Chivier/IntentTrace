@@ -40,6 +40,6 @@ export function HealthPanel() {
 
   if (state.status === "checking") return <StatusBadge tone="neutral">检查 API…</StatusBadge>;
   if (state.status === "ready")
-    return <StatusBadge tone="ok">API {state.version} ready</StatusBadge>;
+    return <StatusBadge tone="ok">local_mvp · API {state.version}</StatusBadge>;
   return <StatusBadge tone="warning">Raw API 尚未就绪：{state.reason}</StatusBadge>;
 }

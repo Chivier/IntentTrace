@@ -15,6 +15,7 @@ export interface ApiServices {
     | "listStreamEvents"
     | "getStreamBounds"
     | "listProviderCalls"
+    | "listRevisions"
     | "getGraph"
     | "editSemanticNode"
     | "deleteTraceData"
@@ -40,6 +41,7 @@ export function createUnavailableApiServices(): ApiServices {
       listStreamEvents: async () => unavailable(),
       getStreamBounds: async () => unavailable(),
       listProviderCalls: async () => unavailable(),
+      listRevisions: async () => unavailable(),
       getGraph: async () => unavailable(),
       editSemanticNode: async () => unavailable(),
       deleteTraceData: async () => unavailable(),

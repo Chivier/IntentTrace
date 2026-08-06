@@ -2,7 +2,7 @@
   "name": "@intenttrace/web",
   "version": "0.0.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "build": "next build",
     "dev": "next dev",
@@ -11,14 +11,17 @@
   },
   "dependencies": {
     "@intenttrace/graph-layout": "workspace:*",
+    "@intenttrace/schema": "workspace:*",
     "@intenttrace/ui": "workspace:*",
     "@tailwindcss/postcss": "4.3.3",
     "@xyflow/react": "12.11.2",
+    "elkjs": "0.12.0",
     "next": "16.2.12",
     "postcss": "8.5.25",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "tailwindcss": "4.3.3"
+    "tailwindcss": "4.3.3",
+    "zustand": "4.5.7"
   },
   "devDependencies": {
     "@types/react": "19.2.18",

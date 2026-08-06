@@ -1,42 +1,58 @@
 ---
 status: current
 owner: program
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-06
 normative: true
 milestone: Gate 5
 ---
 
 # 实施进度
 
-证据更新至 2026-08-04；workspace `/home/chivier/Projects/IntentTrace`；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.0`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
+证据更新至 2026-08-06；workspace 为本地 IntentTrace checkout（公开文档不记录个人绝对路径）；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.0`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
 
 ## Planned
 
 - 取得用户授权的测试 key 后做 OpenAI/DeepSeek canary、usage/cost 与 raw-only 故障验证。
 - 在 macOS 12+ + Docker Desktop 上构建 universal DMG，并用 Apple Developer 身份 codesign/notarize/安装演练。
 - 建立多轮 DB/query/SSE/ELK/browser 原始 benchmark，才能设置性能 SLA。
+- 在 Tauri/本机 helper 上实现消费 `SessionCatalog`/outcome/summary 的三步 guided picker；先新增由 API/DB authority 批量返回的 already-imported 状态，不能让 Web server 扫 home 或让本地 ledger 充当事实源。
 
 ## Implemented
 
+- Guided chat/session import（2026-08-06）：调研 Paseo 固定 commit `f2054cc701f4cdaa43b509331a393956bc67decc` 的 provider import contract、Claude/Codex/Pi descriptor、picker view-model、真实 OpenCode E2E 及 `5b884aee`→`187561e4` 演进历史；记录于 `docs/design/import-experience-research.md`，新 ADR 0012 替代 ADR 0011 的旧一层文件实现限制，但保留独立 Collector/显式 path/API 不扫宿主目录。Collector 新增 `discover` → repeated `import --session <opaque-id>` 两阶段流程：先 stat/rank/limit 再完整 adapter+Zod preflight，默认 catalog 不含 prompt、绝对/相对 path、文件名或 native session ID，`--include-previews` 才输出最长 160 字符 visible prompt；opaque ID 绑定授权 root + placement + inode/size/mtime，`O_NOFOLLOW` open 并在 read 前后复核，stale/missing selector fail-closed，缺值绝不回退批量导入，import/follow API origin 仅允许 loopback；默认单文件 64 MiB 上限（可显式调整）、bounded concurrency、坏文件发送 0 raw facts且不放弃同批其他文件。Zod 新增 versioned `SessionCatalog`、path-free per-session outcome 与 aggregate summary 并生成三份 JSON Schema，逐会话成功返回 trace ID 供未来 UI 跳转；现有 batch import/follow 保留，pnpm 前导 `--` 兼容。未来 Tauri picker 只允许消费该协议，Web/API 仍不得扫描 home；API authority 驱动的 already-imported 状态延后，不能用本地 ledger 伪装。
+- 开源准备（2026-08-06）：按 owner 最新决定，仓库许可证从准备阶段的 Apache-2.0 切换为 GNU AGPL v3.0 only（SPDX `AGPL-3.0-only`；根 `LICENSE` 取自 GNU 官方文本，SHA-256 `0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0`；`NOTICE`、全部 npm manifest 与 Tauri Cargo metadata 一致；`private: true` 只用于防止 workspace package 误发 registry，仓库 visibility 本轮未改变），补齐 DCO 1.1 贡献流程、Code of Conduct、Security/Support、CODEOWNERS、Issue forms、PR checklist、Dependabot 与第三方 notices；README 重写为公开入口，覆盖能力、截图、快速开始、collector、架构、安全边界、平台状态和 non-claims。新增 `docs/project/open-source-readiness.md`，严格区分 repository-complete 与仍需 owner/GitHub/Apple/provider 环境完成的外部门禁。`scripts/check-docs.mjs` 现在强制检查社区文件、README 截图和所有 package/Cargo license metadata，避免后续漂移。
+- Collector 目录导入（2026-08-05）：原先 `--path` 指向目录时只做一层 `readdir`，而 Codex session 在 `~/.codex/sessions/YYYY/MM/DD/` 多层日期树下、Claude 在 `~/.claude/projects/<项目>/` 每项目子目录下，因此指向这两个根目录会导入 0 个文件。改为递归遍历显式命名的根：每层拒绝 symlink（因此不可能走出被校验的 real path），只读 `.jsonl`/`.ndjson`（Claude 的 `sessions-index.json` 是元数据不是 trace，被排除；显式命名单文件时不受扩展名过滤限制），`--max-files` 上限与被跳过数量始终上报而非静默截断，`--newest` 按 mtime 取最近的会话，`--dry-run` 只列不发，单个文件失败不再中断整批（记录 failed 计数与首个错误，全部成功才返回 0），并按文件并发（`--concurrency`，默认 4；每个文件是独立 trace，文件内事件仍严格顺序发送以保持 ingestSeq 单调）。本机实测发现 921 个 Codex 与 355 个 Claude session 文件，此前均为 0。
 - Gate 1：canonical JSONL、OTLP HTTP JSON/gzip、Codex、Claude adapters；未知版本 fail-visible；显式 path Collector import/follow；realpath/file identity/offset/prefix-hash checkpoint；filesystem ArtifactStore；事务内单调 `ingestSeq`、source identity 幂等/409。
 - Gate 2：trace list/detail、raw pagination、snapshot、Agent Gantt、artifact range、durable outbox SSE、`Last-Event-ID`/cursor/`resync.required`、ingest watermark replay；Web 是唯一动态 loopback 入口。
 - Gate 3：immutable semantic revision/membership、claim evidence、deterministic reducer confidence/cycle/dedupe/pin rules、deterministic mock provider、BullMQ at-least-once dispatch + PostgreSQL claim/commit authority、React Flow/ELK worker/Graph-Gantt-Evidence linkage。
 - Gate 4：secret redaction、untrusted-trace prompt boundary、provider event cap/timeout/domain allowlist/positive budget/audit、OpenAI Responses Structured Outputs、DeepSeek JSON mode、本地 Zod/reducer、no cross-provider fallback 和 raw-only failure。
 - Gate 5：human edit/pin/feedback revision、provider-call audit API、confirmed trace deletion、backup/restore scripts、10k/1.5k synthetic smoke、keyboard/200%/reduced-motion browser baseline、`demo:load`。
 - macOS：Tauri 2 launcher、hard-coded Rust Docker CLI boundary、embedded filtered stack archive、dynamic loopback discovery、universal DMG GitHub workflow。
+- Web 设计对齐（2026-08-05）：全视口应用外壳（58px 顶栏 + 240px trace 侧栏 + 主区 + 338px 检查器）、Tailwind v4 `@theme` 设计令牌（原型完整调色板）、自托管 Inter（OFL 许可随字体入库）、自定义 React Flow 节点卡片（7 kind 图标/徽章、confidence 只显示 high/med/low、6 状态 pill、issue/result 着色）、按 `SemanticEdgeKind` 着色的虚线边与图例、Intent tree/Raw spans/Failures only 过滤 chips 与 L1/L2/Fit、真实时间轴 Agent Gantt（刻度、泳道条、`occurredAt` 定位、密度聚簇、playhead 与 ingest 游标一致过滤）、语义状态横幅 + 6 统计块（全部真实数据，无 spend 显示诚实空态）、六区块 Evidence 检查器（Semantic summary/Provenance/Evidence/Execution/Artifacts/Revision）与 Edit summary（PATCH title/status，409 显式提示）、新 `GET /traces/{traceId}/revisions` 契约（schema→route→OpenAPI→contract test）驱动的 Live/Final 切换、SSE 增量引擎（11 种事件全处理：250ms 批量 delta 拉取、`semantic_chunk.pending` 确定性 ghost 节点、`resync.required` 显式重载、summary.failed raw-only 横幅、正在补发状态）、ELK DOWN 方向 + elk-api 真实 web worker（修复 Turbopack 下 elkjs 内部 fake worker 不可用、陈旧闭包与 index-grid fallback 抖动）、raw 表窗口化渲染与 ARIA 修复、键盘 1–4/Esc 区域导航。泳道随后按设计图补齐（见下条），不再是回退方案。
 
 ## Automated verified
 
+- Guided import required suite（2026-08-06）：`format:check`、ESLint、typecheck `26/26`、unit `20 files / 100 tests`、contract `6 files / 15 tests`、Playwright `4/4`、build `16/16`、docs `65` normative files、JSON Schema/OpenAPI/Drizzle drift 全部通过。Collector/schema 定向为 `25/25`，覆盖默认 preview 隐藏、显式 preview、0-API discovery、opaque 精确选择、selector 缺值/陈旧 fail-closed、symlink、递归目录、limit/skipped、oversize、malformed tail 零发送、错误正文/path redaction、partial API failure、rotation/truncation checkpoint、loopback-only origin、catalog/outcome/summary strict contract。最终 tracked + 未忽略 untracked 待发布快照为 `383` files，按官方 checksum 验证的 gitleaks `v8.30.1`（archive SHA-256 `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`）与独立 provider-token/private-key 规则均为 `0 findings`；Paseo 临时 clone 与扫描器/报告随后删除。
+- 密钥复核（2026-08-06）：下载官方 gitleaks `v8.30.1` Linux x64 release 并按官方 checksums 验证 archive SHA-256 `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`；对唯一的本地 ref `main` 全历史、tracked + 未忽略 untracked 构成的待发布快照、`git fsck` 报告的 3 个不可达 commit + 4 个不可达 blob、ignored `.intenttrace/` runtime 数据（均含归档递归深度 2）分别扫描，全部为 `0 leaks`，且没有 reflog-only commit。独立规则再次覆盖 OpenAI/Anthropic/GitHub/GitLab/AWS/Slack/Google/Stripe/JWT/private-key header，待发布快照 `376` files / `0 findings`；非空 key-like assignment 启发式唯一命中为 config unit test 的显式 `test-only` 占位值。敏感文件名只发现应提交的 `.env.example`；无真实 `.env`、PEM/key/P12/PFX/keystore。该证据不覆盖未来 GitHub PR refs，不替代公开前平台端 secret scanning/push protection，也不等同于业务隐私人工审阅。
+- 开源准备 required suite（2026-08-06）：`format:check`、ESLint、typecheck `26/26`、unit `20 files / 86 tests`、contract `6 files / 11 tests`、Playwright `4/4`、build `16/16`、docs `63` normative files、JSON Schema/OpenAPI/Drizzle drift 全部通过。额外 `pnpm audit --prod` 返回无已知漏洞，`pnpm docker:check` 与 Tauri metadata check 通过，`pnpm licenses list --prod` 复核生产许可证集合。当前 tracked tree/全部 commit 的常见 API key/private-key 模式与敏感文件名 best-effort grep 无命中（历史文件名仅 `.env.example`）；这不替代公开前对所有 refs 运行 GitHub secret scanning/gitleaks/trufflehog。
 - Adapter/parser、Collector import/follow/rotation/truncation、config/security、storage/ingest、reducer property、ELK stability、provider redaction/Structured Outputs/JSON-mode validation、API payload ordering/OTLP gzip、schema/OpenAPI/Drizzle contracts均有 tests。
 - 增加匿名 privacy/content fixtures：Codex reasoning/encrypted/world-state 与 Claude thinking/file-history 不产生 raw event/artifact 内容；纯 thinking 不生成空 event；普通 Claude/Codex client semver 不会误判为未知 source format；可见 message/tool input/output preview、tool result 配对、chunk 内容选择、artifact detail 和离线 completion marker 有回归覆盖。Unit 当前为 `17 files / 46 tests`。
 - `pnpm performance:smoke`：10,000 raw fixture 与 1,500-node reducer correctness smoke；最终复跑约 `11.29ms` / `4.18ms`，仅为 synthetic algorithm smoke，不是 DB/UI SLA。
 - Required suite 在本次内容修复前的基线全绿；修复后的最终 required suite 证据见本节后续条目，不能沿用旧结果。
 - Adapter v2 内容修复后重新执行 required suite：`format:check`、ESLint、typecheck `26/26`、unit `17 files / 46 tests`、contract `6 files / 11 tests`、Playwright `3/3`、build `16/16`、docs `62` normative files、JSON Schema/OpenAPI/Drizzle drift 全部通过。
 - `pnpm audit --prod` 为 `No known vulnerabilities found`；Next `16.2.12` 的受漏洞影响传递依赖通过精确 override 固定到 `postcss 8.5.25`、`sharp 0.35.0`，并完成 build/E2E 回归。
-- `pnpm licenses list --prod` 已人工复核；没有 AGPL，`elkjs` 采用其 EPL-2.0 选项，Sharp 的预编译 libvips 为 LGPL-3.0-or-later。任何对外 DMG 发布仍需随发布产物完成第三方 notices/compliance 审核。
+- `pnpm licenses list --prod` 已人工复核；第三方依赖中没有 AGPL，切换项目许可证后 `elkjs` 采用其 `GPL-3.0-or-later` 选项（依 AGPLv3 第 13 节组合边界），Sharp 的预编译 libvips 为 LGPL-3.0-or-later。任何对外 DMG 发布仍需随发布产物完成第三方 notices/compliance 审核。Inter 字体（SIL OFL 1.1）自托管于 `apps/web/app/fonts/`，许可文本随仓库分发。
+- Agent 泳道（2026-08-05）：`packages/graph-layout` 新增 `LayoutNode.lane` 与纯函数 `applyLaneColumns`（按 `laneOrder` 吸附 x 列、同泳道按 y 序下推解重叠、pinned 与未知泳道原样保留），`layout.test.ts` 覆盖列分配/重叠下推/pinned 保留/空 laneOrder no-op 与 DOWN 方向断言；`LaneHeaderNode` 在 flow 坐标系内渲染泳道标题与渐变参考线（随平移缩放对齐），单 agent trace 不渲染泳道标记以免制造无信息噪声；Graph 与 Gantt 共用 `agent-colors.ts` 的稳定配色。
+- Replay/Pause（2026-08-05）：顶栏补齐设计图的 `▶ Replay` / `Ⅱ Pause` 与 `↺` 回到起点。回放推进的是 ingest watermark（不是 source time），因此 Graph/Gantt/raw 表/Evidence 共用同一游标；`prefers-reduced-motion` 下直接跳到最新而不做逐帧动画；播放到末尾自动停止。replay bar 的按钮由 `Live` 改名为 `Jump to latest`，消除与顶栏 Live/Final 分支切换的同名歧义。
+- Gantt 密度（2026-08-05）：真实 2,049-event 六 agent trace 暴露出逐事件标记在 20s 跨度上重叠成不可读的计数徽章；改为设计图的条带语言 —— `bucketByFraction` + `laneBucketCount` 将每条泳道分桶（稀疏时逐事件精确，密集时上限 60 桶），按密度调节段高与不透明度，error 段红色置顶，选中段 amber 高亮，可访问名给出聚合语义（"N events in lane…"）。渲染段数因此有界，不再随事件量增长。
+- 排版尺度（2026-08-05）：`globals.css` 的 `@theme` 声明六级字号（micro 10 / meta 11 / body 12 / title 13 / metric 15 / lead 16），`body` 锚定在 12px，所有组件从散落的 7–15px 任意值统一到这六级；raw 表行高 30px、字号 11/10，不再继承 16px 默认值；节点卡片标题升到 13px、摘要升到 11px，卡片高度相应从 128 调到 140。
+- 入口（2026-08-05）：删除营销式首页，`/` 直接 `redirect` 到 `/traces`。trace 列表成为入口页并按工作台视觉语言重做（品牌行 + 健康徽章 + 搜索 + 密度化行）。interaction-spec 要求的 local MVP / 无云 egress / single-host-no-auth / 显式路径 collector / historical prototype 入口这些标注没有丢，改为入口页顶部一条紧凑的 "Deployment boundary" 条，规范文档同步更新；原型页保留并强化"非产品、非测试证据"警示。globals.css 同时删掉随首页一起作废的文档页样式（hero/card/lede/trace-row 等约 4KB）与遗留变量别名。
+- 设计对齐重构后的 required suite 全绿（2026-08-05）：`format:check`、`schema:check`、ESLint、typecheck、unit `20 files / 83 tests`（新增 derive/format/time-scale/store/lane-layout 单测）、contract `6 files / 11 tests`（含新 revisions 端点与 OpenAPI path 断言）、Playwright `4/4`（节点卡片 testid、Gantt 段联动、Edit summary PATCH 回归、replay restart、SSE ghost 节点新用例）、build `16/16`、docs `62` normative files、JSON Schema/OpenAPI 重新生成无 drift。
 
 ## Environment verified
 
+- Guided discovery synthetic smoke（2026-08-06）：临时生成 1,000 个单事件 Codex-shaped JSONL，`discover --limit 20` 返回 matched `1000` / selected+sessions `20` / skipped `980` / failed+rejected `0`，全部 preview 默认隐藏且 JSON 不含授权 root；Linux 本机一次观测约 `0.41s`、max RSS `128 MiB`。这只证明有界 metadata/stat + recent-window preflight 的合成 smoke，不是大文件、真实 session、Windows/macOS 或 release SLA。
+- README 截图（2026-08-06）：健康 Compose 栈动态入口 `127.0.0.1:32781` 上，用固定 seed 的 `Deterministic six-agent repair and join` 生成 1200×420 trace list 与 1600×1000 workbench PNG；Playwright 路由把 trace list 限定为该 synthetic fixture，并在 workbench 执行 Fit、选择合成节点以展示 Graph/Gantt/Evidence 联动。两张 PNG 仅含 `IHDR/IDAT/IEND`，无文本/EXIF chunk；脚本 `pnpm screenshots:readme` 复跑成功。截图只证明所示 UI，不证明 provider 质量或生产 SLA。
 - `docker compose up -d --build` 成功；最后一次内容修复重建的动态入口为 `127.0.0.1:32774→3000`，API/PostgreSQL/Redis internal-only；migration 首次和重复 no-op 均成功。该端口不是配置常量，重建后必须重新执行 `pnpm docker:url`。干净镜像构建曾因宿主 `*.tsbuildinfo` 被复制而跳过已忽略的 `dist` emit，现由 `.dockerignore` 同时排除两者并通过 clean rebuild。
 - Collector 通过 Web 入口导入 1-event canonical fixture，mock worker 提交 evidence-backed live revision。
 - `pnpm demo:load` 导入固定 seed 六 Agent 2,048 events；raw count 2,048；并发 stale-base job 缺陷被观测并修为 transaction rebase；修复后 43 jobs 全部 committed，最终 `final` revision watermark `2048`、42 semantic nodes。
@@ -47,6 +63,7 @@ milestone: Gate 5
 - backup manifest/hash/tar 校验并恢复到临时 PostgreSQL：2 traces、2,049 raw events、45 revisions；临时库随后删除。
 - 经用户在 2026-08-04 显式授权，Collector 各读取一个明确指定、非 symlink、非活跃写入中的本机 Codex/Claude JSONL；路径、session ID 和正文未写入仓库或命令摘要。首次 adapter v1 验收只证明结构落盘、幂等和禁存字段为零，但没有验证 readable event name、payload UI 或 semantic node 内容；其 “HTTP 200 即可用” 结论不成立，保留为已被否定的历史证据。
 - Adapter v2 内容修复重新导入独立 trace：Codex 为 2,583 可见事件 + 1 marker、2,031 个不同 readable names、0 空/占位 name；Claude 丢弃 155 条纯 thinking 空壳后为 1,014 可见事件 + 1 marker、807 个不同 readable names、0 空/占位 name。dry-run event/artifact 结构扫描均为 0 forbidden fields；完整重放分别得到 2,584/1,015 duplicates、0 inserts、0 integrity conflicts。
+- 2026-08-05 设计对齐版本经 `docker compose up -d --build` 重建（动态入口随每次重建变化，须重跑 `pnpm docker:url`）；真实 Chromium 1440×900 验证两条既有 trace：单 agent 的 2,584-event Codex trace 渲染 53 个语义节点卡片、窗口化 raw 表仅 36 行 DOM、首个节点卡片约 1.5s 可见、按设计不渲染泳道标记；六 agent 的 2,049-event fixture trace 渲染 43 个卡片与 6 条泳道（orchestrator/research/backend/frontend/summarizer/test 标题与参考线）、360 个有界 Gantt 段，点击 Gantt 段联动选中 raw 行并在检查器渲染该事件的 sanitized payload，`↺` 后 watermark 归零、raw 计数变为 0。SSE pill 显示真实 Connected；检查器六区块与 Edit summary/Pin 均由真实数据驱动（43 provider calls，costUsd 为空时成本块显示 "—" 与 "no summary spend"）。仅本机观测，不作为 SLA。
 - v2 的 75 个 summary jobs 全部 committed；最终 Codex/Claude revision 均为 non-stale final，watermark 2,584/1,015，节点 53/22、generic title 0、claim evidence links 54/23、所有节点均有 artifact。真实 Chromium 在 1440×900 加载全部 2,584/1,015 raw rows并选择 user event，分别渲染 10,398/659 字符的有效 JSON payload，图节点 53/22；单次交互约 542/284ms，仅为本机观测，不作为 SLA。未配置 provider key，未发起付费模型调用。
 
 ## Deferred

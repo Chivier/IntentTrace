@@ -75,6 +75,7 @@ function services(order: string[]): ApiServices {
       listStreamEvents: async () => [],
       getStreamBounds: async () => ({ earliest: null, latest: null }),
       listProviderCalls: async () => [],
+      listRevisions: async () => [],
       getGraph: async () => null,
       editSemanticNode: async () => {
         throw new Error("unused");

@@ -4,7 +4,7 @@ version = "0.0.0"
 description = "IntentTrace local Docker service launcher"
 authors = ["IntentTrace"]
 edition = "2024"
-license = "UNLICENSED"
+license = "AGPL-3.0-only"
 publish = false
 
 [build-dependencies]
