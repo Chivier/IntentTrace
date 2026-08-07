@@ -13,7 +13,7 @@ milestone: Gate 5
 ## Planned
 
 - 取得用户授权的测试 key 后做 OpenAI/DeepSeek canary、usage/cost 与 raw-only 故障验证。
-- 在 macOS 12+ + Docker Desktop 上构建 universal DMG，并用 Apple Developer 身份 codesign/notarize/安装演练。
+- 在 macOS 12+ + Docker Desktop 上构建 universal DMG，并用 Apple Developer 身份 codesign/notarize/安装演练；同时实跑验证已加固的 `macos-dmg.yml`（含新增的 codesign/spctl/stapler 校验步骤）。
 - 建立多轮 DB/query/SSE/ELK/browser 原始 benchmark，才能设置性能 SLA。
 - 在 Tauri/本机 helper 上实现消费 `SessionCatalog`/outcome/summary 的三步 guided picker；先新增由 API/DB authority 批量返回的 already-imported 状态，不能让 Web server 扫 home 或让本地 ledger 充当事实源。
 
@@ -28,6 +28,8 @@ milestone: Gate 5
 - Gate 4：secret redaction、untrusted-trace prompt boundary、provider event cap/timeout/domain allowlist/positive budget/audit、OpenAI Responses Structured Outputs、DeepSeek JSON mode、本地 Zod/reducer、no cross-provider fallback 和 raw-only failure。
 - Gate 5：human edit/pin/feedback revision、provider-call audit API、confirmed trace deletion、backup/restore scripts、10k/1.5k synthetic smoke、keyboard/200%/reduced-motion browser baseline、`demo:load`。
 - macOS：Tauri 2 launcher、hard-coded Rust Docker CLI boundary、embedded filtered stack archive、dynamic loopback discovery、universal DMG GitHub workflow。
+- DMG 打包加固（2026-08-07，仍未产出可分发 DMG）：`bundle` 补齐 `longDescription`/`copyright`/`licenseFile`（指向仓库 AGPL-3.0-only 全文）与显式 `icon` 列表，不再依赖 Tauri 默认图标推断；DMG 图标 y 从 220 调到 170 —— 在 660×400pt 窗口里 220 会让 128pt 图标连同文件名标签越过下边界。`apps/desktop/scripts/bundle-preflight.mjs` 新增纯函数 bundle 校验并接入 `desktop:check`：占位/非反向 DNS identifier、会破坏 DMG 卷名的 productName、缺失的 resource/icon/license/entitlements、越界或重叠的 DMG 图标坐标、与窗口点尺寸不成整数倍的 background 像素尺寸、非法 macOS category 与 minimumSystemVersion、缺失或含 `unsafe-eval` 的 CSP 均为 error；`version` 仍是 `0.0.0` 时报 release-blocking warning 而不阻断本地检查。这些恰好是只有到签名机上才会暴露的配置错误，现在在 Linux 上就能拦住（`bundle-preflight.test.mjs` 覆盖，`vitest.config.ts` 相应纳入 `apps/**/*.test.mjs`）。
+- macOS DMG workflow 修复（2026-08-07）：原先手写的 keychain 步骤缺 `security set-key-partition-list`，`codesign` 在 CI 上会因等待 keychain 授权而挂起或失败，且 `security list-keychains -d user -s` 会把 login keychain 挤出搜索列表；该步骤同时与 Tauri 2 自带的 CI 签名路径重复。改为直接走 Tauri 文档化的环境变量路径并删除手写 keychain 逻辑，同时：secrets 缺失时不再导出空字符串（否则 bundler 会尝试并失败于空凭据），签名/公证分别按 secrets 是否齐备独立开关；构建前先跑 bundle preflight（避免在错误配置上浪费约 40 分钟 universal release 构建）；构建后用 `codesign --verify --deep --strict`、`spctl --assess --type execute` 与 `xcrun stapler validate` 实际验证，而不是直接上传未验证产物；产物名按 `signed`/`unsigned` 区分并附 SHA-256，未签名时发出 warning 注明 Gatekeeper 会拒绝；补上 Rust 缓存、concurrency 与 90 分钟超时。以上均为静态审查与 YAML 结构校验，**没有在 macOS runner 上实跑过**。
 - Web 设计对齐（2026-08-05）：全视口应用外壳（58px 顶栏 + 240px trace 侧栏 + 主区 + 338px 检查器）、Tailwind v4 `@theme` 设计令牌（原型完整调色板）、自托管 Inter（OFL 许可随字体入库）、自定义 React Flow 节点卡片（7 kind 图标/徽章、confidence 只显示 high/med/low、6 状态 pill、issue/result 着色）、按 `SemanticEdgeKind` 着色的虚线边与图例、Intent tree/Raw spans/Failures only 过滤 chips 与 L1/L2/Fit、真实时间轴 Agent Gantt（刻度、泳道条、`occurredAt` 定位、密度聚簇、playhead 与 ingest 游标一致过滤）、语义状态横幅 + 6 统计块（全部真实数据，无 spend 显示诚实空态）、六区块 Evidence 检查器（Semantic summary/Provenance/Evidence/Execution/Artifacts/Revision）与 Edit summary（PATCH title/status，409 显式提示）、新 `GET /traces/{traceId}/revisions` 契约（schema→route→OpenAPI→contract test）驱动的 Live/Final 切换、SSE 增量引擎（11 种事件全处理：250ms 批量 delta 拉取、`semantic_chunk.pending` 确定性 ghost 节点、`resync.required` 显式重载、summary.failed raw-only 横幅、正在补发状态）、ELK DOWN 方向 + elk-api 真实 web worker（修复 Turbopack 下 elkjs 内部 fake worker 不可用、陈旧闭包与 index-grid fallback 抖动）、raw 表窗口化渲染与 ARIA 修复、键盘 1–4/Esc 区域导航。泳道随后按设计图补齐（见下条），不再是回退方案。
 
 ## Automated verified
@@ -72,6 +74,6 @@ milestone: Gate 5
 
 ## Blocked
 
-- 可分发 macOS DMG：需要 macOS/Xcode、Apple certificate/account 和 notarization secrets；Linux 已通过 `pnpm desktop:check`，但只能验证 Tauri config、Rust formatting/dependency lock 与 stack archive。
+- 可分发 macOS DMG：需要 macOS/Xcode、Apple certificate/account 和 notarization secrets。Linux 上 `pnpm desktop:check` 现在能验证 Tauri config + bundle preflight（identifier/icon/license/resource/DMG 几何/category/CSP）、Rust formatting 与 dependency lock，但仍然无法编译 WebKit、无法生成 `.app`/`.dmg`、无法 codesign/notarize/staple，也无法做安装演练。`version` 保持 `0.0.0`，发布前必须定版。DMG 自定义背景图暂缺：需要 CI 中可用的 SVG 光栅化器（sharp/librsvg 均未安装），不做半成品二进制资产。workflow 的签名与公证路径未经 macOS runner 实跑验证。
 - 真实 provider qualification：需要用户显式提供测试 key、model、预算并授权网络费用。
 - 性能 release SLA：需要稳定硬件上的多轮 DB/UI 数据；当前 synthetic smoke 不足以宣称。

@@ -28,14 +28,24 @@
     "active": true,
     "targets": ["app", "dmg"],
     "resources": ["resources/intenttrace-stack.tar.gz"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
     "category": "DeveloperTool",
     "shortDescription": "Evidence-backed local agent trace workbench",
+    "longDescription": "IntentTrace runs a local, single-host workbench that turns raw agent execution facts into an evidence-backed semantic graph. The desktop launcher starts the bundled Docker stack and opens the dynamically assigned loopback port; no data leaves the machine by default.",
+    "copyright": "Copyright © 2026 IntentTrace contributors. Licensed under AGPL-3.0-only.",
+    "licenseFile": "../../../LICENSE",
     "macOS": {
       "minimumSystemVersion": "12.0",
       "dmg": {
         "windowSize": { "width": 660, "height": 400 },
-        "appPosition": { "x": 180, "y": 220 },
-        "applicationFolderPosition": { "x": 480, "y": 220 }
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 }
       }
     }
   }
