@@ -35,7 +35,7 @@ jobs:
       PROVIDER_MODE: mock
       PROVIDER_EGRESS_ENABLED: "false"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # pnpm must exist before setup-node runs: `cache: pnpm` shells out to pnpm
       # to resolve the store path, so installing it afterwards fails the step.
       - uses: pnpm/action-setup@v6
