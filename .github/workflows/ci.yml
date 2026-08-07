@@ -36,19 +36,29 @@ jobs:
       PROVIDER_EGRESS_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # pnpm must exist before setup-node runs: `cache: pnpm` shells out to pnpm
+      # to resolve the store path, so installing it afterwards fails the step.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
-      - run: corepack enable
-      - run: corepack prepare pnpm@11.18.0 --activate
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod
+      # @intenttrace/desktop's typecheck and build both run the Tauri bundle
+      # preflight, which asserts the stack archive exists. The archive is
+      # generated, not committed, so it has to be built before those steps.
+      - run: pnpm desktop:prepare
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm test:contract
+      # playwright.config.ts declares no explicit projects, so the run uses the
+      # default chromium project only.
+      - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e
       - run: pnpm build
       - run: pnpm docs:check
