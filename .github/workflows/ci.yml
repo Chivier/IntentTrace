@@ -36,12 +36,15 @@ jobs:
       PROVIDER_EGRESS_ENABLED: "false"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # pnpm must exist before setup-node runs: `cache: pnpm` shells out to pnpm
+      # to resolve the store path, so installing it afterwards fails the step.
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .node-version
           cache: pnpm
-      - run: corepack enable
-      - run: corepack prepare pnpm@11.18.0 --activate
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod
       - run: pnpm format:check
