@@ -47,6 +47,10 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm audit --prod
+      # @intenttrace/desktop's typecheck and build both run the Tauri bundle
+      # preflight, which asserts the stack archive exists. The archive is
+      # generated, not committed, so it has to be built before those steps.
+      - run: pnpm desktop:prepare
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
