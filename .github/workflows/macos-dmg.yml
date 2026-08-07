@@ -21,10 +21,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11.18.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24.18.0
           cache: pnpm
@@ -100,7 +100,7 @@ jobs:
           cd apps/desktop/src-tauri/target/universal-apple-darwin/release/bundle/dmg
           shasum -a 256 ./*.dmg | tee SHA256SUMS.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ !inputs.verify_only }}
         with:
           name: intenttrace-macos-dmg-${{ steps.signing.outputs.signed == 'true' && 'signed' || 'unsigned' }}
