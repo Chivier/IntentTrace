@@ -24,7 +24,7 @@ jobs:
           --health-cmd "pg_isready -U intenttrace -d intenttrace"
           --health-interval 5s --health-timeout 5s --health-retries 20
       redis:
-        image: redis:7.2.14-alpine@sha256:dfa18828cbc07b3ae6a95ec7343f6c214fdee2d836197b4be8e9904420762cd8
+        image: redis:8.10.0-alpine@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
         ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping"
