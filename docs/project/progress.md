@@ -8,7 +8,7 @@ milestone: Gate 5
 
 # 实施进度
 
-证据更新至 2026-08-07；workspace 为本地 IntentTrace checkout（公开文档不记录个人绝对路径）；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.0`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
+证据更新至 2026-08-07；workspace 为本地 IntentTrace checkout（公开文档不记录个人绝对路径）；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.1`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
 
 ## Planned
 
