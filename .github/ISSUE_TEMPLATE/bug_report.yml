@@ -36,7 +36,7 @@ body:
     attributes:
       label: Environment
       description: OS, architecture, Node, pnpm, Docker/Compose, browser, and commit/version.
-      placeholder: Linux x86_64; Node 24.18.0; pnpm 11.18.0; Docker ...; commit ...
+      placeholder: Linux x86_64; Node 24.18.1; pnpm 11.18.0; Docker ...; commit ...
     validations:
       required: true
   - type: textarea

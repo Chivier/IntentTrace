@@ -8,7 +8,7 @@ milestone: Gate 5
 
 # 开始开发
 
-要求 Linux x86_64、Node `24.18.0`、pnpm `11.18.0`（Corepack）、Docker/Compose。不要复制真实 provider key 或 session。
+要求 Linux x86_64、Node `24.18.1`、pnpm `11.18.0`（Corepack）、Docker/Compose。不要复制真实 provider key 或 session。
 
 ```bash
 corepack enable

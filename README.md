@@ -34,7 +34,7 @@ README 截图只包含固定 seed 的合成 fixture。栈启动并运行 `pnpm d
 ### 环境要求
 
 - Linux x86_64（当前已验证的 Compose 目标）
-- Node.js `24.18.0` 与 Corepack
+- Node.js `24.18.1` 与 Corepack
 - pnpm `11.18.0`
 - Docker Engine 与 Docker Compose v2
 

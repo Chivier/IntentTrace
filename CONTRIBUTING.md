@@ -23,7 +23,7 @@
 
 ## 本地开发
 
-要求 Node `24.18.0`、pnpm `11.18.0`、Corepack 与 Docker Compose v2。
+要求 Node `24.18.1`、pnpm `11.18.0`、Corepack 与 Docker Compose v2。
 
 ```bash
 corepack enable

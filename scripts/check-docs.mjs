@@ -208,8 +208,8 @@ for (const [manifestPath, section, name, expectedVersion] of baselineVersions) {
     failures.push(`${manifestPath}: expected ${name}@${expectedVersion}`);
   }
 }
-if ((await readFile(join(root, ".node-version"), "utf8")).trim() !== "24.18.0") {
-  failures.push(".node-version must be 24.18.0");
+if ((await readFile(join(root, ".node-version"), "utf8")).trim() !== "24.18.1") {
+  failures.push(".node-version must be 24.18.1");
 }
 
 const expectedLicenseHash = "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0";
