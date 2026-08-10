@@ -5,7 +5,7 @@
 参与前请阅读：
 
 - [`AGENTS.md`](AGENTS.md)：工程不变量与必跑门禁
-- [`docs/architecture/invariants.md`](docs/architecture/invariants.md)：架构边界
+- [`docs/architecture.md`](docs/architecture.md#系统不变量)：架构边界
 - [`SECURITY.md`](SECURITY.md)：漏洞与敏感数据报告方式
 - [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md)：社区行为准则
 
@@ -34,7 +34,7 @@ pnpm demo:load
 pnpm docker:url
 ```
 
-更详细的环境说明见 [`docs/development/getting-started.md`](docs/development/getting-started.md)。
+更详细的环境说明见 [`docs/development.md`](docs/development.md#开始开发)。
 
 ## 变更原则
 
@@ -90,7 +90,7 @@ pnpm db:migrate
 - 用户 trace payload、未匿名源码、私有文件路径/session ID
 - hidden reasoning/thinking、内部 snapshot 或 prompt response 正文
 
-如果变更需要真实数据验证，请仅记录去标识化的计数和结果，遵守 [`docs/security/data-handling.md`](docs/security/data-handling.md)。
+如果变更需要真实数据验证，请仅记录去标识化的计数和结果，遵守 [`docs/security.md`](docs/security.md#数据处理)。
 
 ## Developer Certificate of Origin
 

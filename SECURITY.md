@@ -33,4 +33,4 @@ Provider egress 默认关闭，只有满足显式 mode、域名 allowlist、正�
 - 隐藏 reasoning/thinking、内部 snapshot、完整 prompt/response
 - 未匿名代码、文件路径或 session identifier
 
-更多边界与缓解措施见 [`docs/security/`](docs/security/) 与 [`docs/security/threat-model.md`](docs/security/threat-model.md)。
+更多边界与缓解措施见 [`docs/security.md`](docs/security.md) 与[威胁模型](docs/security.md#威胁模型)。
