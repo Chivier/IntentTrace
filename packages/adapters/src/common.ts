@@ -27,10 +27,43 @@ export function decodeAdapterBytes(bytes: Uint8Array): string {
   return new TextDecoder("utf-8", { fatal: true }).decode(decoded);
 }
 
-export function parseJsonLines(
-  text: string,
-): Array<{ line: number; value: unknown; bytes: Uint8Array }> {
-  const records: Array<{ line: number; value: unknown; bytes: Uint8Array }> = [];
+/** One parsed record from a session file, in source order. */
+export interface SessionRecord {
+  /** 1-based record index; doubles as the fallback `sourceEventId` suffix. */
+  line: number;
+  value: unknown;
+  bytes: Uint8Array;
+}
+
+export function readSessionRecords(text: string): SessionRecord[] {
+  const encoder = new TextEncoder();
+  const expand = (values: readonly unknown[]) =>
+    values.map((value, index) => ({
+      line: index + 1,
+      value,
+      bytes: encoder.encode(JSON.stringify(value)),
+    }));
+
+  let lineError: unknown;
+  try {
+    const lines = parseJsonLines(text);
+    // A minified top-level array parses as one line holding one array value.
+    if (lines.length === 1 && Array.isArray(lines[0]!.value)) return expand(lines[0]!.value);
+    return lines;
+  } catch (error) {
+    lineError = error;
+  }
+  let document: unknown;
+  try {
+    document = JSON.parse(text) as unknown;
+  } catch {
+    throw lineError;
+  }
+  return Array.isArray(document) ? expand(document) : expand([document]);
+}
+
+function parseJsonLines(text: string): SessionRecord[] {
+  const records: SessionRecord[] = [];
   for (const [index, raw] of text.split(/\r?\n/u).entries()) {
     if (!raw.trim()) continue;
     records.push({

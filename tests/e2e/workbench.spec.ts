@@ -14,6 +14,7 @@ test("enters at the trace list and states the local MVP boundary", async ({ page
   await expect(boundary).toContainText("Local MVP");
   await expect(boundary).toContainText("默认无云 egress");
   await expect(boundary).toContainText("single-host / no-auth");
+  await expect(boundary).toContainText("服务端不扫描任何目录");
   await expect(boundary.getByRole("link", { name: /历史视觉原型/ })).toBeVisible();
   const health = await request.get("/healthz");
   expect(health.ok()).toBe(true);

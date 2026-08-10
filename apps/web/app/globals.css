@@ -92,7 +92,7 @@ button:disabled {
 }
 
 /* ---------------------------------------------------------------- */
-/* Shared primitives (packages/ui badge, alerts, muted text)          */
+/* Shared primitives (packages/ui badge, button, banner, chip)        */
 /* ---------------------------------------------------------------- */
 .muted {
   color: var(--color-muted);
@@ -121,13 +121,82 @@ button:disabled {
   border-color: #b84b61;
   color: #ff9bad;
 }
-.error-panel {
+.ui-banner {
   padding: 14px 16px;
-  border: 1px solid #b84b61;
+  border: 1px solid var(--color-line);
   border-radius: var(--radius-panel);
-  color: #ffb0bf;
+  color: var(--color-muted);
   font-size: var(--text-meta);
   background: var(--color-panel);
+}
+.ui-banner--info {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  color: var(--color-ink);
+}
+.ui-banner--warning {
+  border-color: color-mix(in srgb, var(--color-amber) 55%, transparent);
+  color: var(--color-amber);
+}
+.ui-banner--danger {
+  border-color: #b84b61;
+  color: #ffb0bf;
+}
+.ui-banner--success {
+  border-color: color-mix(in srgb, var(--color-green) 55%, transparent);
+  color: var(--color-green);
+}
+.ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 12px;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  color: var(--color-ink);
+  background: var(--color-panel-3);
+  font-size: var(--text-meta);
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+.ui-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, transparent);
+}
+.ui-button--primary {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  color: var(--color-bg);
+  background: var(--color-accent);
+}
+.ui-button--ghost {
+  border-color: transparent;
+  color: var(--color-muted);
+  background: transparent;
+}
+.ui-button--danger {
+  border-color: #b84b61;
+  color: #ffb0bf;
+  background: var(--color-panel);
+}
+.ui-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  color: var(--color-muted);
+  background: #121826;
+  font-size: var(--text-micro);
+  font-weight: 700;
+}
+.ui-chip[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--color-accent) 60%, transparent);
+  color: var(--color-ink);
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-panel-3));
 }
 
 /* ---------------------------------------------------------------- */
@@ -321,6 +390,20 @@ button:disabled {
   }
   .inspector-toggle {
     display: inline-flex !important;
+  }
+}
+
+/* The four-column trace list only fits once the shell is wide enough. */
+@media (max-width: 899px) {
+  .trace-row__events,
+  .trace-row__duration {
+    display: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .trace-row {
+    grid-template-columns: minmax(0, 1fr) 88px 96px 92px;
   }
 }
 

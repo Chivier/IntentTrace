@@ -27,6 +27,7 @@ export const RuntimeConfigSchema = z
       .min(1)
       .default(".intenttrace/artifacts")
       .transform((value) => resolve(value)),
+    IMPORT_UPLOAD_MAX_BYTES: z.coerce.number().int().min(65536).max(536870912).default(67108864),
     PROVIDER_MODE: z.enum(["mock", "openai", "deepseek"]).default("mock"),
     PROVIDER_EGRESS_ENABLED: BooleanStringSchema,
     OPENAI_API_KEY: z.string().min(1).optional(),

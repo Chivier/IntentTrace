@@ -89,6 +89,9 @@ export function Topbar({ traceId }: { traceId: string }) {
           <span className="block text-micro text-muted-2">Evidence-backed agent traces</span>
         </span>
       </Link>
+      <Link href="/import" className="ui-button ui-button--ghost">
+        Import
+      </Link>
       <div className="min-w-0 flex-1 border-l border-line-soft pl-4 leading-tight">
         <p className="m-0 truncate text-title font-semibold" title={snapshot?.trace.title}>
           {snapshot?.trace.title ?? "Loading trace…"}

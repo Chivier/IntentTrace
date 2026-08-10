@@ -1,7 +1,7 @@
 ---
 status: current
 owner: quality
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-09
 normative: true
 milestone: Gate 1-Gate 5
 ---
@@ -20,5 +20,6 @@ milestone: Gate 1-Gate 5
 | backup restore                  | environment                | isolated `pg_restore`, hash/tar/count drill                           |
 | 10k raw / 1.5k nodes            | synthetic smoke only       | `pnpm performance:smoke`;不是 DB/UI SLA                               |
 | keyboard/200%/reduced motion    | automated browser baseline | `tests/e2e/workbench.spec.ts`                                         |
+| 浏览器会话导入                  | automated + environment    | `apps/api/src/import-routes.test.ts`；`tests/e2e/import.spec.ts`      |
 
 真实 provider canary、真实 macOS DMG 安装/签名/公证和长期 DB/UI 性能仍分别列在 release blockers；不能由上述 mock/synthetic 证据替代。

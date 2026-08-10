@@ -473,6 +473,27 @@ export class IntentTraceRepository {
     return { traces: rows.map(mapTrace), nextCursor: null };
   }
 
+  /** Batch counterpart of `getTrace`; unknown ids are simply absent from the result. */
+  async listTracesByIds(ids: readonly string[]): Promise<TraceSummary[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.sql<Array<TraceRow>>`
+      select t.id, t.project_id, t.title, t.status,
+        count(e.id)::bigint as event_count,
+        coalesce(max(e.ingest_seq), 0)::bigint as latest_ingest_seq,
+        (
+          select r.id from semantic_revisions r
+          where r.trace_id = t.id order by r.created_at desc, r.id desc limit 1
+        ) as latest_revision_id,
+        t.created_at, t.updated_at
+      from traces t
+      left join raw_events e on e.trace_id = t.id
+      where t.id = any(${this.sql.array([...ids])}::uuid[])
+      group by t.id
+      order by t.updated_at desc, t.id desc
+    `;
+    return rows.map(mapTrace);
+  }
+
   async getTrace(traceId: string): Promise<TraceSummary> {
     const rows = await this.sql<Array<TraceRow>>`
       select t.id, t.project_id, t.title, t.status,

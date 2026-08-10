@@ -155,7 +155,8 @@
               "unsupported_version",
               "no_visible_events",
               "stale_session",
-              "file_too_large"
+              "file_too_large",
+              "unknown_source_format"
             ]
           },
           "message": {

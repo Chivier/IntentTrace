@@ -8,6 +8,8 @@ import {
   CanonicalJsonlAdapter,
   ClaudeSessionAdapter,
   CodexSessionAdapter,
+  detectSourceKind,
+  MalformedAdapterInputError,
   OtlpHttpJsonAdapter,
   UnsupportedAdapterVersionError,
   type AdapterRecord,
@@ -126,5 +128,46 @@ describe("implemented trace adapters", () => {
     await expect(parse(adapter, await fixture(source, name))).rejects.toBeInstanceOf(
       UnsupportedAdapterVersionError,
     );
+  });
+
+  it("accepts a top-level JSON array as the same session as its JSONL form", async () => {
+    const adapter = new ClaudeSessionAdapter();
+    const lines = await parse(adapter, await fixture("claude", "valid.jsonl"));
+    const array = await parse(adapter, await fixture("claude", "valid-array.json"));
+    const lineEvents = lines.filter((record) => record.type === "event");
+    const arrayEvents = array.filter((record) => record.type === "event");
+    expect(arrayEvents).toHaveLength(lineEvents.length);
+    expect(arrayEvents[0]?.event.traceId).toBe(lineEvents[0]?.event.traceId);
+  });
+
+  it("accepts a single pretty-printed JSON object as one record", async () => {
+    const records = await parse(
+      new CodexSessionAdapter(),
+      await fixture("codex", "valid-single.json"),
+    );
+    expect(records.filter((record) => record.type === "event")).toHaveLength(1);
+  });
+
+  it("still reports the original line diagnostic for non-JSON input", async () => {
+    const bytes = new TextEncoder().encode('{"type":"user"}\nnot json\n');
+    await expect(parse(new ClaudeSessionAdapter(), bytes)).rejects.toBeInstanceOf(
+      MalformedAdapterInputError,
+    );
+  });
+
+  it.each([
+    ["jsonl", "valid.jsonl", "jsonl"],
+    ["otlp", "valid.json", "otlp"],
+    ["codex", "valid.jsonl", "codex"],
+    ["claude", "valid.jsonl", "claude"],
+  ] as const)("detects %s fixtures", async (directory, name, expected) => {
+    const bytes = await fixture(directory, name);
+    await expect(detectSourceKind({ bytes, sourceIdentity: "fixture" })).resolves.toBe(expected);
+  });
+
+  it("returns null when no adapter recognizes the bytes", async () => {
+    await expect(
+      detectSourceKind({ bytes: Buffer.from("not json"), sourceIdentity: "fixture" }),
+    ).resolves.toBeNull();
   });
 });
