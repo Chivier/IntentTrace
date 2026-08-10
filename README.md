@@ -106,7 +106,7 @@ pnpm --filter @intenttrace/collector dev import \
   --api "$WEB_ORIGIN"
 ```
 
-Catalog 不输出绝对/相对路径、文件名或 native session ID；opaque ID 会随候选文件变化而失效，避免旧 preview 静默导入新内容。实际 import 只允许发送到 loopback API。真正导入前，每个文件会用 no-follow file handle 完整 parse/Zod preflight，坏文件发送 0 个 raw facts；默认单文件上限为 64 MiB，可通过 `--max-file-mib` 显式调整。Collector 会在 adapter 层移除 Codex reasoning/encrypted blocks、Claude thinking/signature，以及内部 world-state/file-history snapshots；详见[导入体验调研](docs/design/import-experience-research.md)与[数据处理策略](docs/security/data-handling.md)。
+Catalog 不输出绝对/相对路径、文件名或 native session ID；opaque ID 会随候选文件变化而失效，避免旧 preview 静默导入新内容。实际 import 只允许发送到 loopback API。真正导入前，每个文件会用 no-follow file handle 完整 parse/Zod preflight，坏文件发送 0 个 raw facts；默认单文件上限为 64 MiB，可通过 `--max-file-mib` 显式调整。Collector 会在 adapter 层移除 Codex reasoning/encrypted blocks、Claude thinking/signature，以及内部 world-state/file-history snapshots；详见[导入体验调研](docs/design/research/import-experience.md)与[数据处理策略](docs/security.md#数据处理)。
 
 ## 架构概览
 
@@ -137,7 +137,7 @@ Collector + adapters ──► Web loopback proxy ──► API ──► Postgr
 4. provider 只返回 proposal；deterministic reducer 校验并提交。
 5. 系统不重建、存储或展示隐藏 chain-of-thought。
 
-详细设计见[架构概览](docs/architecture/overview.md)、[数据流](docs/architecture/data-flow-and-sequences.md)与 [ADR 索引](docs/architecture/adr/README.md)。
+详细设计见[架构概览](docs/architecture.md#架构总览)、[数据流](docs/architecture.md#数据流与时序)与 [ADR 索引](docs/decisions.md#adr-索引)。
 
 ## 仓库结构
 
@@ -190,7 +190,7 @@ IntentTrace 当前**没有认证**，请勿把服务暴露到不可信网络。p
 - macOS universal DMG workflow 已具备；正式产物仍需 Apple 签名、公证和安装验证。
 - OTLP gRPC、run comparison、移动端等仍在范围外。
 
-已实现/已验证/阻塞项的严格证据见 [`docs/project/progress.md`](docs/project/progress.md) 和 [`docs/project/release-readiness.md`](docs/project/release-readiness.md)。
+已实现/已验证/阻塞项的严格证据见 [`docs/project/progress.md`](docs/project/progress.md) 和 [`docs/project/readiness.md`](docs/project/readiness.md#发布就绪)。
 
 ## 参与贡献
 

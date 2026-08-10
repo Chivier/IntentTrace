@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
-import { dirname, extname, join, relative, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 
 const root = resolve(import.meta.dirname, "..");
@@ -8,63 +8,25 @@ const docsRoot = join(root, "docs");
 
 const required = [
   "README.md",
-  "design/source-package.md",
-  "design/product-spec.md",
-  "design/interaction-spec.md",
-  "design/import-experience-research.md",
-  "architecture/overview.md",
-  "architecture/invariants.md",
-  "architecture/data-flow-and-sequences.md",
-  "architecture/adr/README.md",
-  ...Array.from(
-    { length: 12 },
-    (_, index) => `architecture/adr/${String(index + 1).padStart(4, "0")}`,
-  ),
-  "contracts/domain-model.md",
-  "contracts/revision-model.md",
-  "contracts/event-ordering-idempotency.md",
-  "contracts/reducer-contract.md",
-  "contracts/artifact-evidence-contract.md",
-  "contracts/adapter-contract.md",
-  "contracts/summarizer-provider-contract.md",
-  "contracts/compatibility-policy.md",
-  "contracts/api/api-design.md",
+  "architecture.md",
+  "decisions.md",
+  "contracts.md",
+  "contracts/api.md",
   "contracts/api/openapi.yaml",
-  "contracts/api/errors.md",
-  "contracts/api/sse-protocol.md",
-  "database/erd.md",
-  "database/schema-invariants.md",
-  "database/migrations.md",
-  "database/retention-and-deletion.md",
-  "development/repository-guide.md",
-  "development/getting-started.md",
-  "development/contributing.md",
-  "development/quality-and-release-process.md",
-  "testing/strategy.md",
-  "testing/acceptance-fixture.md",
-  "testing/acceptance-matrix.md",
-  "testing/reducer-property-tests.md",
-  "testing/semantic-evaluation.md",
-  "testing/performance-methodology.md",
-  "security/threat-model.md",
-  "security/data-handling.md",
-  "security/provider-egress-policy.md",
-  "operations/deployment.md",
-  "operations/observability.md",
-  "operations/backup-restore.md",
-  "operations/runbooks/provider-outage.md",
-  "operations/runbooks/queue-and-dlq.md",
-  "operations/runbooks/datastore-failure.md",
-  "operations/runbooks/sse-recovery.md",
-  "project/construction-plan.md",
-  "project/roadmap.md",
-  "project/milestones.md",
+  "database.md",
+  "development.md",
+  "operations.md",
+  "operations/runbooks.md",
+  "security.md",
+  "testing.md",
+  "reference.md",
+  "project/plan.md",
   "project/progress.md",
-  "project/risk-register.md",
-  "project/release-readiness.md",
-  "project/open-source-readiness.md",
-  "reference/configuration.md",
-  "reference/glossary.md",
+  "project/readiness.md",
+  "design/product-spec.md",
+  "design/source-package.md",
+  "design/research/import-experience.md",
+  "design/research/slim-runtime-and-queue-removal.md",
   "design/source/IntentTrace_Design_Package.zip",
   "design/source/manifest.sha256",
   "design/prototype/intenttrace_ui_prototype.html",
@@ -87,15 +49,6 @@ async function walk(directory) {
 }
 
 for (const entry of required) {
-  if (/^architecture\/adr\/\d{4}$/u.test(entry)) {
-    const directory = dirname(join(docsRoot, entry));
-    const prefix = entry.slice(-4);
-    const matches = (await readdir(directory)).filter(
-      (name) => name.startsWith(`${prefix}-`) && name.endsWith(".md"),
-    );
-    if (matches.length !== 1) failures.push(`Expected one ADR ${prefix}, found ${matches.length}`);
-    continue;
-  }
   try {
     const info = await stat(join(docsRoot, entry));
     if (!info.isFile() || info.size === 0) failures.push(`Missing substantive file: docs/${entry}`);
@@ -104,12 +57,25 @@ for (const entry of required) {
   }
 }
 
+const decisions = await readFile(join(docsRoot, "decisions.md"), "utf8");
+const adrSections = [...decisions.matchAll(/^## ADR (\d{4})：/gmu)].map((match) => match[1]);
+const expectedAdrSections = Array.from({ length: 14 }, (_, index) =>
+  String(index + 1).padStart(4, "0"),
+);
+if (adrSections.join(",") !== expectedAdrSections.join(","))
+  failures.push(
+    `docs/decisions.md must contain ADR sections ${expectedAdrSections[0]}-${expectedAdrSections.at(-1)} in order, found [${adrSections.join(",")}]`,
+  );
+
+if (!/^## ADR 索引$/mu.test(decisions))
+  failures.push("docs/decisions.md must keep its `## ADR 索引` section");
+
 const allFiles = await walk(docsRoot);
 const normativeMarkdown = allFiles.filter(
   (path) =>
     extname(path) === ".md" &&
-    !path.startsWith(join(docsRoot, "design", "source")) &&
-    !path.startsWith(join(docsRoot, "design", "prototype")),
+    !path.startsWith(join(docsRoot, "design", "source") + sep) &&
+    !path.startsWith(join(docsRoot, "design", "prototype") + sep),
 );
 const frontmatterFields = ["status", "owner", "last_reviewed", "normative", "milestone"];
 
@@ -161,7 +127,7 @@ for (const line of manifest.trim().split("\n")) {
   if (actual !== match[1]) failures.push(`Source hash mismatch: ${match[2]}`);
 }
 
-const configuration = await readFile(join(docsRoot, "reference", "configuration.md"), "utf8");
+const configuration = await readFile(join(docsRoot, "reference.md"), "utf8");
 const configSource = await readFile(join(root, "packages", "config", "src", "index.ts"), "utf8");
 for (const key of configSource.matchAll(/^[ ]{4}([A-Z][A-Z0-9_]+):/gmu)) {
   if (!configuration.includes(`\`${key[1]}\``))

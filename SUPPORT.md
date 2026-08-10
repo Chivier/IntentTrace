@@ -4,7 +4,7 @@ IntentTrace 当前是由志愿者维护的 local MVP，不提供商业支持或�
 
 ## 使用问题
 
-1. 先查看 [`README.md`](README.md)、[`docs/README.md`](docs/README.md) 和[部署文档](docs/operations/deployment.md)。
+1. 先查看 [`README.md`](README.md)、[`docs/README.md`](docs/README.md) 和[部署文档](docs/operations.md#部署)。
 2. 运行 `pnpm docker:status`、`pnpm docker:url`，确认只有 Web 绑定 loopback。
 3. 在 GitHub Discussions（如仓库已启用）提问；否则创建使用问题 Issue。
 

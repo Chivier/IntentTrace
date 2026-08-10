@@ -4,5 +4,5 @@
 /packages/schema/ @chivier
 /packages/db/ @chivier
 /packages/intent-reducer/ @chivier
-/docs/security/ @chivier
+/docs/security.md @chivier
 /.github/ @chivier
