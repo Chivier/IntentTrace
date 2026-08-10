@@ -27,7 +27,6 @@
     "@intenttrace/storage": "workspace:*",
     "fastify": "5.11.2",
     "fastify-type-provider-zod": "7.0.0",
-    "ioredis": "6.0.0",
     "postgres": "3.4.9",
     "yaml": "2.9.0",
     "zod": "4.4.3"

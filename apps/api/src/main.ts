@@ -1,7 +1,6 @@
 import { loadRuntimeConfig } from "@intenttrace/config";
 import { IntentTraceRepository } from "@intenttrace/db";
 import { FileArtifactStore } from "@intenttrace/storage";
-import { Redis } from "ioredis";
 import postgres from "postgres";
 
 import { buildApp, type ReadinessResult } from "./app.js";
@@ -10,30 +9,12 @@ const config = loadRuntimeConfig();
 const sql = postgres(config.DATABASE_URL, { max: 2, idle_timeout: 20 });
 const repository = new IntentTraceRepository(sql);
 const artifactStore = new FileArtifactStore(config.ARTIFACT_ROOT);
-const redis = new Redis(config.REDIS_URL, {
-  lazyConnect: true,
-  maxRetriesPerRequest: 1,
-  enableOfflineQueue: false,
-});
 
 async function readiness(): Promise<ReadinessResult> {
   const postgresStatus: ReadinessResult["postgres"] = await sql`select 1`
     .then(() => "ok" as const)
     .catch(() => "error" as const);
-  const redisStatus: ReadinessResult["redis"] = await (async () => {
-    try {
-      if (redis.status === "wait") await redis.connect();
-      await redis.ping();
-      return "ok" as const;
-    } catch {
-      return "error" as const;
-    }
-  })();
-  return {
-    ready: postgresStatus === "ok" && redisStatus === "ok",
-    postgres: postgresStatus,
-    redis: redisStatus,
-  };
+  return { ready: postgresStatus === "ok", postgres: postgresStatus };
 }
 
 const app = buildApp({
@@ -49,7 +30,7 @@ const app = buildApp({
 });
 
 app.addHook("onClose", async () => {
-  await Promise.all([sql.end(), redis.quit().catch(() => undefined)]);
+  await sql.end();
 });
 
 try {

@@ -1,7 +1,7 @@
 ---
 status: accepted
 owner: architecture
-last_reviewed: 2026-08-01
+last_reviewed: 2026-08-10
 normative: true
 milestone: Gate 0-Gate 5
 ---
@@ -15,6 +15,6 @@ milestone: Gate 0-Gate 5
 5. provider 永不写库，只能输出受 nonce、base revision、allowlist 和 schema 约束的 patch。
 6. reducer 独立计算 confidence、状态、cycle、dedupe、pin 与 evidence；模型建议不是提交事实。
 7. raw insert、summary command、revision commit、SSE outbox 各自在对应 PostgreSQL 事务内原子提交。
-8. worker/Redis/provider 故障不破坏已入库 raw 查询；provider 失败回退 raw-only。
+8. worker/provider 故障不破坏已入库 raw 查询；provider 失败回退 raw-only。
 9. 默认无云 egress、无 home 扫描、无真实 session 自动读取、无隐藏 chain-of-thought。
 10. 所有外部可达端口只绑定 loopback；该约束改变前必须增加 auth/threat-model ADR。

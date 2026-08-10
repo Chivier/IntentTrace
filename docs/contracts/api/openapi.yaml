@@ -46,7 +46,7 @@ paths:
   /readyz:
     get:
       operationId: getReadiness
-      summary: PostgreSQL and Redis readiness
+      summary: PostgreSQL readiness
       responses:
         "200":
           description: Default Response
@@ -69,11 +69,8 @@ paths:
                     properties:
                       postgres:
                         type: string
-                      redis:
-                        type: string
                     required:
                       - postgres
-                      - redis
                     additionalProperties: false
                 required:
                   - service
@@ -101,11 +98,8 @@ paths:
                     properties:
                       postgres:
                         type: string
-                      redis:
-                        type: string
                     required:
                       - postgres
-                      - redis
                     additionalProperties: false
                 required:
                   - service

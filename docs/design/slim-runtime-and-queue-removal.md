@@ -1,16 +1,20 @@
 ---
-status: proposed
+status: accepted
 owner: platform
-last_reviewed: 2026-08-09
+last_reviewed: 2026-08-10
 normative: true
 milestone: post-Gate 5 runtime slimming
 ---
 
 # 运行时瘦身与队列移除设计
 
+> 本设计已实施完成，结论由 [ADR 0014](../architecture/adr/0014-postgres-only-job-dispatch.md) 承载。**本文件整体是改造前写下的设计记录**：全部八节——背景、目标与非目标、设计 A、设计 B、门禁影响清单、验证、风险与取舍、明确不做——记录的都是改造前的系统状态与当时的实施计划，没有任何一节描述当前系统。当前部署、契约与排障事实以 ADR 0014、[部署](../operations/deployment.md) 与 [Runbook：Summary 作业队列](../operations/runbooks/queue-and-dlq.md) 为准。
+>
+> 实施过程中有三处结论被修正。正文按「设计记录不追改」保留原样，以 ADR 0014 为准：默认栈的计数单位是**镜像**而不是容器（两个镜像，五个 Compose 服务，`migrate` 为一次性）；跨主机 worker 并非技术上不可行，只是不再随栈提供现成路径（`claimSummaryJob` 是带条件的原子 `UPDATE`，对多消费者安全）；`/readyz` 在仓库内有两个消费者——Web 状态页与 Compose `api` healthcheck——且两者都只判断状态码，不读取 `dependencies` 结构。
+
 ## 背景
 
-本地单用户 MVP 目前需要三个外部运行时依赖：Docker、PostgreSQL、Redis。复核后发现问题不在「用了 Docker」，而在镜像构建方式和一个不产生作用的中间层。三项证据：
+改造前，本地单用户 MVP 需要三个外部运行时依赖：Docker、PostgreSQL、Redis。复核后发现问题不在「用了 Docker」，而在镜像构建方式和一个不产生作用的中间层。三项证据：
 
 **1. 镜像是 dev build 当 runtime 发。** `infra/Dockerfile` 是单阶段：`COPY . .` 之后 `pnpm install --frozen-lockfile --prod=false && pnpm build`。最终层包含整个 monorepo 源码与全部 dev 依赖（turbo、vitest、playwright、eslint、typescript、tsx、Tauri CLI）。实测镜像 1.18 GB，四个服务 tag 共享同一批 10 层，磁盘占用为一份。
 
@@ -20,11 +24,11 @@ milestone: post-Gate 5 runtime slimming
 
 第 3 点的关键在于重试语义**完全不经过 BullMQ**：`failSummaryJob` 把作业置为 `status='failed'` 并设 `next_attempt_at = now() + 5s`；`listRunnableSummaryJobIds` 的查询同时捞取到期的 `pending`/`failed` 作业，以及 `status='running'` 且 `updated_at` 超过 5 分钟的作业（崩溃 worker 的收割）。BullMQ 侧未配置 `attempts`（默认 1 次）且 `removeOnComplete`/`removeOnFail` 均为 `true`。因此移除 BullMQ 不损失任何重试、退避或崩溃恢复行为。
 
-此外 `pnpm docker:up` 当前不可用：镜像内执行根 `pnpm build` 会连带构建 `@intenttrace/desktop`，其 bundle preflight 断言的 `apps/desktop/src-tauri/resources/intenttrace-stack.tar.gz` 由 gitignored 的 `desktop:prepare` 产出且被 `.dockerignore` 显式排除，构建必然以 `bundle resource is missing` 失败。
+此外改造前 `pnpm docker:up` 不可用：镜像内执行根 `pnpm build` 会连带构建 `@intenttrace/desktop`，其 bundle preflight 断言的 `apps/desktop/src-tauri/resources/intenttrace-stack.tar.gz` 由 gitignored 的 `desktop:prepare` 产出且被 `.dockerignore` 显式排除，构建必然以 `bundle resource is missing` 失败。
 
 ## 目标与非目标
 
-**目标**：把默认栈从「1.18 GB 镜像 + postgres + redis 三容器」降到「瘦身镜像 + postgres 两容器」；恢复 `pnpm docker:up`；删除 Redis 及其依赖、配置键、健康维度与威胁面。
+**目标**：把默认栈从「1.18 GB 镜像 + postgres + redis 三容器」降到「瘦身镜像 + postgres 两容器」（见文首说明：计数单位应为镜像，此处措辞已被 ADR 0014 修订）；恢复 `pnpm docker:up`；删除 Redis 及其依赖、配置键、健康维度与威胁面。
 
 **非目标**：不改变部署形态（仍是 Docker Compose）；不引入 embedded-postgres 或 npx 分发；不追求单文件二进制；不改变 worker 并发度；不动 adapter、API 业务路由或 Web 功能。
 
@@ -74,7 +78,7 @@ Web 的监听方式随之变化：standalone `server.js` 读取 `PORT`（默认 
 
 新增一个 in-flight 门：上一轮尚未跑完时跳过本次 tick，避免慢作业叠加。关停路径去掉 `worker.close()`/`queue.close()`/`redis.quit()`，改为等待当前作业结束后 `sql.end()`。
 
-`apps/worker/src/policy.ts` 的 `SUMMARY_QUEUE_NAME` 及其 BullMQ 说明随之调整为描述 PostgreSQL 作业表的策略常量。
+`apps/worker/src/policy.ts` 的队列常量随之调整为描述 PostgreSQL 作业表的策略常量，`SUMMARY_QUEUE_NAME` 由 `SUMMARY_POLL_INTERVAL_MS` 取代。
 
 依赖移除：`bullmq`、`ioredis`。这同时移除 runtime 路径上的一个 native addon（`msgpackr-extract`，经由 `bullmq` → `msgpackr`）。
 
@@ -156,11 +160,11 @@ Web 的监听方式随之变化：standalone `server.js` 读取 `PORT`（默认 
 
 ## 风险与取舍
 
-**放弃跨进程/跨主机 worker。** 移除队列后，worker 与 API 只能靠共享数据库协调，无法再把 worker 拆到独立主机水平扩展。ADR 0009 明确首发为单主机单用户，这是可接受的 YAGNI 取舍；若将来需要，PostgreSQL 作业表本就支持多消费者（`claimSummaryJob` 是带条件的原子 `UPDATE`），届时可再引入队列或直接多进程竞争同一张表。
+**放弃跨进程/跨主机 worker。** 移除队列后，worker 与 API 只能靠共享数据库协调，无法再把 worker 拆到独立主机水平扩展（见文首说明：此结论已被 ADR 0014 修订）。ADR 0009 明确首发为单主机单用户，这是可接受的 YAGNI 取舍；若将来需要，PostgreSQL 作业表本就支持多消费者（`claimSummaryJob` 是带条件的原子 `UPDATE`），届时可再引入队列或直接多进程竞争同一张表。
 
 **轮询延迟。** 作业最长等待 2 秒才被发现。当前 BullMQ 路径同样受这个 2 秒轮询限制，因此不是回退。
 
-**`/readyz` 契约变更。** 任何依赖 `dependencies.redis` 的外部消费者会受影响。当前仅本仓库 Web 状态页消费该端点，风险局限于仓库内。
+**`/readyz` 契约变更。** 任何依赖 `dependencies.redis` 的外部消费者会受影响。当前仅本仓库 Web 状态页消费该端点（见文首说明：此结论已被 ADR 0014 修订），风险局限于仓库内。
 
 **`--legacy` deploy。** 依赖一个 pnpm 兼容开关。若未来 pnpm 移除该 flag，替代方案是开启 `inject-workspace-packages=true` 或改用 `pnpm --filter --prod deploy` 的后继实现，属于可控的构建期问题，不影响运行时。
 
