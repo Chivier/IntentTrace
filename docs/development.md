@@ -49,6 +49,20 @@ PR 描述分开写 implemented、automated verified、environment verified、def
 
 本地/CI 顺序：frozen install → production dependency audit → format → lint → typecheck → unit → contract → e2e → build → docs → schema drift → Compose config/smoke → migrate twice。失败不得进入下一 Gate。生成物必须在检查前重新生成并保持工作树无 drift。
 
+本地强制门禁（与 CI 同序，`pnpm install --frozen-lockfile` 与 `pnpm audit --prod` 之后）：
+
+```bash
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm test:contract
+pnpm test:e2e
+pnpm build
+pnpm docs:check
+pnpm schema:check
+```
+
 证据等级分为 authored-unexecuted、automated-verified、environment-verified、release-verified。只有在目标 Linux、锁定 Compose images、健康端点、备份恢复与 acceptance matrix 全部通过后才能声明 release-ready；fixture/mock 不能证明 provider 或真实用户 trace。
 
 发布版本记录 schema/migration、image digests、Node/pnpm/lockfile、commit、命令和已知限制。首发明确 single-host、非 HA、loopback。

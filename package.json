@@ -42,9 +42,10 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.62.1",
-    "@types/node": "24.13.3",
     "@tauri-apps/cli": "2.11.4",
+    "@types/node": "24.13.3",
     "eslint": "10.8.0",
+    "github-slugger": "2.0.0",
     "prettier": "3.9.6",
     "tsx": "4.23.5",
     "turbo": "2.10.8",

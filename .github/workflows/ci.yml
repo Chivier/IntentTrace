@@ -27,6 +27,10 @@ jobs:
       DATABASE_URL: postgres://intenttrace:intenttrace@127.0.0.1:5432/intenttrace
       PROVIDER_MODE: mock
       PROVIDER_EGRESS_ENABLED: "false"
+      # `pnpm build`, `dev` and `typecheck` are `turbo run`; both vendors enable
+      # telemetry by default, so the gate opts out the same way the images do.
+      NEXT_TELEMETRY_DISABLED: "1"
+      TURBO_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v7
       # pnpm must exist before setup-node runs: `cache: pnpm` shells out to pnpm
