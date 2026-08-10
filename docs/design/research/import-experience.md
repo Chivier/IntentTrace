@@ -74,6 +74,10 @@ SESSION_ID_1="paste-24-character-catalog-id"
 SESSION_ID_2="paste-24-character-catalog-id"
 intenttrace import --source codex --path ~/.codex/sessions \
   --session "$SESSION_ID_1" --session "$SESSION_ID_2" --api "$WEB_ORIGIN"
+
+# 不指定 --session 时仍是批量导入；--newest 配合 --max-files 只取最近若干文件
+intenttrace import --source claude --path ~/.claude/projects \
+  --newest --max-files 20 --api "$WEB_ORIGIN"
 ```
 
 `SessionCatalog` version 1 包含：opaque ID、source、generic/preview title、project hint、first/last preview、last activity、mtime、bytes、event/warning counts、typed failed candidates、limit/unreadable/missing counts。绝对 path、relative path、file name、native session ID 不进入输出。ID 绑定授权 root、placement、inode/size/mtime，preflight 以 `O_NOFOLLOW` open 并在 read 前后复核，文件改变后旧 ID fail-visible。默认单文件上限 64 MiB。每个成功 import 另发 schema-validated path-free outcome（含 trace ID/inserted/duplicates/warnings），最后发聚合 summary，便于未来 UI 跳转与 retry-failed。

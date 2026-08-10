@@ -3,6 +3,8 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import process from "node:process";
 
+import GithubSlugger from "github-slugger";
+
 const root = resolve(import.meta.dirname, "..");
 const docsRoot = join(root, "docs");
 
@@ -46,6 +48,56 @@ async function walk(directory) {
     else paths.push(path);
   }
   return paths;
+}
+
+// GitHub renders heading anchors with github-slugger, so the real slugger is the
+// only honest oracle here: CJK headings keep their characters while full-width
+// punctuation such as `：` is deleted rather than turned into a separator.
+const headingSlugs = new Map();
+
+async function slugsFor(path) {
+  const cached = headingSlugs.get(path);
+  if (cached) return cached;
+  const slugger = new GithubSlugger();
+  const slugs = new Set();
+  let fenced = false;
+  for (const line of (await readFile(path, "utf8")).split("\n")) {
+    if (/^\s*(?:```|~~~)/u.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    const heading = fenced ? null : /^#{1,6}\s+(.*?)\s*$/u.exec(line);
+    if (heading)
+      slugs.add(
+        slugger.slug(
+          heading[1]
+            .replace(/`([^`]*)`/gu, "$1")
+            .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
+            .replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/gu, "$1"),
+        ),
+      );
+  }
+  headingSlugs.set(path, slugs);
+  return slugs;
+}
+
+async function checkInternalLinks(content, path) {
+  const label = relative(root, path);
+  for (const link of content.matchAll(/\[[^\]]*\]\(([^)]+)\)/gu)) {
+    const raw = link[1].trim().replace(/^<|>$/gu, "");
+    if (/^(?:https?:|mailto:)/u.test(raw)) continue;
+    const [target, fragment] = raw.split("#");
+    const destination = target ? resolve(dirname(path), decodeURIComponent(target)) : path;
+    try {
+      await stat(destination);
+    } catch {
+      failures.push(`${label}: broken internal link ${raw}`);
+      continue;
+    }
+    if (!fragment || extname(destination) !== ".md") continue;
+    if (!(await slugsFor(destination)).has(decodeURIComponent(fragment)))
+      failures.push(`${label}: broken anchor ${raw}`);
+  }
 }
 
 for (const entry of required) {
@@ -94,16 +146,22 @@ for (const path of normativeMarkdown) {
   if (content.slice(match[0].length).trim().length < 120)
     failures.push(`${label}: content is too short`);
 
-  for (const link of content.matchAll(/\[[^\]]*\]\(([^)]+)\)/gu)) {
-    const target = link[1].trim().replace(/^<|>$/gu, "").split("#")[0];
-    if (!target || /^(?:https?:|mailto:)/u.test(target)) continue;
-    const destination = resolve(dirname(path), decodeURIComponent(target));
-    try {
-      await stat(destination);
-    } catch {
-      failures.push(`${label}: broken internal link ${link[1]}`);
-    }
+  await checkInternalLinks(content, path);
+}
+
+// The front-door READMEs are gated for link resolution only. Frontmatter and
+// length are a docs/ convention, but a dead link in a README is the most visible
+// failure this repository can ship, and docs/-only walking is how one shipped.
+for (const name of ["README.md", "README.zh-CN.md"]) {
+  const path = join(root, name);
+  try {
+    const info = await stat(path);
+    if (!info.isFile() || info.size === 0) throw new Error("not a substantive file");
+  } catch {
+    failures.push(`Missing required file: ${name}`);
+    continue;
   }
+  await checkInternalLinks(await readFile(path, "utf8"), path);
 }
 
 const archivePath = join(docsRoot, "design", "source", "IntentTrace_Design_Package.zip");
