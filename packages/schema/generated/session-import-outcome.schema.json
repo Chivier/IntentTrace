@@ -14,7 +14,8 @@
       "type": "string",
       "enum": [
         "import",
-        "follow"
+        "follow",
+        "upload"
       ]
     },
     "sessionId": {

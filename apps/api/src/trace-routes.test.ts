@@ -67,6 +67,7 @@ function services(order: string[]): ApiServices {
         };
       },
       listTraces: async () => ({ traces: [], nextCursor: null }),
+      listTracesByIds: async () => [],
       getTrace: async () => {
         throw new Error("unused");
       },

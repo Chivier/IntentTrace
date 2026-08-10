@@ -24,6 +24,7 @@ export interface BuildAppOptions {
   version?: string;
   gitCommit?: string;
   services?: ApiServices;
+  uploadMaxBytes?: number;
 }
 
 const HealthSchema = z
@@ -53,6 +54,14 @@ export function buildApp(options: BuildAppOptions = {}) {
   });
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  const uploadMaxBytes = options.uploadMaxBytes ?? 64 * 1024 * 1024;
+  app.addContentTypeParser(
+    "application/octet-stream",
+    { parseAs: "buffer", bodyLimit: uploadMaxBytes },
+    (_request, body, done) => {
+      done(null, body);
+    },
+  );
   app.addHook("preParsing", async (request, _reply, payload) => {
     if (request.headers["content-encoding"] !== "gzip") return payload;
     request.headers["content-encoding"] = "identity";
@@ -66,6 +75,33 @@ export function buildApp(options: BuildAppOptions = {}) {
         title: "Request validation failed",
         status: 400,
         code: "validation_failed",
+        requestId: request.id,
+      });
+      return;
+    }
+    const failureCode =
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : "";
+    if (failureCode === "FST_ERR_CTP_BODY_TOO_LARGE") {
+      void reply.status(413).send({
+        type: "https://intenttrace.local/problems/payload-too-large",
+        title: "Payload too large",
+        status: 413,
+        code: "payload_too_large",
+        requestId: request.id,
+      });
+      return;
+    }
+    if (failureCode === "FST_ERR_CTP_INVALID_MEDIA_TYPE") {
+      void reply.status(415).send({
+        type: "https://intenttrace.local/problems/unsupported-media-type",
+        title: "Unsupported media type",
+        status: 415,
+        code: "unsupported_media_type",
         requestId: request.id,
       });
       return;
@@ -164,7 +200,10 @@ export function buildApp(options: BuildAppOptions = {}) {
     );
   });
 
-  void app.register(registerTraceRoutes, options.services ?? createUnavailableApiServices());
+  void app.register(registerTraceRoutes, {
+    services: options.services ?? createUnavailableApiServices(),
+    uploadMaxBytes,
+  });
 
   return app;
 }

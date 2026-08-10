@@ -1,7 +1,7 @@
 ---
 status: current
 owner: product-design
-last_reviewed: 2026-08-06
+last_reviewed: 2026-08-09
 normative: true
 milestone: post-Gate 5 import UX
 ---
@@ -33,13 +33,15 @@ Picker listing 只返回 provider handle、cwd、title、first/last prompt previ
 
 Codex 使用 app-server `thread/list`；Claude/Pi/OMP 无同等 API 时读取持久化文件。不同发现方式在 provider 边界内统一为 descriptor，UI 不理解每种磁盘格式。可 pre-filter cwd 的 provider 尽早过滤，顶层再用 realpath-aware matcher 复核。
 
-### 3. 有界近期窗口
+### 3. 有界近期窗口（仅 Pi provider）
 
-Pi 先遍历文件并按 mtime 排序，只解析 recent candidate window；head/tail 使用 byte cap，避免为了显示 20 行而完整解析所有历史。Claude 也 overscan 后裁剪。这对数百/数千会话目录比“全部完整 parse 后排序”更可靠。
+复核后修正：只有 Pi provider 是 byte-bounded 的——`HEAD_BYTES = 64 KiB`、`TAIL_BYTES = 256 KiB`、`FULL_SCAN_LINE_LIMIT = 2000`、`candidateLimit = max(limit * 40, 400)`；它先遍历文件并按 mtime 排序，只解析 recent candidate window。Claude provider 则用 `readFile(…, "utf8")` 读取整份文件，并不 bounded。Claude 的 overscan 体现在 `limit + alreadyImportedCount` 的补偿式取数上：已导入的行会被过滤掉，所以先多取再裁剪，避免过滤后不足 limit。这对数百/数千会话目录比“全部完整 parse 后排序”更可靠，IntentTrace 因此照搬 Pi 的 64 KiB head 上限而不是 Claude 的整文件读取。
 
 ### 4. 失败隔离与显式状态
 
-多 provider listing fan-out 时一个 provider 失败不清空其他结果；UI 区分全部失败、部分失败、loading、没有 provider、没有 recent session、全部已导入、当前 filter 无结果。刷新是显式动作，不做隐藏轮询。
+多 provider listing fan-out 时一个 provider 失败不清空其他结果；UI 区分全部失败、部分失败、loading、没有 provider、没有 recent session、全部已导入、当前 filter 无结果。空态优先级以 `allQueriesSettled` 为门：未 settled 前不显示任何空态，避免 loading 抖动出“没有会话”。已导入信号是 count-only 的 `filteredAlreadyImportedCount`，只用于把空态措辞从“没有可导入的会话”换成“都已经导入过”，不逐行回传身份。跨 provider dedupe 是 `provider:handle` 上的 first-wins。刷新是显式动作，不做隐藏轮询。
+
+复核后修正三处此前的推测：Paseo 的 picker **没有**搜索框（sheet 显式传 `searchable={false}`）；**没有**多选（单行 press 直接导入，导入期间整个列表锁定）；**没有** retry-failed，也没有 per-file rejection 概念——解析失败的文件让 descriptor 返回 `null` 后直接从列表消失。它的 view-model 是纯函数加两个 `useState` 的薄状态，八个空/错状态全部可单测；IntentTrace 采用这个拆分方式，但在其上补齐搜索、多选、逐行失败与 retry-failed。
 
 ### 5. 重复与并发导入
 
@@ -76,9 +78,13 @@ intenttrace import --source codex --path ~/.codex/sessions \
 
 `SessionCatalog` version 1 包含：opaque ID、source、generic/preview title、project hint、first/last preview、last activity、mtime、bytes、event/warning counts、typed failed candidates、limit/unreadable/missing counts。绝对 path、relative path、file name、native session ID 不进入输出。ID 绑定授权 root、placement、inode/size/mtime，preflight 以 `O_NOFOLLOW` open 并在 read 前后复核，文件改变后旧 ID fail-visible。默认单文件上限 64 MiB。每个成功 import 另发 schema-validated path-free outcome（含 trace ID/inserted/duplicates/warnings），最后发聚合 summary，便于未来 UI 跳转与 retry-failed。
 
-### 图形导入器（后续，不伪装为已实现）
+### 图形导入器（已实现：`/import`）
 
-Tauri/本机 helper 调用同一 Collector catalog 协议，UI 采用三步：选择 source 与授权根 → 查看 recent catalog/勾选 → 导入进度与逐条结果。需要 provider chips、project/time/search filters、preview consent toggle、partial failure/rejected-file banner、refresh 与 retry-failed。already-imported 状态必须由新增的 API/DB 批量查询 source/trace identity 后返回，不能依赖 Collector 本地 ledger；该接口本轮未实现。Web server 不能自行扫描目录；普通浏览器环境没有安全的任意目录持久访问能力时，应继续展示可复制 CLI 命令，而不是假造 file picker 权限。
+本轮实现了浏览器内的导入器，见 ADR [`0013`](../architecture/adr/0013-browser-session-upload.md)。区别于原计划的 Tauri helper：它不需要本机 helper，因为浏览器的文件/目录选择器本身就是操作者显式交出字节的边界，服务端仍然不枚举任何目录。
+
+`/import` 提供拖放、多文件选择与 `webkitdirectory` 目录选择三种入口，按 mtime 倒序（同 mtime 按文件名）排出最多 50 个候选，`name\0size\0lastModified` 上 first-wins 去重，每个文件只读前 64 KiB 交给 `POST /api/v1/imports/candidates`。返回的候选带 source chip、title、project hint、partial-head 标记与 already-imported 徽章；already-imported 由 `listTracesByIds` 一次批量查询得到，正是本文此前记为“该接口本轮未实现”的部分。preview 是显式 consent toggle，默认关闭，打开后重新请求。导入用 2 路并发把原始 `File` 直接 `POST /api/v1/imports/sessions`，逐行失败不影响其他行，失败行可 retry-failed。视图逻辑集中在无 React 依赖的 `apps/web/lib/import/view-model.ts`，组件只保留 rows/phase/query/sourceFilter/hideImported/showPreviews/inspectError 少量状态。
+
+仍然禁止的是**服务端**目录选择器：Web server 不扫描目录，API 也不接受路径参数。CLI 命令保留在 `/traces` 空态的 headless 区块里，供批量与无头场景使用。
 
 ## 验收维度
 

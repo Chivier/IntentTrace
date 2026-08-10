@@ -4,6 +4,8 @@ import "@xyflow/react/dist/style.css";
 
 import { useCallback, useEffect, useMemo } from "react";
 
+import { Banner } from "@intenttrace/ui";
+
 import { Topbar } from "@/components/workbench/Topbar";
 import { WorkbenchShell } from "@/components/workbench/WorkbenchShell";
 import { GanttPanel } from "@/components/workbench/gantt/GanttPanel";
@@ -82,17 +84,14 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
   const mainColumn = (
     <>
       {error ? (
-        <p role="alert" className="error-panel m-3 mb-0">
+        <Banner tone="danger" role="alert" className="m-3 mb-0">
           {error}
-        </p>
+        </Banner>
       ) : null}
       {notice ? (
-        <p
-          role="status"
-          className="m-3 mb-0 rounded-xl border border-amber/40 bg-panel px-4 py-2.5 text-body text-amber"
-        >
+        <Banner tone="warning" className="m-3 mb-0">
           {notice}
-        </p>
+        </Banner>
       ) : null}
       <SummaryStrip />
       <section

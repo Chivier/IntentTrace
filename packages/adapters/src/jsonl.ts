@@ -1,6 +1,11 @@
 import { RawTraceEventInputSchema } from "@intenttrace/schema";
 
-import { decodeAdapterBytes, objectRecord, parseJsonLines } from "./common.js";
+import {
+  decodeAdapterBytes,
+  objectRecord,
+  readSessionRecords,
+  type SessionRecord,
+} from "./common.js";
 import {
   MalformedAdapterInputError,
   UnsupportedAdapterVersionError,
@@ -20,7 +25,7 @@ export class CanonicalJsonlAdapter implements TraceAdapter {
 
   async sniff(input: AdapterInput): Promise<boolean> {
     try {
-      const first = parseJsonLines(decodeAdapterBytes(input.bytes))[0]?.value;
+      const first = readSessionRecords(decodeAdapterBytes(input.bytes))[0]?.value;
       return RawTraceEventInputSchema.safeParse(first).success;
     } catch {
       return false;
@@ -28,9 +33,9 @@ export class CanonicalJsonlAdapter implements TraceAdapter {
   }
 
   async *parse(input: AdapterInput): AsyncIterable<AdapterRecord> {
-    let records: ReturnType<typeof parseJsonLines>;
+    let records: SessionRecord[];
     try {
-      records = parseJsonLines(decodeAdapterBytes(input.bytes));
+      records = readSessionRecords(decodeAdapterBytes(input.bytes));
     } catch (error) {
       throw new MalformedAdapterInputError("jsonl", String(error));
     }

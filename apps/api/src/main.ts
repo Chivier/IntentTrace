@@ -45,6 +45,7 @@ const app = buildApp({
   version: config.APP_VERSION,
   gitCommit: config.GIT_COMMIT,
   services: { repository, artifactStore },
+  uploadMaxBytes: config.IMPORT_UPLOAD_MAX_BYTES,
 });
 
 app.addHook("onClose", async () => {

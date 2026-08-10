@@ -6,7 +6,8 @@ import {
   displayPreview,
   normalizeEvent,
   objectRecord,
-  parseJsonLines,
+  readSessionRecords,
+  type SessionRecord,
 } from "./common.js";
 import {
   MalformedAdapterInputError,
@@ -186,7 +187,7 @@ export class CodexSessionAdapter implements TraceAdapter {
 
   async sniff(input: AdapterInput): Promise<boolean> {
     try {
-      const first = objectRecord(parseJsonLines(decodeAdapterBytes(input.bytes))[0]?.value);
+      const first = objectRecord(readSessionRecords(decodeAdapterBytes(input.bytes))[0]?.value);
       return ["session_meta", "turn_context", "response_item", "event_msg"].includes(
         String(first?.type),
       );
@@ -196,9 +197,9 @@ export class CodexSessionAdapter implements TraceAdapter {
   }
 
   async *parse(input: AdapterInput): AsyncIterable<AdapterRecord> {
-    let records: ReturnType<typeof parseJsonLines>;
+    let records: SessionRecord[];
     try {
-      records = parseJsonLines(decodeAdapterBytes(input.bytes));
+      records = readSessionRecords(decodeAdapterBytes(input.bytes));
     } catch (error) {
       throw new MalformedAdapterInputError("codex", String(error));
     }

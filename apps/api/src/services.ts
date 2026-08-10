@@ -9,6 +9,7 @@ export interface ApiServices {
     | "getArtifact"
     | "ingest"
     | "listTraces"
+    | "listTracesByIds"
     | "getTrace"
     | "listRawEvents"
     | "getAgentTimeline"
@@ -35,6 +36,7 @@ export function createUnavailableApiServices(): ApiServices {
       getArtifact: async () => unavailable(),
       ingest: async () => unavailable(),
       listTraces: async () => unavailable(),
+      listTracesByIds: async () => unavailable(),
       getTrace: async () => unavailable(),
       listRawEvents: async () => unavailable(),
       getAgentTimeline: async () => unavailable(),

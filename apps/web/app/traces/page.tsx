@@ -3,17 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { HealthPanel } from "../health-panel";
+import type { TraceSummary } from "@intenttrace/schema";
+import { Banner, CopyButton } from "@intenttrace/ui";
 
-interface TraceSummary {
-  id: string;
-  title: string;
-  status: "active" | "completed" | "stale" | "failed";
-  eventCount: string;
-  latestIngestSeq: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { AppHeader } from "@/components/AppHeader";
+import { BoundaryBar } from "@/components/BoundaryBar";
 
 const statusDot: Record<TraceSummary["status"], string> = {
   active: "bg-green shadow-[0_0_8px_rgba(83,212,138,0.7)]",
@@ -21,6 +15,10 @@ const statusDot: Record<TraceSummary["status"], string> = {
   stale: "bg-amber",
   failed: "bg-red",
 };
+
+const cliCommands = `intenttrace discover --source codex --path ~/.codex/sessions --limit 50
+SESSION_ID="paste-24-character-catalog-id"
+intenttrace import --source codex --path ~/.codex/sessions --session "$SESSION_ID"`;
 
 function duration(startIso: string, endIso: string): string {
   const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
@@ -60,36 +58,8 @@ export default function TraceListPage() {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-[1080px] flex-col gap-4 px-6 py-8">
-      <header className="flex items-center gap-3">
-        <span
-          aria-hidden
-          className="grid size-[30px] place-items-center rounded-[9px] bg-[conic-gradient(from_180deg,#8b7cf6,#59b6ff,#49d6d0,#8b7cf6)] p-[2px]"
-        >
-          <span className="grid size-full place-items-center rounded-[7px] bg-bg text-meta font-bold text-ink">
-            ◎
-          </span>
-        </span>
-        <div className="flex-1 leading-tight">
-          <h1 className="m-0 text-lead font-bold tracking-tight">IntentTrace</h1>
-          <p className="m-0 text-micro text-muted-2">Evidence-backed agent traces</p>
-        </div>
-        <HealthPanel />
-      </header>
-
-      <section
-        className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-panel border border-line bg-panel/70 px-4 py-2.5 text-micro text-muted"
-        aria-label="Deployment boundary"
-      >
-        <span className="font-bold uppercase tracking-[0.13em] text-muted-2">Local MVP</span>
-        <span>默认无云 egress</span>
-        <span aria-hidden>·</span>
-        <span>single-host / no-auth</span>
-        <span aria-hidden>·</span>
-        <span>真实 Codex/Claude session 仅由显式路径 collector 读取</span>
-        <Link href="/prototype" className="ml-auto no-underline hover:underline">
-          历史视觉原型 →
-        </Link>
-      </section>
+      <AppHeader />
+      <BoundaryBar />
 
       <div className="flex items-center gap-3">
         <input
@@ -103,12 +73,15 @@ export default function TraceListPage() {
         <span className="text-micro text-muted-2">
           {filtered.length} / {traces.length} traces
         </span>
+        <Link href="/import" className="ui-button ui-button--primary ml-auto">
+          Import sessions
+        </Link>
       </div>
 
       {error ? (
-        <p role="alert" className="error-panel">
+        <Banner tone="danger" role="alert">
           无法连接本地 API：{error}
-        </p>
+        </Banner>
       ) : null}
 
       <section className="grid gap-1.5" aria-label="Local traces">
@@ -116,7 +89,7 @@ export default function TraceListPage() {
           <Link
             key={trace.id}
             href={`/traces/${trace.id}`}
-            className="grid grid-cols-[minmax(0,1fr)_88px_96px_92px] items-center gap-4 rounded-panel border border-line bg-panel px-4 py-3 no-underline transition-colors hover:border-accent/40 hover:bg-panel-3"
+            className="trace-row grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-panel border border-line bg-panel px-4 py-3 no-underline transition-colors hover:border-accent/40 hover:bg-panel-3"
           >
             <span className="min-w-0">
               <span className="flex items-center gap-2">
@@ -128,25 +101,39 @@ export default function TraceListPage() {
               </span>
               <span className="mt-0.5 block truncate pl-4 text-micro text-muted-2">{trace.id}</span>
             </span>
-            <span className="text-micro text-muted">{trace.eventCount} events</span>
-            <span className="text-micro text-muted">
+            <span className="trace-row__events text-micro text-muted">
+              {trace.eventCount} events
+            </span>
+            <span className="trace-row__duration text-micro text-muted">
               {duration(trace.createdAt, trace.updatedAt)}
             </span>
             <span className="text-micro text-muted">{trace.status}</span>
           </Link>
         ))}
         {!error && traces.length === 0 ? (
-          <div className="rounded-panel border border-line bg-panel p-6">
-            <h2 className="m-0 text-title font-semibold">尚无 trace</h2>
-            <p className="mt-2 text-meta text-muted">
-              先用 collector 在显式授权根内发现会话，再按 opaque ID 精确导入；或向 OTLP HTTP JSON
-              receiver 发送 span。默认 catalog 不输出 prompt、路径或 native session ID。
-            </p>
-            <pre className="mt-3 overflow-x-auto rounded-lg border border-line bg-[#05070c] p-3 text-meta text-muted">
-              {`intenttrace discover --source codex --path ~/.codex/sessions --limit 50
-SESSION_ID="paste-24-character-catalog-id"
-intenttrace import --source codex --path ~/.codex/sessions --session "$SESSION_ID"`}
-            </pre>
+          <div className="grid gap-3 rounded-panel border border-line bg-panel p-6">
+            <div>
+              <h2 className="m-0 text-title font-semibold">尚无 trace</h2>
+              <p className="mt-2 text-meta text-muted">
+                在浏览器里选择本机上的 session 文件或目录即可导入；也可以用 collector
+                在显式授权根内批量导入，或向 OTLP HTTP JSON receiver 发送 span。默认不输出
+                prompt、路径或 native session ID。
+              </p>
+            </div>
+            <Link
+              href="/import"
+              className="ui-button ui-button--primary w-fit"
+              data-testid="empty-import-link"
+            >
+              Import from this browser
+            </Link>
+            <details className="rounded-lg border border-line bg-[#05070c] p-3">
+              <summary className="cursor-pointer text-meta text-muted">
+                Headless / bulk import (CLI)
+              </summary>
+              <pre className="mt-2 overflow-x-auto text-meta text-muted">{cliCommands}</pre>
+              <CopyButton value={cliCommands} label="Copy commands" />
+            </details>
           </div>
         ) : null}
         {!error && traces.length > 0 && filtered.length === 0 ? (

@@ -9,6 +9,8 @@ describe("generated OpenAPI", () => {
     const document = app.swagger();
     expect(Object.keys(document.paths ?? {}).sort()).toEqual([
       "/api/v1/events",
+      "/api/v1/imports/candidates",
+      "/api/v1/imports/sessions",
       "/api/v1/traces",
       "/api/v1/traces/{traceId}",
       "/api/v1/traces/{traceId}/artifacts/{artifactId}",

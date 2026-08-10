@@ -2,8 +2,13 @@ import { stat, watch } from "node:fs/promises";
 import { basename, join } from "node:path";
 
 import {
+  buildCompletionMarker,
+  classifySessionFailure,
+  redactCatalogEntry,
+  type SessionFailureCode,
+} from "@intenttrace/adapters";
+import {
   IngestResultSchema,
-  RawTraceEventInputSchema,
   SessionCatalogIdSchema,
   SessionCatalogSchema,
   SessionImportOutcomeSchema,
@@ -116,13 +121,7 @@ function optionValues(args: readonly string[], name: string): string[] {
   return values;
 }
 
-type PublicDiagnosticCode =
-  | "preflight_failed"
-  | "unsupported_version"
-  | "no_visible_events"
-  | "stale_session"
-  | "file_too_large"
-  | "api_rejected";
+type PublicDiagnosticCode = SessionFailureCode | "api_rejected";
 interface PublicDiagnostic {
   code: PublicDiagnosticCode;
   message: string;
@@ -130,24 +129,6 @@ interface PublicDiagnostic {
 
 function publicError(error: unknown): PublicDiagnostic {
   const message = error instanceof Error ? error.message : String(error);
-  if (message === "Session contains no importable visible events") {
-    return { code: "no_visible_events", message };
-  }
-  if (message === "Session changed after discovery; refresh the catalog") {
-    return { code: "stale_session", message };
-  }
-  if (message === "Session exceeds the configured file-size limit") {
-    return { code: "file_too_large", message };
-  }
-  const unsupported = /Unsupported ([A-Za-z0-9_.:-]+) format version: ([A-Za-z0-9_.:-]+)/u.exec(
-    message,
-  );
-  if (unsupported) {
-    return {
-      code: "unsupported_version",
-      message: `Unsupported ${unsupported[1]} format version: ${unsupported[2]}`,
-    };
-  }
   if (
     /^API rejected event \(([1-5][0-9]{2})\)$/u.test(message) ||
     message === "API request failed" ||
@@ -155,12 +136,7 @@ function publicError(error: unknown): PublicDiagnostic {
   ) {
     return { code: "api_rejected", message };
   }
-  // JSON parsers may quote source text in their native error. Never echo that
-  // text from discovery/import diagnostics.
-  return {
-    code: "preflight_failed",
-    message: "Session preflight failed; no events were imported",
-  };
+  return classifySessionFailure(error);
 }
 
 export function formatCollectorFatalError(error: unknown): string {
@@ -242,32 +218,7 @@ async function ingestPreparedSession(
 
   const lastEvent = prepared.events.at(-1);
   if (markComplete && lastEvent) {
-    const contentHash = prepared.contentSha256;
-    const completion = { ...lastEvent };
-    delete completion.agentId;
-    delete completion.spanId;
-    delete completion.parentSpanId;
-    delete completion.subjectId;
-    delete completion.causationEventId;
-    delete completion.payload;
-    delete completion.payloadRef;
-    await send(
-      RawTraceEventInputSchema.parse({
-        ...completion,
-        source: {
-          ...completion.source,
-          sourceEventId: `import-complete-${contentHash.slice(0, 32)}`,
-        },
-        kind: "trace_complete",
-        name: "Offline import complete",
-        status: "ok",
-        artifactRefs: [],
-        attributes: {
-          collectorMarker: "offline_import_complete",
-          contentSha256: contentHash,
-        },
-      }),
-    );
+    await send(buildCompletionMarker(lastEvent, prepared.contentSha256));
   }
   return {
     inserted,
@@ -339,14 +290,7 @@ function outputCatalog(input: {
         matchedFiles: input.discovered.matchedFiles,
         selectedFiles: input.discovered.candidates.length,
         sessions: input.sessions.map((session) =>
-          input.includePreviews
-            ? session
-            : {
-                ...session,
-                title: `${session.source === "claude" ? "Claude" : session.source === "codex" ? "Codex" : session.source.toUpperCase()} session`,
-                firstPromptPreview: null,
-                lastPromptPreview: null,
-              },
+          redactCatalogEntry(session, input.includePreviews),
         ),
         failed: input.failures.map((failure) => ({
           id: failure.candidate.id,

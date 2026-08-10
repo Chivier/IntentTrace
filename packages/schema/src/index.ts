@@ -38,6 +38,7 @@ export const SessionCatalogFailureCodeSchema = z.enum([
   "no_visible_events",
   "stale_session",
   "file_too_large",
+  "unknown_source_format",
 ]);
 export const SessionCatalogFailureSchema = z
   .object({
@@ -70,7 +71,7 @@ export const SessionImportOutcomeSchema = z
   .object({
     protocolVersion: z.literal(1),
     level: z.literal("result"),
-    command: z.enum(["import", "follow"]),
+    command: z.enum(["import", "follow", "upload"]),
     sessionId: SessionCatalogIdSchema,
     traceId: UuidSchema,
     inserted: z.number().int().nonnegative(),
@@ -101,6 +102,52 @@ export const SessionImportSummarySchema = z
   })
   .strict();
 export type SessionImportSummary = z.infer<typeof SessionImportSummarySchema>;
+
+export const SessionUploadCandidateInputSchema = z
+  .object({
+    clientRef: z.string().min(1).max(64),
+    fileName: z.string().min(1).max(255),
+    byteLength: z.number().int().nonnegative(),
+    modifiedAt: TimestampSchema,
+    headBase64: z.string().max(131072),
+    complete: z.boolean(),
+  })
+  .strict();
+
+export const SessionUploadCandidateRequestSchema = z
+  .object({
+    protocolVersion: z.literal(1),
+    includePreviews: z.boolean(),
+    candidates: z.array(SessionUploadCandidateInputSchema).min(1).max(50),
+  })
+  .strict();
+export type SessionUploadCandidateRequest = z.infer<typeof SessionUploadCandidateRequestSchema>;
+
+export const SessionUploadCandidateSchema = z
+  .object({
+    clientRef: z.string().min(1).max(64),
+    source: TraceSourceKindSchema.nullable(),
+    title: z.string().min(1).max(240).nullable(),
+    projectHint: z.string().min(1).max(120).nullable(),
+    firstPromptPreview: z.string().min(1).max(160).nullable(),
+    lastPromptPreview: z.string().min(1).max(160).nullable(),
+    partialHead: z.boolean(),
+    traceId: UuidSchema.nullable(),
+    imported: z.boolean(),
+    importedEventCount: NonnegativeIntegerStringSchema.nullable(),
+    failureCode: SessionCatalogFailureCodeSchema.nullable(),
+    failureMessage: z.string().min(1).max(500).nullable(),
+  })
+  .strict();
+
+export const SessionUploadCandidateListSchema = z
+  .object({
+    protocolVersion: z.literal(1),
+    candidates: z.array(SessionUploadCandidateSchema),
+    alreadyImportedCount: z.number().int().nonnegative(),
+  })
+  .strict();
+export type SessionUploadCandidateList = z.infer<typeof SessionUploadCandidateListSchema>;
 
 export const RawEventKindSchema = z.enum([
   "user_message",
