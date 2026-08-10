@@ -14,13 +14,23 @@ describe("local MVP API", () => {
     expect(response.json()).toEqual({ service: "api", status: "ok", gate: 5 });
   });
 
+  it("reports healthy readiness with HTTP 200 when no probe is configured", async () => {
+    const app = buildApp();
+    apps.push(app);
+    const response = await app.inject({ method: "GET", url: "/readyz" });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe("ready");
+    expect(response.json().dependencies).toEqual({ postgres: "skipped" });
+  });
+
   it("reports degraded readiness with HTTP 503", async () => {
     const app = buildApp({
-      readiness: async () => ({ ready: false, postgres: "error", redis: "ok" }),
+      readiness: async () => ({ ready: false, postgres: "error" }),
     });
     apps.push(app);
     const response = await app.inject({ method: "GET", url: "/readyz" });
     expect(response.statusCode).toBe(503);
-    expect(response.json()).toMatchObject({ status: "degraded" });
+    expect(response.json().status).toBe("degraded");
+    expect(response.json().dependencies).toEqual({ postgres: "error" });
   });
 });

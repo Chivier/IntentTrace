@@ -1,26 +1,29 @@
-import { createHash } from "node:crypto";
-
 import { loadRuntimeConfig } from "@intenttrace/config";
-import { IntentTraceRepository, StaleSummaryJobError } from "@intenttrace/db";
-import { applyProviderPatch } from "@intenttrace/intent-reducer";
+import { IntentTraceRepository } from "@intenttrace/db";
 import {
   DeepSeekJsonSummaryProvider,
   FoundationMockSummaryProvider,
   OpenAIResponsesSummaryProvider,
-  ProviderUnavailableError,
-  calculateProviderCost,
   type SummaryProvider,
 } from "@intenttrace/summarizer";
-import { Queue, Worker } from "bullmq";
-import { Redis } from "ioredis";
 import postgres from "postgres";
 
-import { SUMMARY_QUEUE_NAME } from "./policy.js";
+import {
+  SHUTDOWN_FORCE_EXIT_DELAY_MS,
+  SHUTDOWN_POOL_TIMEOUT_SECONDS,
+  SUMMARY_POLL_INTERVAL_MS,
+  SUMMARY_STATEMENT_TIMEOUT_MS,
+  summaryJobBudgetMs,
+} from "./policy.js";
+import { createSummaryRunner, type SummaryRunnerDeps } from "./runner.js";
 
 const config = loadRuntimeConfig();
-const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: null });
-const queue = new Queue(SUMMARY_QUEUE_NAME, { connection: redis });
-const sql = postgres(config.DATABASE_URL, { max: 4 });
+const sql = postgres(config.DATABASE_URL, {
+  max: 4,
+  // Sent in the startup packet: PostgreSQL itself aborts any statement that
+  // outlives this, so a lock wait cannot pin the poll loop's in-flight guard.
+  connection: { statement_timeout: SUMMARY_STATEMENT_TIMEOUT_MS },
+});
 const repository = new IntentTraceRepository(sql);
 function createProvider(): SummaryProvider {
   if (config.PROVIDER_MODE === "openai") {
@@ -51,135 +54,109 @@ const providerModel =
       ? config.DEEPSEEK_MODEL!
       : provider.id;
 let shuttingDown = false;
-let dispatchTimer: NodeJS.Timeout | undefined;
+let pollTimer: NodeJS.Timeout | undefined;
+let inFlight: Promise<unknown> | null = null;
 
-function hash(value: unknown): string {
-  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const runnerDeps: SummaryRunnerDeps = {
+  repository,
+  provider,
+  providerModel,
+  dailyBudgetUsd: config.PROVIDER_DAILY_BUDGET_USD,
+  providerMode: config.PROVIDER_MODE,
+  // Shutdown drains the job already running, not the rest of the backlog.
+  shouldContinue: () => !shuttingDown,
+};
+
+const runner = createSummaryRunner(runnerDeps);
+// One job's worth of legitimate work; see `summaryJobBudgetMs`.
+const jobBudgetMs = summaryJobBudgetMs(config.PROVIDER_TIMEOUT_MS);
+
+async function runPass(): Promise<void> {
+  const pass = runner.runDueJobs();
+  inFlight = pass;
+  // Report-only, deliberately not a watchdog: it never clears `inFlight` and
+  // never abandons the pass. A peer that accepts the connection and then stops
+  // answering is invisible to `statement_timeout` and is only broken by TCP
+  // keepalive, ten minutes or more later; without this line the worker would
+  // spend that whole window silent and indistinguishable from an idle one.
+  const stallReport = setTimeout(() => {
+    process.stderr.write(
+      `IntentTrace worker pass has been running for ${jobBudgetMs}ms without finishing.\n`,
+    );
+  }, jobBudgetMs);
+  try {
+    await pass;
+  } finally {
+    clearTimeout(stallReport);
+    if (inFlight === pass) inFlight = null;
+  }
 }
 
-const worker = new Worker<{ summaryJobId: string }>(
-  SUMMARY_QUEUE_NAME,
-  async (bullJob) => {
-    const context = await repository.claimSummaryJob(bullJob.data.summaryJobId);
-    if (!context) return { skipped: true };
-    try {
-      if (
-        provider.egress === "cloud" &&
-        (await repository.getProviderSpendToday()) >= config.PROVIDER_DAILY_BUDGET_USD
-      ) {
-        throw new ProviderUnavailableError("budget");
-      }
-      const patch = await provider.summarizeChunk({
-        jobNonce: context.jobNonce,
-        baseRevisionId: context.baseRevisionId,
-        eventSketch: context.eventSketch,
-        allowedEventIds: context.allowedEventIds,
-        allowedArtifactIds: context.allowedArtifactIds,
-        allowedAgentIds: context.allowedAgentIds,
-        allowedNodeIds: context.graph.nodes.map((node) => node.logicalNodeId),
-        locale: "zh-CN",
-      });
-      const reduced = applyProviderPatch(patch, context.graph, {
-        expectedBaseRevisionId: context.baseRevisionId,
-        expectedJobNonce: context.jobNonce,
-        allowedEventIds: new Set(context.allowedEventIds),
-        allowedArtifactIds: new Set(context.allowedArtifactIds),
-        allowedAgentIds: new Set(context.allowedAgentIds),
-        allowedNodeIds: new Set(context.graph.nodes.map((node) => node.logicalNodeId)),
-        allowedEdgeIds: new Set(context.graph.edges.map((edge) => edge.logicalEdgeId)),
-        pinnedNodeIds: new Set(
-          context.graph.nodes
-            .filter((node) => node.pinnedByHuman)
-            .map((node) => node.logicalNodeId),
-        ),
-      });
-      if (!reduced.ok) {
-        await repository.failSummaryJob(
-          context.id,
-          reduced.issues[0]?.code ?? "patch_rejected",
-          false,
-        );
-        return { rejected: reduced.issues };
-      }
-      const usage = provider.takeUsage?.() ?? null;
-      const costUsd = usage
-        ? calculateProviderCost(
-            config.PROVIDER_MODE,
-            providerModel,
-            usage.inputTokens,
-            usage.outputTokens,
-          )
-        : null;
-      const revisionId = await repository.commitSummaryJob(context.id, {
-        state: reduced.state,
-        changedNodeIds: reduced.changedNodeIds,
-        changedEdgeIds: reduced.changedEdgeIds,
-        provider: provider.id,
-        model: providerModel,
-        requestHash: hash({ inputHash: context.inputHash, sketch: context.eventSketch }),
-        responseHash: hash(patch),
-        diagnostics: reduced.diagnostics,
-        egress: provider.egress,
-        ...(usage ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : {}),
-        ...(costUsd === null ? {} : { costUsd }),
-      });
-      return { revisionId };
-    } catch (error) {
-      if (error instanceof ProviderUnavailableError) {
-        await repository.failSummaryJob(context.id, error.code, false);
-        return { rawOnly: true, reason: error.code };
-      }
-      if (!(error instanceof StaleSummaryJobError)) {
-        await repository.failSummaryJob(
-          context.id,
-          error instanceof Error ? error.name : "worker_failure",
-          true,
-        );
-      }
-      throw error;
-    }
-  },
-  { connection: redis, concurrency: 1 },
-);
-
-async function dispatch(): Promise<void> {
-  if (shuttingDown) return;
-  for (const summaryJobId of await repository.listRunnableSummaryJobIds()) {
-    await queue.add("summarize", { summaryJobId }, { removeOnComplete: true, removeOnFail: true });
-  }
+function tick(): void {
+  // A slow pass must not stack ticks on top of itself.
+  if (shuttingDown || inFlight) return;
+  void runPass().catch((error: unknown) => {
+    process.stderr.write(`IntentTrace worker pass failed: ${String(error)}\n`);
+  });
 }
 
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  if (dispatchTimer) clearInterval(dispatchTimer);
-  process.stdout.write(`IntentTrace worker received ${signal}; closing worker and connections.\n`);
-  await worker.close();
-  await queue.close();
-  await redis.quit().catch(() => undefined);
-  await sql.end();
+  clearInterval(pollTimer);
+  process.stdout.write(`IntentTrace worker received ${signal}; finishing current job.\n`);
+  const pass = inFlight;
+  if (pass) {
+    let drainTimer: NodeJS.Timeout | undefined;
+    // `shouldContinue` stops the pass at the next job boundary, so this only
+    // waits out the job already running. It can cut healthy work: a job
+    // mid-provider-call in openai/deepseek mode may be abandoned, costing one
+    // already-billed call that retry re-issues, and leaving the row `running`
+    // until the five-minute lease re-selects it. Nothing is corrupted.
+    await Promise.race([
+      pass.catch(() => undefined),
+      new Promise<void>((resolve) => {
+        drainTimer = setTimeout(resolve, jobBudgetMs);
+      }),
+    ]);
+    clearTimeout(drainTimer);
+  }
+  await sql.end({ timeout: SHUTDOWN_POOL_TIMEOUT_SECONDS });
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
     void shutdown(signal).finally(() => {
       process.exitCode = 0;
+      // A healthy shutdown drains the loop on its own, with stdio flushed.
+      // `sql.end()` only half-closes its sockets, so a peer that has stopped
+      // answering never sends the matching FIN and leaves an active handle
+      // behind; this unref'd timer is the only thing that then ends the
+      // process, and it fires late enough for the pending writes to land.
+      setTimeout(() => process.exit(0), SHUTDOWN_FORCE_EXIT_DELAY_MS).unref();
     });
   });
 }
 
 try {
-  await Promise.all([queue.waitUntilReady(), worker.waitUntilReady()]);
-  await dispatch();
-  dispatchTimer = setInterval(
-    () => void dispatch().catch((error) => worker.emit("error", error)),
-    2000,
-  );
-  process.stdout.write(
-    `IntentTrace worker is consuming ${SUMMARY_QUEUE_NAME} with PostgreSQL idempotency and ${provider.id}.\n`,
-  );
+  // Awaited, as the removed `dispatch()` was: an unreachable database at boot
+  // must still exit non-zero instead of leaving a worker that logs forever.
+  await runPass();
+  // A signal that arrives during the boot pass runs `shutdown()` while
+  // `pollTimer` is still `undefined`, so its `clearInterval` is a no-op.
+  // Without this guard the continuation would install a ref'd interval nothing
+  // ever clears — blocking natural event-loop drain — and print the polling
+  // banner after the shutdown line. `tick()` already short-circuits on
+  // `shuttingDown`, so no job could have started either way.
+  if (!shuttingDown) {
+    pollTimer = setInterval(tick, SUMMARY_POLL_INTERVAL_MS);
+    process.stdout.write(
+      `IntentTrace worker is polling summary_jobs every ${SUMMARY_POLL_INTERVAL_MS}ms with PostgreSQL idempotency and ${provider.id}.\n`,
+    );
+  }
 } catch (error) {
   process.stderr.write(`IntentTrace worker failed to start: ${String(error)}\n`);
   await shutdown("startup-failure");
   process.exitCode = 1;
+  setTimeout(() => process.exit(1), SHUTDOWN_FORCE_EXIT_DELAY_MS).unref();
 }

@@ -1,16 +1,16 @@
 ---
 status: accepted
 owner: operations
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-10
 normative: true
 milestone: Gate 5
 ---
 
 # 部署
 
-正式验证拓扑是 Linux x86_64 单主机 Docker Compose。macOS Tauri 壳复用同一拓扑并要求 Docker Desktop。默认只有 Web 发布到 Docker 自动分配的 `127.0.0.1` 临时端口；API、PostgreSQL、Redis、worker 和 migrate 均无宿主端口。PostgreSQL、Redis 与 artifacts 各用 named volume；Redis 开 AOF、`appendfsync everysec` 和 `noeviction`。
+正式验证拓扑是 Linux x86_64 单主机 Docker Compose：五个服务——`postgres`，以及共用同一个应用镜像的 `migrate`（一次性）、`api`、`worker`、`web`——但整栈只有两个镜像。macOS Tauri 壳复用同一拓扑并要求 Docker Desktop。默认只有 Web 发布到 Docker 自动分配的 `127.0.0.1` 临时端口；API、PostgreSQL、worker 和 migrate 均无宿主端口。PostgreSQL 与 artifacts 各用 named volume。
 
-Redis 在 project-scoped Compose bridge 内监听容器接口，因此 `protected-mode` 关闭以允许同项目 API/worker 连接；宿主、LAN 和公网均不可直接访问 Redis。网络不得设置固定全局 name 或 external reuse，以免两个 Compose project 的 `api`/`postgres` DNS alias 混用。PostgreSQL 与 API 采用同样的 internal-only 发布策略。扩大网络边界前必须增加认证和新的安全 ADR。
+没有队列容器：summary 作业由 worker 直接轮询 PostgreSQL `summary_jobs` 分发，见 [ADR 0014](../architecture/adr/0014-postgres-only-job-dispatch.md)。从带 Redis 的旧栈升级时，`pnpm docker:up` 的 `--remove-orphans` 只清理孤立容器，named volume 需要手工删除一次：`docker volume rm intenttrace_redis-data`（栈已停止时执行；仓库中不再有任何东西引用它）。网络不得设置固定全局 name 或 external reuse，以免两个 Compose project 的 `api`/`postgres` DNS alias 混用。PostgreSQL 与 API 采用同样的 internal-only 发布策略。扩大网络边界前必须增加认证和新的安全 ADR。
 
 ```bash
 docker compose config --quiet

@@ -1,7 +1,7 @@
 ---
 status: accepted
 owner: developer-experience
-last_reviewed: 2026-08-09
+last_reviewed: 2026-08-10
 normative: true
 milestone: Gate 5
 ---
@@ -17,7 +17,6 @@ milestone: Gate 5
 | `API_HOST`                  | `127.0.0.1`                                | 宿主开发不可改公网               |
 | `API_PORT`                  | `3001`                                     | 1–65535                          |
 | `DATABASE_URL`              | `postgres://…@127.0.0.1:15432/intenttrace` | PostgreSQL URL                   |
-| `REDIS_URL`                 | `redis://127.0.0.1:16379`                  | Redis URL                        |
 | `ARTIFACT_ROOT`             | `.intenttrace/artifacts`                   | resolve 为绝对本地路径           |
 | `IMPORT_UPLOAD_MAX_BYTES`   | `67108864`                                 | 64 KiB–512 MiB；浏览器上传上限   |
 | `PROVIDER_MODE`             | `mock`                                     | `mock`、`openai` 或 `deepseek`   |
@@ -34,4 +33,6 @@ milestone: Gate 5
 | `INTENTTRACE_API_ORIGIN`    | `http://127.0.0.1:3001`                    | web server-side health proxy     |
 | `INTENTTRACE_WEB_PORT`      | 空                                         | Compose 专用；空则自动分配端口   |
 
-配置 loader 忽略无关环境变量但严格校验已知字段。`.env.example` 可提交，`.env` 与任何 key 不提交。表中的 host-run 默认 URL 只用于显式的本地进程开发；默认 Compose 会注入 `postgres:5432`、`redis:6379` 与 `api:3001` 服务地址且不发布这些端口。Compose 容器内部 API 可监听 `0.0.0.0`，但唯一 Web 宿主映射必须是 `127.0.0.1`；二者不是同一安全边界。
+`PROVIDER_TIMEOUT_MS` 与 Compose `stop_grace_period` 耦合：worker 的关机预算是 `summaryJobBudgetMs(PROVIDER_TIMEOUT_MS)`（即 `PROVIDER_TIMEOUT_MS + SUMMARY_STATEMENT_TIMEOUT_MS` 30000 ms）加 `SHUTDOWN_POOL_TIMEOUT_SECONDS`（5 s）加 `SHUTDOWN_FORCE_EXIT_DELAY_MS`（1000 ms），三者都定义在 `apps/worker/src/policy.ts`。默认 30000 ms 下最坏情况是 66 s，`infra/compose.yaml` 的 `stop_grace_period: 75s` 覆盖它。把 `PROVIDER_TIMEOUT_MS` 提高到上限 120000 ms 会让最坏情况变成 156 s，超过 75 s 后 worker 在排空中途被 SIGKILL：正在跑的作业留下 `status='running'` 行，由五分钟租约回收，不损坏数据但会丢一次已计费的 provider 调用。**提高 `PROVIDER_TIMEOUT_MS` 必须同步提高 `stop_grace_period`**；没有脚本校验这条关系。
+
+配置 loader 忽略无关环境变量但严格校验已知字段；`REDIS_URL` 已随队列移除从 schema 中删除，loader 不再接受该键。`.env.example` 可提交，`.env` 与任何 key 不提交。表中的 host-run 默认 URL 只用于显式的本地进程开发；默认 Compose 会注入 `postgres:5432` 与 `api:3001` 服务地址且不发布这些端口。Compose 容器内部 API 可监听 `0.0.0.0`，但唯一 Web 宿主映射必须是 `127.0.0.1`；二者不是同一安全边界。

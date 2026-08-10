@@ -37,7 +37,7 @@ function showUrl() {
   process.stdout.write(`IntentTrace Web: ${origin}\n`);
   process.stdout.write(`Health: ${origin}/healthz\n`);
   process.stdout.write(`API status proxy: ${origin}/api/status\n`);
-  process.stdout.write("Internal only: api:3001, postgres:5432, redis:6379\n");
+  process.stdout.write("Internal only: api:3001, postgres:5432\n");
 }
 
 const command = process.argv[2] ?? "help";

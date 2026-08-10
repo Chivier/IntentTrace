@@ -1,14 +1,14 @@
 ---
 status: accepted
 owner: operations
-last_reviewed: 2026-08-03
+last_reviewed: 2026-08-10
 normative: true
 milestone: Gate 5
 ---
 
 # 备份与恢复
 
-一致备份包含 PostgreSQL dump/physical snapshot、artifact volume 和 manifest（commit、migration、image digest、每 trace artifact hash）。Redis/AOF 可不作为权威备份，但恢复后需从 DB commands/outbox 重建投递。
+一致备份包含 PostgreSQL dump/physical snapshot、artifact volume 和 manifest（commit、migration、image digest、每 trace artifact hash）。没有需要单独备份的队列存储：作业分发状态就在 `summary_jobs` 里，随数据库一起恢复，未完成的作业按 `next_attempt_at` 与五分钟 `running` 租约自行被重新领取。
 
 演练：停止写入或取得一致 watermark → 备份 DB/artifact → 在空目录启动锁定版本 → restore DB → restore artifacts → migrate no-op → 校验 row counts/hash/revision memberships → 启动服务 → raw/status/SSE smoke。原环境保留到校验完成。
 

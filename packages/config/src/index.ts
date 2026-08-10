@@ -21,7 +21,6 @@ export const RuntimeConfigSchema = z
       .string()
       .url()
       .default("postgres://intenttrace:intenttrace@127.0.0.1:15432/intenttrace"),
-    REDIS_URL: z.string().url().default("redis://127.0.0.1:16379"),
     ARTIFACT_ROOT: z
       .string()
       .min(1)

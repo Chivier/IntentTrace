@@ -15,7 +15,6 @@ import { registerTraceRoutes } from "./trace-routes.js";
 export interface ReadinessResult {
   ready: boolean;
   postgres: "ok" | "error" | "skipped";
-  redis: "ok" | "error" | "skipped";
 }
 
 export interface BuildAppOptions {
@@ -34,7 +33,7 @@ const ReadySchema = z
   .object({
     service: z.literal("api"),
     status: z.enum(["ready", "degraded"]),
-    dependencies: z.object({ postgres: z.string(), redis: z.string() }).strict(),
+    dependencies: z.object({ postgres: z.string() }).strict(),
   })
   .strict();
 const VersionSchema = z
@@ -162,7 +161,7 @@ export function buildApp(options: BuildAppOptions = {}) {
       {
         schema: {
           operationId: "getReadiness",
-          summary: "PostgreSQL and Redis readiness",
+          summary: "PostgreSQL readiness",
           response: { 200: ReadySchema, 503: ReadySchema },
         },
       },
@@ -171,13 +170,12 @@ export function buildApp(options: BuildAppOptions = {}) {
           Promise.resolve({
             ready: true,
             postgres: "skipped" as const,
-            redis: "skipped" as const,
           }));
         if (!result.ready) reply.status(503);
         return {
           service: "api" as const,
           status: result.ready ? ("ready" as const) : ("degraded" as const),
-          dependencies: { postgres: result.postgres, redis: result.redis },
+          dependencies: { postgres: result.postgres },
         };
       },
     );

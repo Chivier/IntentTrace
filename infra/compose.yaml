@@ -10,7 +10,6 @@ x-runtime-environment: &runtime-environment
   APP_VERSION: 0.0.0
   GIT_COMMIT: development
   DATABASE_URL: postgres://intenttrace:intenttrace@postgres:5432/intenttrace
-  REDIS_URL: redis://redis:6379
   ARTIFACT_ROOT: /var/lib/intenttrace/artifacts
   PROVIDER_MODE: mock
   PROVIDER_EGRESS_ENABLED: "false"
@@ -33,26 +32,9 @@ services:
       retries: 20
     restart: unless-stopped
 
-  redis:
-    build:
-      context: .
-      dockerfile: Dockerfile.redis
-    image: intenttrace-redis:0.0.0
-    command: ["redis-server", "/etc/intenttrace-redis.conf"]
-    expose:
-      - "6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
-
   migrate:
     build: *app-build
-    command: ["pnpm", "db:migrate"]
+    command: ["node", "packages/db/dist/migrate.js"]
     environment: *runtime-environment
     depends_on:
       postgres:
@@ -61,7 +43,7 @@ services:
 
   api:
     build: *app-build
-    command: ["pnpm", "--filter", "@intenttrace/api", "start"]
+    command: ["node", "apps/api/dist/main.js"]
     environment:
       <<: *runtime-environment
       API_HOST: 0.0.0.0
@@ -73,8 +55,6 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
     healthcheck:
       test:
         [
@@ -90,24 +70,29 @@ services:
 
   worker:
     build: *app-build
-    command: ["pnpm", "--filter", "@intenttrace/worker", "start"]
+    command: ["node", "apps/worker/dist/main.js"]
     environment: *runtime-environment
     volumes:
       - artifact-data:/var/lib/intenttrace/artifacts
     depends_on:
       migrate:
         condition: service_completed_successfully
-      redis:
-        condition: service_healthy
+    # Graceful shutdown worst case: summaryJobBudgetMs(PROVIDER_TIMEOUT_MS
+    # 30000) = 60s, plus SHUTDOWN_POOL_TIMEOUT_SECONDS 5s, plus
+    # SHUTDOWN_FORCE_EXIT_DELAY_MS 1s = 66s. Raising PROVIDER_TIMEOUT_MS
+    # requires raising this too.
+    stop_grace_period: 75s
     restart: unless-stopped
 
   web:
     build: *app-build
-    command: ["pnpm", "--filter", "@intenttrace/web", "start", "--hostname", "0.0.0.0"]
+    command: ["node", "apps/web/server.js"]
     environment:
       NODE_ENV: production
       INTENTTRACE_API_ORIGIN: http://api:3001
       NEXT_TELEMETRY_DISABLED: "1"
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
     ports:
       - "127.0.0.1:${INTENTTRACE_WEB_PORT:-}:3000"
     depends_on:
@@ -128,5 +113,4 @@ services:
 
 volumes:
   postgres-data:
-  redis-data:
   artifact-data:

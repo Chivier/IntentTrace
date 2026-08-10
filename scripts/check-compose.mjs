@@ -18,7 +18,7 @@ if (result.status !== 0) {
 const config = JSON.parse(result.stdout);
 const failures = [];
 
-for (const serviceName of ["api", "postgres", "redis", "worker", "migrate"]) {
+for (const serviceName of ["api", "postgres", "worker", "migrate"]) {
   if ((config.services?.[serviceName]?.ports ?? []).length > 0) {
     failures.push(`${serviceName} must not publish a host port`);
   }

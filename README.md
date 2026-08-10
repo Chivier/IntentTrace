@@ -53,7 +53,7 @@ pnpm docker:url
 
 打开 `pnpm docker:url` 输出的 `/traces`。`demo:load` 使用固定 seed，重复运行是幂等的。
 
-默认只有 Web 映射到自动分配的 `127.0.0.1` 临时端口；API、PostgreSQL、Redis 与 worker 仅在 Compose 私有网络中可达。需要固定 Web 端口时：
+默认只有 Web 映射到自动分配的 `127.0.0.1` 临时端口；API、PostgreSQL 与 worker 仅在 Compose 私有网络中可达。整栈只有两个镜像：`postgres`，以及 api/worker/web/migrate 四个服务共用的同一个应用镜像。需要固定 Web 端口时：
 
 ```bash
 INTENTTRACE_WEB_PORT=13000 pnpm docker:up
@@ -118,7 +118,7 @@ Collector + adapters ──► Web loopback proxy ──► API ──► Postgr
                                                    │              │
                                                    │              └─► durable SSE/outbox
                                                    ▼
-                                             BullMQ worker
+                                          summary_jobs worker
                                                    │
                                       proposal → Zod → reducer
                                                    │
@@ -147,7 +147,7 @@ apps/
   collector/    JSONL / OTLP / Codex / Claude 导入
   desktop/      Tauri 2 macOS launcher
   web/          Next.js trace workbench
-  worker/       BullMQ semantic pipeline
+  worker/       PostgreSQL 作业表驱动的语义 pipeline
 packages/
   schema/       Zod domain schemas 与生成 JSON Schema
   db/           Drizzle schema、migrations、repositories

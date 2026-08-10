@@ -174,14 +174,13 @@ const lockedImages = imageLock
   .map((line) => line.trim())
   .filter((line) => line.length > 0 && !line.startsWith("#"));
 if (
-  lockedImages.length !== 3 ||
+  lockedImages.length !== 2 ||
   lockedImages.some((line) => !/@sha256:[a-f0-9]{64}$/u.test(line))
 ) {
-  failures.push("infra/images.lock must contain exactly three digest-pinned images");
+  failures.push("infra/images.lock must contain exactly two digest-pinned images");
 }
 const imageConsumers = await Promise.all([
   readFile(join(root, "infra", "Dockerfile"), "utf8"),
-  readFile(join(root, "infra", "Dockerfile.redis"), "utf8"),
   readFile(join(root, "infra", "compose.yaml"), "utf8"),
   readFile(join(root, ".github", "workflows", "ci.yml"), "utf8"),
 ]);
@@ -199,7 +198,6 @@ const baselineVersions = [
   ["apps/api/package.json", "dependencies", "fastify", "5.11.2"],
   ["packages/schema/package.json", "dependencies", "zod", "4.4.3"],
   ["packages/db/package.json", "dependencies", "drizzle-orm", "0.45.2"],
-  ["apps/worker/package.json", "dependencies", "bullmq", "6.0.7"],
   ["packages/graph-layout/package.json", "dependencies", "elkjs", "0.12.0"],
 ];
 for (const [manifestPath, section, name, expectedVersion] of baselineVersions) {
