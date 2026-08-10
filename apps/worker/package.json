@@ -15,7 +15,7 @@
     "@intenttrace/db": "workspace:*",
     "@intenttrace/intent-reducer": "workspace:*",
     "@intenttrace/summarizer": "workspace:*",
-    "bullmq": "6.0.7",
+    "bullmq": "6.0.9",
     "ioredis": "6.0.0",
     "postgres": "3.4.9"
   }
