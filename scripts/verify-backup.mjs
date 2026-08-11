@@ -15,7 +15,7 @@ for (const [name, expected] of Object.entries(manifest.files)) {
     throw new Error(`Backup integrity mismatch: ${name}`);
 }
 const databaseName = `intenttrace_restore_${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-const docker = ["compose", "-f", "infra/compose.yaml", "exec", "-T", "postgres"];
+const docker = ["compose", "-f", "docker-compose.yml", "exec", "-T", "postgres"];
 try {
   execFileSync("docker", [...docker, "createdb", "-U", "intenttrace", databaseName], {
     stdio: "pipe",

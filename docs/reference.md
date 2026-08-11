@@ -1,7 +1,7 @@
 ---
 status: accepted
 owner: maintainers
-last_reviewed: 2026-08-10
+last_reviewed: 2026-08-11
 normative: true
 milestone: Gate 0-Gate 5
 ---
@@ -39,11 +39,11 @@ The configuration key table and the glossary. The configuration table is validat
 | `NEXT_TELEMETRY_DISABLED`   | empty (vendor default is on)               | not a RuntimeConfig key; image and CI set `1` |
 | `TURBO_TELEMETRY_DISABLED`  | empty (vendor default is on)               | not a RuntimeConfig key; image and CI set `1` |
 
-`PROVIDER_TIMEOUT_MS` is coupled to the Compose `stop_grace_period`: the worker's shutdown budget is `summaryJobBudgetMs(PROVIDER_TIMEOUT_MS)` (that is, `PROVIDER_TIMEOUT_MS + SUMMARY_STATEMENT_TIMEOUT_MS` 30000 ms) plus `SHUTDOWN_POOL_TIMEOUT_SECONDS` (5 s) plus `SHUTDOWN_FORCE_EXIT_DELAY_MS` (1000 ms), all three defined in `apps/worker/src/policy.ts`. At the default 30000 ms the worst case is 66 s, and `stop_grace_period: 75s` in `infra/compose.yaml` covers it. Raising `PROVIDER_TIMEOUT_MS` to the 120000 ms ceiling makes the worst case 156 s, and past 75 s the worker is SIGKILLed midway through draining: a running job leaves a `status='running'` row, which is reclaimed by the five-minute lease, does not corrupt data, but loses one already-billed provider call. **Raising `PROVIDER_TIMEOUT_MS` must raise `stop_grace_period` at the same time**; no script validates this relationship.
+`PROVIDER_TIMEOUT_MS` is coupled to the Compose `stop_grace_period`: the worker's shutdown budget is `summaryJobBudgetMs(PROVIDER_TIMEOUT_MS)` (that is, `PROVIDER_TIMEOUT_MS + SUMMARY_STATEMENT_TIMEOUT_MS` 30000 ms) plus `SHUTDOWN_POOL_TIMEOUT_SECONDS` (5 s) plus `SHUTDOWN_FORCE_EXIT_DELAY_MS` (1000 ms), all three defined in `apps/worker/src/policy.ts`. At the default 30000 ms the worst case is 66 s, and `stop_grace_period: 75s` in `docker-compose.yml` covers it. Raising `PROVIDER_TIMEOUT_MS` to the 120000 ms ceiling makes the worst case 156 s, and past 75 s the worker is SIGKILLed midway through draining: a running job leaves a `status='running'` row, which is reclaimed by the five-minute lease, does not corrupt data, but loses one already-billed provider call. **Raising `PROVIDER_TIMEOUT_MS` must raise `stop_grace_period` at the same time**; no script validates this relationship.
 
 The configuration loader ignores unrelated environment variables but strictly validates known fields; `REDIS_URL` was deleted from the schema along with the queue removal, and the loader no longer accepts that key. `.env.example` may be committed; `.env` and any key are not. The host-run default URLs in the table are only for explicit local process development; by default Compose injects the `postgres:5432` and `api:3001` service addresses and does not publish those ports. Inside a Compose container the API may listen on `0.0.0.0`, but the one web host mapping must be `127.0.0.1`; the two are not the same security boundary.
 
-The last two rows are not part of `RuntimeConfigSchema` and the loader does not read them either: Next.js and Turborepo each enable anonymous build telemetry by default, so `infra/Dockerfile`, `infra/compose.yaml`, and `.github/workflows/ci.yml` set them explicitly to `1`. `pnpm build` is `turbo run build`, so a host build that does not go through Docker still gets the vendor defaults and you must export these two variables yourself; the vendors' own opt-out commands and their working-directory side effects are in [data handling](security.md#data-handling). IntentTrace's own code contains no analytics client, crash reporter, or usage ping.
+The last two rows are not part of `RuntimeConfigSchema` and the loader does not read them either: Next.js and Turborepo each enable anonymous build telemetry by default, so `infra/Dockerfile`, `docker-compose.yml`, and `.github/workflows/ci.yml` set them explicitly to `1`. `pnpm build` is `turbo run build`, so a host build that does not go through Docker still gets the vendor defaults and you must export these two variables yourself; the vendors' own opt-out commands and their working-directory side effects are in [data handling](security.md#data-handling). IntentTrace's own code contains no analytics client, crash reporter, or usage ping.
 
 ## Glossary
 

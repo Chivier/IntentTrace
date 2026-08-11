@@ -6,7 +6,7 @@ function resolveOrigin(): string {
   if (process.env.INTENTTRACE_WEB_ORIGIN) return process.env.INTENTTRACE_WEB_ORIGIN;
   const mapping = execFileSync(
     "docker",
-    ["compose", "-f", "infra/compose.yaml", "port", "web", "3000"],
+    ["compose", "-f", "docker-compose.yml", "port", "web", "3000"],
     { encoding: "utf8" },
   ).trim();
   const port = mapping.split(":").at(-1);

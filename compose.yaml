@@ -1,4 +1,0 @@
-name: intenttrace
-
-include:
-  - path: infra/compose.yaml

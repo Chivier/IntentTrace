@@ -47,7 +47,7 @@ fn checked(mut command: Command, description: &str) -> Result<String, String> {
 }
 
 fn extract_stack(archive_path: &Path, target: &Path) -> Result<(), String> {
-    let marker = target.join(".intenttrace-stack-v1");
+    let marker = target.join(".intenttrace-stack-v2");
     if marker.is_file() {
         return Ok(());
     }
@@ -87,12 +87,12 @@ fn start_stack_blocking(app: tauri::AppHandle) -> Result<StackStatus, String> {
         .path()
         .app_local_data_dir()
         .map_err(|error| error.to_string())?;
-    let stack_dir = data_dir.join("stack-v1");
+    let stack_dir = data_dir.join("stack-v2");
     extract_stack(
         &resource_dir.join("resources/intenttrace-stack.tar.gz"),
         &stack_dir,
     )?;
-    let compose = stack_dir.join("infra/compose.yaml");
+    let compose = stack_dir.join("docker-compose.yml");
     let common = ["compose", "-p", "intenttrace-desktop", "-f"];
     let mut up = Command::new(&docker);
     up.args(common)

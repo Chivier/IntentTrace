@@ -6,6 +6,7 @@ export default tseslint.config(
     ignores: [
       "**/.next/**",
       "**/.turbo/**",
+      "**/.cache/**",
       "**/dist/**",
       "**/node_modules/**",
       "**/.pnpm-store/**",

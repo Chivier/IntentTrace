@@ -10,7 +10,7 @@ const destination = resolve(
     `.intenttrace/backups/${new Date().toISOString().replaceAll(/[:.]/gu, "-")}`,
 );
 await mkdir(destination, { recursive: true, mode: 0o700 });
-const compose = ["compose", "-f", "infra/compose.yaml", "exec", "-T"];
+const compose = ["compose", "-f", "docker-compose.yml", "exec", "-T"];
 const database = execFileSync(
   "docker",
   [...compose, "postgres", "pg_dump", "-U", "intenttrace", "-d", "intenttrace", "-Fc"],

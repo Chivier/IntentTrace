@@ -13,6 +13,7 @@ const includes = [
   "pnpm-workspace.yaml",
   "turbo.json",
   "tsconfig.base.json",
+  "docker-compose.yml",
   "infra",
   "apps/api",
   "apps/web",

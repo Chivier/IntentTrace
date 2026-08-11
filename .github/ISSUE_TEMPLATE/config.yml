@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/chivier/IntentTrace/security/advisories/new
     about: Report vulnerabilities privately; never open a public security issue.
   - name: Support guide
-    url: https://github.com/chivier/IntentTrace/blob/main/SUPPORT.md
+    url: https://github.com/chivier/IntentTrace/blob/main/.github/SUPPORT.md
     about: Read the support and data-sanitization guidance before asking for help.

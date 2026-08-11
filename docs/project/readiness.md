@@ -1,7 +1,7 @@
 ---
 status: current
 owner: maintainers
-last_reviewed: 2026-08-10
+last_reviewed: 2026-08-11
 normative: true
 milestone: Gate 0-Gate 5 与 public repository preparation
 ---
@@ -55,7 +55,7 @@ Risk closed 需要链接测试或环境证据，不能仅以“已有设计”�
 - [x] 根目录包含 GNU AGPL v3.0 官方全文与 `NOTICE`；npm/Cargo manifests 使用 `AGPL-3.0-only`。`private: true` 继续保留，防止 monorepo package 被误发布到 registry。许可证正文来自 GNU 官方 HTTPS 地址，SHA-256 为 `0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0`。
 - [x] README 描述能力、架构、快速开始、安全边界、平台状态、限制、验证命令与贡献入口。
 - [x] README 产品截图来自固定 seed 的 synthetic six-agent fixture；`pnpm screenshots:readme` 会把 trace list 响应过滤到该 fixture，避免本地真实 session 出现在截图。
-- [x] `CONTRIBUTING.md`、DCO、`CODE_OF_CONDUCT.md`、`SECURITY.md`、`SUPPORT.md`、PR 模板与结构化 Issue 模板齐备。
+- [x] `.github/CONTRIBUTING.md`、DCO、`.github/CODE_OF_CONDUCT.md`、`.github/SECURITY.md`、`.github/SUPPORT.md`、PR 模板与结构化 Issue 模板齐备。
 - [x] `CODEOWNERS`、Dependabot（pnpm/Cargo/GitHub Actions/Docker）与 least-privilege CI 已配置。
 - [x] `THIRD_PARTY_NOTICES.md` 记录 Inter OFL 以及 EPL/LGPL/MPL/CC-BY 等分发关注项；生产依赖 inventory 可由 `pnpm licenses list --prod` 重建。
 - [x] `.gitignore` 排除 `.env`、artifact/checkpoint、database-like runtime state、build/test output 与 desktop generated bundle。

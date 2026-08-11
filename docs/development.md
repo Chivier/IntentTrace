@@ -1,7 +1,7 @@
 ---
 status: current
 owner: maintainers
-last_reviewed: 2026-08-10
+last_reviewed: 2026-08-11
 normative: true
 milestone: Gate 0-Gate 5
 ---
@@ -27,21 +27,21 @@ By default the entire stack runs inside Docker, and the command prints the one d
 
 The API and PostgreSQL are connected only through the Compose project-scoped private network (the default project is `intenttrace_default`) and service DNS names; their in-container ports are 3001 and 5432 respectively, and the host has no corresponding listener. The default stack has only `postgres` plus api/worker/web/migrate sharing one application image. Different `-p` projects own independent networks/volumes, which avoids same-name DNS pollution between the desktop shell, the clean acceptance stack, and the development stack. Use an explicit, temporary Compose override only when debugging a host process is genuinely required; a fixed database port must not be added back into the default topology.
 
-Source checks and builds can still run on the host. Back up with `pnpm backup -- <dir>`, and run restore drills with `pnpm backup:verify -- <dir>`. The macOS shell runs `pnpm desktop:prepare`; a real DMG can only be built by running `pnpm desktop:build` on macOS. Run the full AGENTS/CI quality commands before committing.
+Source checks and builds can still run on the host. Back up with `pnpm backup -- <dir>`, and run restore drills with `pnpm backup:verify -- <dir>`. The macOS shell runs `pnpm desktop:prepare`; a real DMG can only be built by running `pnpm desktop:build` on macOS. Run the full local and CI quality gates before committing.
 
 ## Contribution flow
 
-The project uses GNU AGPL v3.0 only (SPDX: `AGPL-3.0-only`) and the Developer Certificate of Origin 1.1; through `git commit -s` a contributor declares the right to submit the contribution under the project license. A branch/commit focuses on one reviewable boundary. For a design decision, write or update an ADR first; for a behavior change, add the contract/fixture first, then implement it; a dependency upgrade is a separate commit and records the license and migration impact. The root `CONTRIBUTING.md` is the full process for external contributors.
+The project uses GNU AGPL v3.0 only (SPDX: `AGPL-3.0-only`) and the Developer Certificate of Origin 1.1; through `git commit -s` a contributor declares the right to submit the contribution under the project license. A branch/commit focuses on one reviewable boundary. For a design decision, write or update an ADR first; for a behavior change, add the contract/fixture first, then implement it; a dependency upgrade is a separate commit and records the license and migration impact. [`.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md) is the full process for external contributors.
 
 A PR description writes implemented, automated verified, environment verified, deferred, and blocked separately. Static checks, mock fixtures, Compose smoke, and real provider/user-environment evidence must not be conflated. A screenshot proves only the interface it shows; it does not prove that the backend semantics are correct.
 
-Security issues go through the root `SECURITY.md`; do not paste keys, real sessions, complete terminal logs, or unanonymized code into an issue/fixture.
+Security issues follow [`.github/SECURITY.md`](../.github/SECURITY.md); do not paste keys, real sessions, complete terminal logs, or unanonymized code into an issue or fixture.
 
 ## Repository guide
 
 `apps/web` is the status page and the Trace Workbench, `apps/api` is the Fastify REST/OTLP/SSE service, `apps/worker` is the asynchronous semantic pipeline, `apps/collector` is the explicit-path CLI, and `apps/desktop` is the Tauri Docker launch shell. Shared packages are layered by dependency direction: schema/config → db/storage/ingest/adapters → summarizer/reducer/layout/ui/fixtures. An app may compose packages; a lower-layer package does not depend on an app.
 
-`docs/design/source` keeps historical inputs only; the `generated/` JSON Schema, OpenAPI, and Drizzle migrations are artifacts that must be committed. `infra` keeps Compose, the multi-stage Dockerfile, and the image lock. Real `.env` files, sessions, artifact volumes, and provider keys are never committed.
+`docs/design/source` keeps historical inputs only; the `generated/` JSON Schema, OpenAPI, and Drizzle migrations are artifacts that must be committed. The root `docker-compose.yml` defines the local stack; `infra` keeps the multi-stage Dockerfile and image lock. Real `.env` files, sessions, artifact volumes, and provider keys are never committed.
 
 When a contract changes, update the code, the tests, the generated artifacts, and the corresponding normative document at the same time. Do not copy prototype HTML/CSS into Next; when rebuilding a component, accessibility and real state are authoritative.
 

@@ -205,7 +205,7 @@ if (
 }
 const imageConsumers = await Promise.all([
   readFile(join(root, "infra", "Dockerfile"), "utf8"),
-  readFile(join(root, "infra", "compose.yaml"), "utf8"),
+  readFile(join(root, "docker-compose.yml"), "utf8"),
   readFile(join(root, ".github", "workflows", "ci.yml"), "utf8"),
 ]);
 for (const image of lockedImages) {
@@ -247,21 +247,26 @@ if (!licenseBytes.toString("utf8").includes("13. Remote Network Interaction")) {
 const communityFiles = [
   "LICENSE",
   "NOTICE",
-  "CODE_OF_CONDUCT.md",
-  "CONTRIBUTING.md",
-  "SECURITY.md",
-  "SUPPORT.md",
   "THIRD_PARTY_NOTICES.md",
   ".github/CODEOWNERS",
+  ".github/CODE_OF_CONDUCT.md",
+  ".github/CONTRIBUTING.md",
+  ".github/SECURITY.md",
+  ".github/SUPPORT.md",
   ".github/dependabot.yml",
   ".github/ISSUE_TEMPLATE/bug_report.yml",
   ".github/ISSUE_TEMPLATE/feature_request.yml",
+  ".github/PULL_REQUEST_TEMPLATE/pull_request_template.md",
 ];
 for (const path of communityFiles) {
+  const absolutePath = join(root, path);
   try {
-    const info = await stat(join(root, path));
+    const info = await stat(absolutePath);
     if (!info.isFile() || info.size < 100)
       failures.push(`Missing substantive community file: ${path}`);
+    if (extname(absolutePath) === ".md") {
+      await checkInternalLinks(await readFile(absolutePath, "utf8"), absolutePath);
+    }
   } catch {
     failures.push(`Missing community file: ${path}`);
   }

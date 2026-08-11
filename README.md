@@ -64,6 +64,8 @@ pnpm docker:url      # current dynamic Web address
 pnpm docker:down     # stop services, keep named volumes
 ```
 
+These commands target the root `docker-compose.yml`; direct Docker Compose commands remain available when needed.
+
 ## Importing traces
 
 Two entry points, one boundary: nothing is read until you hand the bytes over explicitly, and no server-side component ever enumerates a directory.
@@ -141,7 +143,7 @@ Full navigation, including testing, database, product spec and research notes: [
 
 **IntentTrace's own code collects no telemetry.** There is no analytics client, crash reporter or usage ping anywhere in the tree, and IntentTrace itself reports nothing at install, start or run time.
 
-**Its build tools do ship telemetry, enabled by default, and the stack disables it.** `pnpm build` is `turbo run build`, so `NEXT_TELEMETRY_DISABLED=1` and `TURBO_TELEMETRY_DISABLED=1` are set in `infra/Dockerfile`, `infra/compose.yaml` and the CI workflow — the quick start above therefore sends nothing to Vercel. Running `pnpm build`, `pnpm dev` or `pnpm typecheck` on the host instead of through Docker is subject to both vendors' defaults; export the same two variables to opt out there too. See [data handling](docs/security.md#data-handling) for the vendors' own opt-out commands and their caveat.
+**Its build tools do ship telemetry, enabled by default, and the stack disables it.** `pnpm build` is `turbo run build`, so `NEXT_TELEMETRY_DISABLED=1` and `TURBO_TELEMETRY_DISABLED=1` are set in `infra/Dockerfile`, `docker-compose.yml` and the CI workflow — the quick start above therefore sends nothing to Vercel. Running `pnpm build`, `pnpm dev` or `pnpm typecheck` on the host instead of through Docker is subject to both vendors' defaults; export the same two variables to opt out there too. See [data handling](docs/security.md#data-handling) for the vendors' own opt-out commands and their caveat.
 
 **Cloud provider egress is off by default.** `PROVIDER_MODE` defaults to `mock` and `PROVIDER_EGRESS_ENABLED` defaults to `false`, which is also what the test suite runs against.
 
@@ -163,7 +165,7 @@ Strict evidence for what is implemented, verified or blocked: [`docs/project/pro
 
 - **Bug reports and feature requests** — [GitHub Issues](https://github.com/chivier/IntentTrace/issues). Best for: reproducible defects and scoped proposals with an expected-versus-actual description.
 - **Usage questions** — [the support guide](.github/SUPPORT.md). Best for: setup, Docker and import problems that are not defects.
-- **Security reports** — follow the repository security policy and report privately; never open a public issue. Best for: anything that weakens the boundaries described in [security](docs/security.md#threat-model).
+- **Security reports** — follow the [security policy](.github/SECURITY.md) and report privately; never open a public issue. Best for: anything that weakens the boundaries described in [security](docs/security.md#threat-model).
 
 Never paste API keys, real trace payloads, session logs or private source code into a public issue.
 
@@ -171,7 +173,7 @@ Never paste API keys, real trace payloads, session logs or private source code i
 
 Bug reports, documentation improvements, adapter fixtures, accessibility fixes and small pull requests are welcome. A behavioural or contract change must update the schema, migration, OpenAPI, tests and docs together, and model output must never overwrite raw facts. Contributions are offered under the project licence, declared with `git commit -s` (Developer Certificate of Origin 1.1).
 
-Start with [the contribution flow](docs/development.md#contribution-flow) and [the repository guide](docs/development.md#repository-guide); the full external-contributor process is in `CONTRIBUTING.md`. The mandatory local and CI gate sequence is listed in [quality and release process](docs/development.md#quality-and-release-process).
+Start with [the contributor guide](.github/CONTRIBUTING.md), [the contribution flow](docs/development.md#contribution-flow), and [the repository guide](docs/development.md#repository-guide). The mandatory local and CI gate sequence is listed in [quality and release process](docs/development.md#quality-and-release-process).
 
 ## License
 
