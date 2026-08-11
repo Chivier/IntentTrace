@@ -12,7 +12,7 @@ milestone: Gate 5
 
 ## Planned
 
-- 合并 root declutter 变更后，在 GitHub community profile 与 Issue/PR 页面确认 `.github/` 下的 contribution/code-of-conduct/security/support 文件被平台识别；本地文件与文档门禁不能替代该外部验证。
+- 在 GitHub Issue creation 页面确认两份 structured issue forms 的实际选择器体验；community-profile API 的 `issue_template` 字段在健康度 100% 时仍为 `null`，不能用该字段替代页面验证。
 - 取得用户授权的测试 key 后做 OpenAI/DeepSeek canary、usage/cost 与 raw-only 故障验证。
 - 在 macOS 12+ + Docker Desktop 上构建 universal DMG，并用 Apple Developer 身份 codesign/notarize/安装演练；同时实跑验证已加固的 `macos-dmg.yml`（含新增的 codesign/spctl/stapler 校验步骤）。
 - 建立多轮 DB/query/SSE/ELK/browser 原始 benchmark，才能设置性能 SLA。
@@ -87,6 +87,10 @@ milestone: Gate 5
 - 2026-08-05 设计对齐版本经 `docker compose up -d --build` 重建（动态入口随每次重建变化，须重跑 `pnpm docker:url`）；真实 Chromium 1440×900 验证两条既有 trace：单 agent 的 2,584-event Codex trace 渲染 53 个语义节点卡片、窗口化 raw 表仅 36 行 DOM、首个节点卡片约 1.5s 可见、按设计不渲染泳道标记；六 agent 的 2,049-event fixture trace 渲染 43 个卡片与 6 条泳道（orchestrator/research/backend/frontend/summarizer/test 标题与参考线）、360 个有界 Gantt 段，点击 Gantt 段联动选中 raw 行并在检查器渲染该事件的 sanitized payload，`↺` 后 watermark 归零、raw 计数变为 0。SSE pill 显示真实 Connected；检查器六区块与 Edit summary/Pin 均由真实数据驱动（43 provider calls，costUsd 为空时成本块显示 "—" 与 "no summary spend"）。仅本机观测，不作为 SLA。
 - v2 的 75 个 summary jobs 全部 committed；最终 Codex/Claude revision 均为 non-stale final，watermark 2,584/1,015，节点 53/22、generic title 0、claim evidence links 54/23、所有节点均有 artifact。真实 Chromium 在 1440×900 加载全部 2,584/1,015 raw rows并选择 user event，分别渲染 10,398/659 字符的有效 JSON payload，图节点 53/22；单次交互约 542/284ms，仅为本机观测，不作为 SLA。未配置 provider key，未发起付费模型调用。
 - 浏览器会话导入（2026-08-09）：`pnpm docker:up` 在本轮**不可用**——`infra/Dockerfile` 在容器内跑 root `pnpm build`，而 `@intenttrace/desktop` 的 build 是 Tauri bundle preflight，它断言的 `apps/desktop/src-tauri/resources/intenttrace-stack.tar.gz` 由 gitignored 的 `desktop:prepare` 产出且被 `.dockerignore` 显式排除，因此镜像构建必然以 `bundle resource is missing` 失败。这是与本轮改动无关的既有缺口（本轮未触碰 `apps/desktop/` 或 `infra/`），记录在此不作修复。改以等价的宿主栈取证：pinned `postgres:18.4-bookworm`（与 compose 同 digest）与 `redis:8-alpine` 各起一个仅绑定 `127.0.0.1` 的独立容器（`15432`/`16379`，全新 volume），`pnpm db:migrate` 后在宿主运行生产构建的 API（`127.0.0.1:3001`）与 web（`127.0.0.1:3100`）。真实 Chromium 1440×900 在 `/import` 选择 `codex/valid.jsonl` 与 `claude/valid-array.json`：预览关闭时两行分别显示 `codex`/`claude` chip 与 generic title `Codex session`/`Claude session`，开启 `Show prompt previews` 后 claude 行变为 `Claude · Synthetic request` 并显示 `Synthetic request`；导入后 summary 为 `2 imported · 0 duplicates · 0 failed`，两行分别 `+4 / dup 0`、`+3 / dup 0`。重新选择同样两个文件，两行立即带 `already imported` 徽章；再次导入得到 `2 imported · 7 duplicates · 0 failed`（`+0 / dup 4` 与 `+0 / dup 3`）、`traceId` 与首次一致，证明内容哈希 completion marker 幂等。`View trace →` 进入 workbench 渲染 `4 immutable facts` 与 4 行 raw 表。加入 `codex/unsupported.jsonl` 后该行显示 `unsupported_version: Unsupported codex format version: codex-jsonl-v99`、复选框禁用且不计入 `Import 3 sessions`。`/traces` 空态（拦截 API 返回空列表）渲染 `Import from this browser` 主行动与折叠的 `Headless / bulk import (CLI)`，展开后三条命令逐字保留并带 `Copy commands`；820px 视口下 events/duration 列的 computed `display` 为 `none`，1440px 下 grid 为 `674px 88px 96px 92px`。此次取证发现并修复了一个真实缺陷：`listTracesByIds` 的 `t.id = any(${sql.array(ids)})` 让 `uuid` 与 `text[]` 比较，PostgreSQL 报 `operator does not exist: uuid = text` 并使候选检查返回 500，已加 `::uuid[]` 显式转换——mock-repository 单测无法发现该问题。仅本机观测，不作为 SLA。
+
+## External verified
+
+- GitHub community health（2026-08-11，push 后）：remote `main` 为 `51989d815ff5d84212ce5c9093c5d3c9562c2af1`。GitHub community-profile API 返回 `health_percentage: 100`，并分别把 Code of Conduct、contributor guide 与 default PR template 解析到 `.github/CODE_OF_CONDUCT.md`、`.github/CONTRIBUTING.md`、`.github/pull_request_template.md`；后者最初位于多模板 query-parameter 目录，API 返回 `null`，按 GitHub default-template 约定移到单文件路径后即被识别。GitHub contents API 同时从 remote `main` 返回 `.github/SECURITY.md` 与 `.github/SUPPORT.md` 的 canonical HTML URL。该证据证明平台 API 对 community profile/文件路径的识别，不证明尚未实际打开的 Issue form picker 交互。
 
 ## Deferred
 
