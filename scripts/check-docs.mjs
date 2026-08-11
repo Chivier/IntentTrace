@@ -256,7 +256,7 @@ const communityFiles = [
   ".github/dependabot.yml",
   ".github/ISSUE_TEMPLATE/bug_report.yml",
   ".github/ISSUE_TEMPLATE/feature_request.yml",
-  ".github/PULL_REQUEST_TEMPLATE/pull_request_template.md",
+  ".github/pull_request_template.md",
 ];
 for (const path of communityFiles) {
   const absolutePath = join(root, path);
