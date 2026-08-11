@@ -2,6 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "tests/e2e",
+  outputDir: ".cache/playwright/test-results",
   fullyParallel: false,
   reporter: "list",
   use: {

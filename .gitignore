@@ -4,6 +4,7 @@
 !.env.example
 .next/
 .turbo/
+.cache/
 coverage/
 dist/
 node_modules/

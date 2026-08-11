@@ -64,6 +64,8 @@ pnpm docker:url      # 查询当前动态 Web 地址
 pnpm docker:down     # 停止服务，保留 named volumes
 ```
 
+这些命令统一使用根目录的 `docker-compose.yml`；需要时也可以直接运行 Docker Compose 命令。
+
 ## 导入 Trace
 
 两个入口，同一条边界：在你显式交出字节之前不读取任何内容，服务端也从不枚举任何目录。
@@ -141,7 +143,7 @@ Adapters ──► Web loopback proxy ──► API ──► PostgreSQL raw fac
 
 **IntentTrace 自身的代码不采集任何遥测。** 仓库里没有 analytics client、crash reporter 或 usage ping，IntentTrace 本身在安装、启动和运行时都不上报任何内容。
 
-**但它的构建工具默认开启遥测，本栈已将其关闭。** `pnpm build` 就是 `turbo run build`，因此 `infra/Dockerfile`、`infra/compose.yaml` 与 CI workflow 都设置了 `NEXT_TELEMETRY_DISABLED=1` 与 `TURBO_TELEMETRY_DISABLED=1`——上面的快速开始不会向 Vercel 发送任何数据。如果你不经 Docker、直接在宿主上运行 `pnpm build`、`pnpm dev` 或 `pnpm typecheck`，则适用两家厂商各自的默认值；导出同样这两个变量即可。厂商自带的关闭命令及其副作用见[数据处理](docs/security.md#data-handling)。
+**但它的构建工具默认开启遥测，本栈已将其关闭。** `pnpm build` 就是 `turbo run build`，因此 `infra/Dockerfile`、`docker-compose.yml` 与 CI workflow 都设置了 `NEXT_TELEMETRY_DISABLED=1` 与 `TURBO_TELEMETRY_DISABLED=1`——上面的快速开始不会向 Vercel 发送任何数据。如果你不经 Docker、直接在宿主上运行 `pnpm build`、`pnpm dev` 或 `pnpm typecheck`，则适用两家厂商各自的默认值；导出同样这两个变量即可。厂商自带的关闭命令及其副作用见[数据处理](docs/security.md#data-handling)。
 
 **云 provider egress 默认关闭。** `PROVIDER_MODE` 默认 `mock`，`PROVIDER_EGRESS_ENABLED` 默认 `false`，测试也在这套默认值下运行。
 
@@ -163,7 +165,7 @@ Adapters ──► Web loopback proxy ──► API ──► PostgreSQL raw fac
 
 - **Bug 报告与功能请求**——[GitHub Issues](https://github.com/chivier/IntentTrace/issues)。适合：可复现的缺陷，以及带预期/实际描述的小范围提案。
 - **使用问题**——[支持指南](.github/SUPPORT.md)。适合：安装、Docker 与导入等不属于缺陷的问题。
-- **安全报告**——按仓库安全策略私下报告，不要开公开 Issue。适合：任何削弱[安全](docs/security.md#threat-model)所述边界的问题。
+- **安全报告**——按[安全策略](.github/SECURITY.md)私下报告，不要开公开 Issue。适合：任何削弱[安全](docs/security.md#threat-model)所述边界的问题。
 
 不要在公开 Issue 中粘贴 API key、真实 trace payload、session log 或私有源码。
 
@@ -171,7 +173,7 @@ Adapters ──► Web loopback proxy ──► API ──► PostgreSQL raw fac
 
 欢迎 Bug 报告、文档改进、adapter fixture、可访问性修复和小范围 PR。行为或契约变更应同步更新 schema、migration、OpenAPI、测试与文档；模型输出不能直接覆盖 raw facts。提交贡献即表示该贡献按项目许可证提供，并通过 `git commit -s` 声明 Developer Certificate of Origin 1.1。
 
-请先阅读[贡献流程](docs/development.md#contribution-flow)与[仓库指南](docs/development.md#repository-guide)；面向外部贡献者的完整流程在 `CONTRIBUTING.md`。本地与 CI 的强制门禁顺序见[质量与发布过程](docs/development.md#quality-and-release-process)。
+请先阅读[贡献指南](.github/CONTRIBUTING.md)、[贡献流程](docs/development.md#contribution-flow)与[仓库指南](docs/development.md#repository-guide)。本地与 CI 的强制门禁顺序见[质量与发布过程](docs/development.md#quality-and-release-process)。
 
 ## 许可证
 

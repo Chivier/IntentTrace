@@ -1,7 +1,7 @@
 ---
 status: accepted
 owner: platform
-last_reviewed: 2026-08-10
+last_reviewed: 2026-08-11
 normative: true
 milestone: post-Gate 5 runtime slimming
 ---
@@ -18,7 +18,7 @@ milestone: post-Gate 5 runtime slimming
 
 **1. 镜像是 dev build 当 runtime 发。** `infra/Dockerfile` 是单阶段：`COPY . .` 之后 `pnpm install --frozen-lockfile --prod=false && pnpm build`。最终层包含整个 monorepo 源码与全部 dev 依赖（turbo、vitest、playwright、eslint、typescript、tsx、Tauri CLI）。实测镜像 1.18 GB，四个服务 tag 共享同一批 10 层，磁盘占用为一份。
 
-**2. 已经构建好的 standalone 产物被忽略。** `apps/web/next.config.ts` 设了 `output: "standalone"`，构建出 42 MB 的 `.next/standalone`（含裁剪后的 node_modules），但 `infra/compose.yaml` 的 web 命令是 `pnpm --filter @intenttrace/web start`，即 `next start`，走的是 647 MB 完整 `node_modules` 加 559 MB 完整 `.next`。
+**2. 已经构建好的 standalone 产物被忽略。** `apps/web/next.config.ts` 设了 `output: "standalone"`，构建出 42 MB 的 `.next/standalone`（含裁剪后的 node_modules），但当时 `docker-compose.yml` 的 web 命令是 `pnpm --filter @intenttrace/web start`，即 `next start`，走的是 647 MB 完整 `node_modules` 加 559 MB 完整 `.next`。
 
 **3. Redis 是同进程内的空转往返。** `apps/worker/src/main.ts` 每 2 秒调用 `repository.listRunnableSummaryJobIds()` 从 PostgreSQL 取出待办，用 `queue.add()` 写入 Redis，再由同一进程内 `concurrency: 1` 的 BullMQ `Worker` 取回执行。
 
@@ -64,7 +64,7 @@ milestone: post-Gate 5 runtime slimming
 
 Web 的监听方式随之变化：standalone `server.js` 读取 `PORT`（默认 3000）与 `HOSTNAME`（默认 `0.0.0.0`）环境变量，不接受 `--hostname` 参数。Compose 中改用环境变量表达，容器内仍监听 `0.0.0.0`，宿主映射仍只绑定 `127.0.0.1`，ADR 0009 的边界不变。
 
-保留 `compose.yaml` 现有的 `x-app-build` 锚点结构：四个服务共用一个镜像，层继续共享。
+保留 `docker-compose.yml` 现有的 `x-app-build` 锚点结构：四个服务共用一个镜像，层继续共享。
 
 ### 可选收尾
 
@@ -93,7 +93,7 @@ Web 的监听方式随之变化：standalone `server.js` 读取 `PORT`（默认 
 ### 配置与基础设施
 
 - `packages/config/src/index.ts` 删除 `REDIS_URL`，`.env.example` 同步删除。
-- `infra/compose.yaml` 删除 `redis` 服务、`REDIS_URL` 环境变量与 api/worker 的 `depends_on` 条目。
+- `docker-compose.yml` 删除 `redis` 服务、`REDIS_URL` 环境变量与 api/worker 的 `depends_on` 条目。
 - 删除 `infra/Dockerfile.redis`。
 - `infra/images.lock` 从三个 pinned image 减为两个。
 - `.github/workflows/ci.yml` 删除 redis service 容器与 `REDIS_URL` 环境变量。

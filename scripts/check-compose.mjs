@@ -1,10 +1,14 @@
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 
-const result = spawnSync("docker", ["compose", "config", "--format", "json"], {
-  encoding: "utf8",
-  env: { ...process.env, INTENTTRACE_WEB_PORT: "" },
-});
+const result = spawnSync(
+  "docker",
+  ["compose", "-f", "docker-compose.yml", "config", "--format", "json"],
+  {
+    encoding: "utf8",
+    env: { ...process.env, INTENTTRACE_WEB_PORT: "" },
+  },
+);
 
 if (result.error) {
   process.stderr.write(`Unable to run Docker Compose: ${result.error.message}\n`);

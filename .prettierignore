@@ -1,5 +1,6 @@
 .next
 .turbo
+.cache
 dist
 node_modules
 .pnpm-store

@@ -1,7 +1,7 @@
 name: intenttrace
 
 x-app-build: &app-build
-  context: ..
+  context: .
   dockerfile: infra/Dockerfile
 
 x-runtime-environment: &runtime-environment
