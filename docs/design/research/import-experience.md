@@ -84,7 +84,7 @@ intenttrace import --source claude --path ~/.claude/projects \
 
 ### 图形导入器（已实现：`/import`）
 
-本轮实现了浏览器内的导入器，见 ADR [`0013`](../../decisions.md#adr-0013浏览器交付的会话上传)。区别于原计划的 Tauri helper：它不需要本机 helper，因为浏览器的文件/目录选择器本身就是操作者显式交出字节的边界，服务端仍然不枚举任何目录。
+本轮实现了浏览器内的导入器，见 ADR [`0013`](../../decisions.md#adr-0013-browser-delivered-session-upload)。区别于原计划的 Tauri helper：它不需要本机 helper，因为浏览器的文件/目录选择器本身就是操作者显式交出字节的边界，服务端仍然不枚举任何目录。
 
 `/import` 提供拖放、多文件选择与 `webkitdirectory` 目录选择三种入口，按 mtime 倒序（同 mtime 按文件名）排出最多 50 个候选，`name\0size\0lastModified` 上 first-wins 去重，每个文件只读前 64 KiB 交给 `POST /api/v1/imports/candidates`。返回的候选带 source chip、title、project hint、partial-head 标记与 already-imported 徽章；already-imported 由 `listTracesByIds` 一次批量查询得到，正是本文此前记为“该接口本轮未实现”的部分。preview 是显式 consent toggle，默认关闭，打开后重新请求。导入用 2 路并发把原始 `File` 直接 `POST /api/v1/imports/sessions`，逐行失败不影响其他行，失败行可 retry-failed。视图逻辑集中在无 React 依赖的 `apps/web/lib/import/view-model.ts`，组件只保留 rows/phase/query/sourceFilter/hideImported/showPreviews/inspectError 少量状态。
 

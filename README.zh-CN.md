@@ -20,13 +20,13 @@ README 截图——上面的 workbench 和 [trace 列表](docs/assets/trace-list
 
 ## 为什么使用 IntentTrace
 
-- **原始事实不可变**：raw execution events 只追加，不被模型输出覆盖。见[系统不变量](docs/architecture.md#系统不变量)。
-- **语义结论可追溯**：每条 claim 都能回到 raw event 或 artifact evidence。见 [artifact 与 evidence 契约](docs/contracts.md#artifact-与-evidence-契约)。
-- **按当时信息回放**：Graph、Gantt、Raw Events 和 Evidence 共用 ingest watermark。见[数据流](docs/architecture.md#数据流与时序)。
-- **确定性提交边界**：模型只能提出 proposal；Zod 校验与 deterministic reducer 决定是否提交 revision。见 [reducer 契约](docs/contracts.md#reducer-契约)。
-- **多种导入方式**：支持 canonical JSONL、OTLP HTTP JSON/gzip，以及显式选择文件的 Codex/Claude session 导入。见 [adapter 契约](docs/contracts.md#adapter-契约)。
-- **本地优先与故障可降级**：provider 不可用时，raw trace 和 evidence 路径仍然可用。见 [provider outage runbook](docs/operations/runbooks.md#runbookprovider-outage)。
-- **人工修订**：支持 edit、pin、feedback，并保留 immutable revision history。见 [revision 模型](docs/contracts.md#revision-模型)。
+- **原始事实不可变**：raw execution events 只追加，不被模型输出覆盖。见[系统不变量](docs/architecture.md#system-invariants)。
+- **语义结论可追溯**：每条 claim 都能回到 raw event 或 artifact evidence。见 [artifact 与 evidence 契约](docs/contracts.md#artifact-and-evidence-contract)。
+- **按当时信息回放**：Graph、Gantt、Raw Events 和 Evidence 共用 ingest watermark。见[数据流](docs/architecture.md#data-flow-and-ordering)。
+- **确定性提交边界**：模型只能提出 proposal；Zod 校验与 deterministic reducer 决定是否提交 revision。见 [reducer 契约](docs/contracts.md#reducer-contract)。
+- **多种导入方式**：支持 canonical JSONL、OTLP HTTP JSON/gzip，以及显式选择文件的 Codex/Claude session 导入。见 [adapter 契约](docs/contracts.md#adapter-contract)。
+- **本地优先与故障可降级**：provider 不可用时，raw trace 和 evidence 路径仍然可用。见 [provider outage runbook](docs/operations/runbooks.md#runbook-provider-outage)。
+- **人工修订**：支持 edit、pin、feedback，并保留 immutable revision history。见 [revision 模型](docs/contracts.md#revision-model)。
 
 ## 快速开始
 
@@ -85,7 +85,7 @@ pnpm --filter @intenttrace/collector dev import \
   --session "paste-24-character-catalog-id" --api "$WEB_ORIGIN"
 ```
 
-两条路径在发送第一条 raw fact 前都完成同一套全文件 adapter/Zod preflight，在 adapter 层删除同样的内容（Codex `reasoning` 与 `encrypted_content` block、Claude `thinking` 与 `redacted_thinking` block、系统 instruction，以及内部 world-state 与 file-history snapshot），并派生同一个 content-hash completion marker，因此同一文件的浏览器导入与 CLI 导入互为幂等。opaque catalog ID 机制、`O_NOFOLLOW` preflight、默认 64 MiB 单文件上限与 `--max-file-mib`、`--api` 只允许 loopback 的限制、批量参数（`--newest`、`--max-files`、`--concurrency`、`--dry-run`）以及 `--include-previews` 同意开关，详见[导入体验调研](docs/design/research/import-experience.md#intenttrace-目标体验)与[数据处理](docs/security.md#数据处理)。
+两条路径在发送第一条 raw fact 前都完成同一套全文件 adapter/Zod preflight，在 adapter 层删除同样的内容（Codex `reasoning` 与 `encrypted_content` block、Claude `thinking` 与 `redacted_thinking` block、系统 instruction，以及内部 world-state 与 file-history snapshot），并派生同一个 content-hash completion marker，因此同一文件的浏览器导入与 CLI 导入互为幂等。opaque catalog ID 机制、`O_NOFOLLOW` preflight、默认 64 MiB 单文件上限与 `--max-file-mib`、`--api` 只允许 loopback 的限制、批量参数（`--newest`、`--max-files`、`--concurrency`、`--dry-run`）以及 `--include-previews` 同意开关，详见[导入体验调研](docs/design/research/import-experience.md#intenttrace-目标体验)与[数据处理](docs/security.md#data-handling)。
 
 ## 架构概览
 
@@ -116,7 +116,7 @@ Adapters ──► Web loopback proxy ──► API ──► PostgreSQL raw fac
 4. provider 只返回 proposal；deterministic reducer 校验并提交。
 5. 系统不重建、存储或展示隐藏 chain-of-thought。
 
-详细设计见[架构总览](docs/architecture.md#架构总览)、[数据流与时序](docs/architecture.md#数据流与时序)与 [ADR 索引](docs/decisions.md#adr-索引)。
+详细设计见[架构总览](docs/architecture.md#architecture-overview)、[数据流与时序](docs/architecture.md#data-flow-and-ordering)与 [ADR 索引](docs/decisions.md#adr-index)。
 
 ## 文档
 
@@ -135,19 +135,19 @@ Adapters ──► Web loopback proxy ──► API ──► PostgreSQL raw fac
 完整导航（含测试、数据库、产品规格与调研文档）见 [`docs/README.md`](docs/README.md)。
 
 > [!NOTE]
-> `docs/` 目前只有中文。README 是当前唯一的英文入口；翻译整个文档树是待办的后续工作。
+> `docs/` 已是英文，`docs/project/` 下的项目记录与 `docs/design/` 下的设计与调研文档除外，它们仍是中文。
 
 ## 遥测与数据出网
 
 **IntentTrace 自身的代码不采集任何遥测。** 仓库里没有 analytics client、crash reporter 或 usage ping，IntentTrace 本身在安装、启动和运行时都不上报任何内容。
 
-**但它的构建工具默认开启遥测，本栈已将其关闭。** `pnpm build` 就是 `turbo run build`，因此 `infra/Dockerfile`、`infra/compose.yaml` 与 CI workflow 都设置了 `NEXT_TELEMETRY_DISABLED=1` 与 `TURBO_TELEMETRY_DISABLED=1`——上面的快速开始不会向 Vercel 发送任何数据。如果你不经 Docker、直接在宿主上运行 `pnpm build`、`pnpm dev` 或 `pnpm typecheck`，则适用两家厂商各自的默认值；导出同样这两个变量即可。厂商自带的关闭命令及其副作用见[数据处理](docs/security.md#数据处理)。
+**但它的构建工具默认开启遥测，本栈已将其关闭。** `pnpm build` 就是 `turbo run build`，因此 `infra/Dockerfile`、`infra/compose.yaml` 与 CI workflow 都设置了 `NEXT_TELEMETRY_DISABLED=1` 与 `TURBO_TELEMETRY_DISABLED=1`——上面的快速开始不会向 Vercel 发送任何数据。如果你不经 Docker、直接在宿主上运行 `pnpm build`、`pnpm dev` 或 `pnpm typecheck`，则适用两家厂商各自的默认值；导出同样这两个变量即可。厂商自带的关闭命令及其副作用见[数据处理](docs/security.md#data-handling)。
 
 **云 provider egress 默认关闭。** `PROVIDER_MODE` 默认 `mock`，`PROVIDER_EGRESS_ENABLED` 默认 `false`，测试也在这套默认值下运行。
 
 选择 `PROVIDER_MODE=openai` 或 `PROVIDER_MODE=deepseek` 时，除非下列条件同时满足，配置加载会直接失败：`PROVIDER_EGRESS_ENABLED=true`、正的 `PROVIDER_DAILY_BUDGET_USD`（默认 `0`）、API key、明确的 model，以及 host 恰为 `api.openai.com` 或 `api.deepseek.com` 的 base URL。只有这样，worker 才可以发送 deterministic event sketch——按 `PROVIDER_MAX_EVENTS` 截断（默认 `256`）并经 redaction，受 `PROVIDER_TIMEOUT_MS` 超时约束（默认 `30000`）。源码正文、完整文档、终端全文、环境变量、凭证与绝对用户路径永远不发送；provider response 永远是 untrusted input；timeout、429、预算耗尽或坏 JSON 都回落到 raw-only 路径，而不是换一个 provider。prompt 与 response 正文不落库，只保存 model、hash、token 数、成本与 redaction report。
 
-完整边界见[安全](docs/security.md#provider-egress-policy)；每个配置键及其默认值见[参考](docs/reference.md#配置参考)。
+完整边界见[安全](docs/security.md#provider-egress-policy)；每个配置键及其默认值见[参考](docs/reference.md#configuration-reference)。
 
 ## 当前限制
 
@@ -163,7 +163,7 @@ Adapters ──► Web loopback proxy ──► API ──► PostgreSQL raw fac
 
 - **Bug 报告与功能请求**——[GitHub Issues](https://github.com/chivier/IntentTrace/issues)。适合：可复现的缺陷，以及带预期/实际描述的小范围提案。
 - **使用问题**——[支持指南](.github/SUPPORT.md)。适合：安装、Docker 与导入等不属于缺陷的问题。
-- **安全报告**——按仓库安全策略私下报告，不要开公开 Issue。适合：任何削弱[安全](docs/security.md#威胁模型)所述边界的问题。
+- **安全报告**——按仓库安全策略私下报告，不要开公开 Issue。适合：任何削弱[安全](docs/security.md#threat-model)所述边界的问题。
 
 不要在公开 Issue 中粘贴 API key、真实 trace payload、session log 或私有源码。
 
@@ -171,7 +171,7 @@ Adapters ──► Web loopback proxy ──► API ──► PostgreSQL raw fac
 
 欢迎 Bug 报告、文档改进、adapter fixture、可访问性修复和小范围 PR。行为或契约变更应同步更新 schema、migration、OpenAPI、测试与文档；模型输出不能直接覆盖 raw facts。提交贡献即表示该贡献按项目许可证提供，并通过 `git commit -s` 声明 Developer Certificate of Origin 1.1。
 
-请先阅读[贡献流程](docs/development.md#贡献流程)与[仓库指南](docs/development.md#仓库指南)；面向外部贡献者的完整流程在 `CONTRIBUTING.md`。本地与 CI 的强制门禁顺序见[质量与发布过程](docs/development.md#质量与发布过程)。
+请先阅读[贡献流程](docs/development.md#contribution-flow)与[仓库指南](docs/development.md#repository-guide)；面向外部贡献者的完整流程在 `CONTRIBUTING.md`。本地与 CI 的强制门禁顺序见[质量与发布过程](docs/development.md#quality-and-release-process)。
 
 ## 许可证
 

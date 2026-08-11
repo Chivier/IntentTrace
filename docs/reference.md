@@ -6,59 +6,59 @@ normative: true
 milestone: Gate 0-Gate 5
 ---
 
-# 参考
+# Reference
 
-配置键表与术语表。配置表由 `scripts/check-docs.mjs` 对 `packages/config/src/index.ts` 逐键校验，新增配置键必须同时更新这里。
+The configuration key table and the glossary. The configuration table is validated key by key against `packages/config/src/index.ts` by `scripts/check-docs.mjs`; a new configuration key must update this file at the same time.
 
-## 配置参考
+## Configuration reference
 
-| 变量                        | 默认值                                     | 约束/用途                               |
-| --------------------------- | ------------------------------------------ | --------------------------------------- |
-| `NODE_ENV`                  | `development`                              | development/test/production             |
-| `LOG_LEVEL`                 | `info`                                     | Pino level，敏感 header redacted        |
-| `APP_VERSION`               | `0.0.0`                                    | `/version` build version                |
-| `GIT_COMMIT`                | `development`                              | `/version` provenance                   |
-| `API_HOST`                  | `127.0.0.1`                                | 宿主开发不可改公网                      |
-| `API_PORT`                  | `3001`                                     | 1–65535                                 |
-| `DATABASE_URL`              | `postgres://…@127.0.0.1:15432/intenttrace` | PostgreSQL URL                          |
-| `ARTIFACT_ROOT`             | `.intenttrace/artifacts`                   | resolve 为绝对本地路径                  |
-| `IMPORT_UPLOAD_MAX_BYTES`   | `67108864`                                 | 64 KiB–512 MiB；浏览器上传上限          |
-| `PROVIDER_MODE`             | `mock`                                     | `mock`、`openai` 或 `deepseek`          |
-| `PROVIDER_EGRESS_ENABLED`   | `false`                                    | cloud mode 必须显式 true                |
-| `PROVIDER_DAILY_BUDGET_USD` | `0`                                        | cloud mode 必须为正                     |
-| `PROVIDER_TIMEOUT_MS`       | `30000`                                    | 1000–120000                             |
-| `PROVIDER_MAX_EVENTS`       | `256`                                      | egress event-sketch 上限                |
-| `OPENAI_API_KEY`            | 未设置                                     | 仅 openai mode 必需，不记录             |
-| `OPENAI_MODEL`              | 未设置                                     | 必须明确；示例 `gpt-5.6-sol`            |
-| `OPENAI_BASE_URL`           | `https://api.openai.com/v1`                | host 必须为 `api.openai.com`            |
-| `DEEPSEEK_API_KEY`          | 未设置                                     | 仅 deepseek mode 必需                   |
-| `DEEPSEEK_MODEL`            | 未设置                                     | 示例 `deepseek-v4-flash`                |
-| `DEEPSEEK_BASE_URL`         | `https://api.deepseek.com`                 | host 必须为 `api.deepseek.com`          |
-| `INTENTTRACE_API_ORIGIN`    | `http://127.0.0.1:3001`                    | web server-side health proxy            |
-| `INTENTTRACE_WEB_PORT`      | 空                                         | Compose 专用；空则自动分配端口          |
-| `NEXT_TELEMETRY_DISABLED`   | 空（厂商默认开启）                         | 非 RuntimeConfig 键；镜像与 CI 设为 `1` |
-| `TURBO_TELEMETRY_DISABLED`  | 空（厂商默认开启）                         | 非 RuntimeConfig 键；镜像与 CI 设为 `1` |
+| Variable                    | Default                                    | Constraint/purpose                            |
+| --------------------------- | ------------------------------------------ | --------------------------------------------- |
+| `NODE_ENV`                  | `development`                              | development/test/production                   |
+| `LOG_LEVEL`                 | `info`                                     | Pino level; sensitive headers redacted        |
+| `APP_VERSION`               | `0.0.0`                                    | `/version` build version                      |
+| `GIT_COMMIT`                | `development`                              | `/version` provenance                         |
+| `API_HOST`                  | `127.0.0.1`                                | host development must not change it to public |
+| `API_PORT`                  | `3001`                                     | 1–65535                                       |
+| `DATABASE_URL`              | `postgres://…@127.0.0.1:15432/intenttrace` | PostgreSQL URL                                |
+| `ARTIFACT_ROOT`             | `.intenttrace/artifacts`                   | resolved to an absolute local path            |
+| `IMPORT_UPLOAD_MAX_BYTES`   | `67108864`                                 | 64 KiB–512 MiB; browser upload cap            |
+| `PROVIDER_MODE`             | `mock`                                     | `mock`, `openai`, or `deepseek`               |
+| `PROVIDER_EGRESS_ENABLED`   | `false`                                    | cloud mode must set it explicitly to true     |
+| `PROVIDER_DAILY_BUDGET_USD` | `0`                                        | cloud mode must make it positive              |
+| `PROVIDER_TIMEOUT_MS`       | `30000`                                    | 1000–120000                                   |
+| `PROVIDER_MAX_EVENTS`       | `256`                                      | egress event-sketch cap                       |
+| `OPENAI_API_KEY`            | unset                                      | required only in openai mode; not logged      |
+| `OPENAI_MODEL`              | unset                                      | must be explicit; example `gpt-5.6-sol`       |
+| `OPENAI_BASE_URL`           | `https://api.openai.com/v1`                | host must be `api.openai.com`                 |
+| `DEEPSEEK_API_KEY`          | unset                                      | required only in deepseek mode                |
+| `DEEPSEEK_MODEL`            | unset                                      | example `deepseek-v4-flash`                   |
+| `DEEPSEEK_BASE_URL`         | `https://api.deepseek.com`                 | host must be `api.deepseek.com`               |
+| `INTENTTRACE_API_ORIGIN`    | `http://127.0.0.1:3001`                    | web server-side health proxy                  |
+| `INTENTTRACE_WEB_PORT`      | empty                                      | Compose only; empty auto-assigns the port     |
+| `NEXT_TELEMETRY_DISABLED`   | empty (vendor default is on)               | not a RuntimeConfig key; image and CI set `1` |
+| `TURBO_TELEMETRY_DISABLED`  | empty (vendor default is on)               | not a RuntimeConfig key; image and CI set `1` |
 
-`PROVIDER_TIMEOUT_MS` 与 Compose `stop_grace_period` 耦合：worker 的关机预算是 `summaryJobBudgetMs(PROVIDER_TIMEOUT_MS)`（即 `PROVIDER_TIMEOUT_MS + SUMMARY_STATEMENT_TIMEOUT_MS` 30000 ms）加 `SHUTDOWN_POOL_TIMEOUT_SECONDS`（5 s）加 `SHUTDOWN_FORCE_EXIT_DELAY_MS`（1000 ms），三者都定义在 `apps/worker/src/policy.ts`。默认 30000 ms 下最坏情况是 66 s，`infra/compose.yaml` 的 `stop_grace_period: 75s` 覆盖它。把 `PROVIDER_TIMEOUT_MS` 提高到上限 120000 ms 会让最坏情况变成 156 s，超过 75 s 后 worker 在排空中途被 SIGKILL：正在跑的作业留下 `status='running'` 行，由五分钟租约回收，不损坏数据但会丢一次已计费的 provider 调用。**提高 `PROVIDER_TIMEOUT_MS` 必须同步提高 `stop_grace_period`**；没有脚本校验这条关系。
+`PROVIDER_TIMEOUT_MS` is coupled to the Compose `stop_grace_period`: the worker's shutdown budget is `summaryJobBudgetMs(PROVIDER_TIMEOUT_MS)` (that is, `PROVIDER_TIMEOUT_MS + SUMMARY_STATEMENT_TIMEOUT_MS` 30000 ms) plus `SHUTDOWN_POOL_TIMEOUT_SECONDS` (5 s) plus `SHUTDOWN_FORCE_EXIT_DELAY_MS` (1000 ms), all three defined in `apps/worker/src/policy.ts`. At the default 30000 ms the worst case is 66 s, and `stop_grace_period: 75s` in `infra/compose.yaml` covers it. Raising `PROVIDER_TIMEOUT_MS` to the 120000 ms ceiling makes the worst case 156 s, and past 75 s the worker is SIGKILLed midway through draining: a running job leaves a `status='running'` row, which is reclaimed by the five-minute lease, does not corrupt data, but loses one already-billed provider call. **Raising `PROVIDER_TIMEOUT_MS` must raise `stop_grace_period` at the same time**; no script validates this relationship.
 
-配置 loader 忽略无关环境变量但严格校验已知字段；`REDIS_URL` 已随队列移除从 schema 中删除，loader 不再接受该键。`.env.example` 可提交，`.env` 与任何 key 不提交。表中的 host-run 默认 URL 只用于显式的本地进程开发；默认 Compose 会注入 `postgres:5432` 与 `api:3001` 服务地址且不发布这些端口。Compose 容器内部 API 可监听 `0.0.0.0`，但唯一 Web 宿主映射必须是 `127.0.0.1`；二者不是同一安全边界。
+The configuration loader ignores unrelated environment variables but strictly validates known fields; `REDIS_URL` was deleted from the schema along with the queue removal, and the loader no longer accepts that key. `.env.example` may be committed; `.env` and any key are not. The host-run default URLs in the table are only for explicit local process development; by default Compose injects the `postgres:5432` and `api:3001` service addresses and does not publish those ports. Inside a Compose container the API may listen on `0.0.0.0`, but the one web host mapping must be `127.0.0.1`; the two are not the same security boundary.
 
-最后两行不属于 `RuntimeConfigSchema`，loader 也不读取它们：Next.js 与 Turborepo 各自默认开启匿名构建遥测，`infra/Dockerfile`、`infra/compose.yaml` 与 `.github/workflows/ci.yml` 因此显式设为 `1`。`pnpm build` 是 `turbo run build`，所以不经 Docker 的宿主构建仍适用厂商默认值，需要自行导出这两个变量；厂商自带的关闭命令及其工作目录副作用见[数据处理](security.md#数据处理)。IntentTrace 自身的代码不含 analytics client、crash reporter 或 usage ping。
+The last two rows are not part of `RuntimeConfigSchema` and the loader does not read them either: Next.js and Turborepo each enable anonymous build telemetry by default, so `infra/Dockerfile`, `infra/compose.yaml`, and `.github/workflows/ci.yml` set them explicitly to `1`. `pnpm build` is `turbo run build`, so a host build that does not go through Docker still gets the vendor defaults and you must export these two variables yourself; the vendors' own opt-out commands and their working-directory side effects are in [data handling](security.md#data-handling). IntentTrace's own code contains no analytics client, crash reporter, or usage ping.
 
 ## Glossary
 
-- **ETG (Execution Trace Graph)**：不可变 raw execution facts 与 lineage。
-- **EIG (Evidence-backed Intent Graph)**：从 ETG 派生、可版本化并逐 claim 证据支撑的语义图。
-- **RawTraceEvent**：规范化、版本化的事实 envelope；正文以 hash/ref 保存。
-- **logical ID / version ID**：跨 revision 稳定身份 / 单次 immutable 内容版本。
-- **revision**：在一个 event watermark 上的 node/edge membership 快照。
-- **watermark**：该视图已纳入的最大 `ingestSeq`；不是 source time。
-- **event sketch**：机械压缩、redacted、面向 provider 的最小输入。
-- **patch**：provider 提议的显式 graph operations；不是已提交语义。
-- **reducer**：确定性验证、canonicalize 并 transaction commit patch 的组件。
-- **evidence**：claim 到 raw event/artifact 的可审计引用。
-- **ghost state**：chunk pending 的确定性 UI 状态，不含未验证模型输出。
-- **ArtifactStore**：`put/stat/getRange/deleteTrace` 的大对象边界。
-- **source identity**：adapter 来源中用于幂等的 session/event 组合。
-- **outbox**：与业务写入同事务持久化、用于 SSE/queue 发布的事件记录。
-- **raw-only**：semantic pipeline 不可用时仍能浏览已入库事实的降级模式。
+- **ETG (Execution Trace Graph)**: immutable raw execution facts and lineage.
+- **EIG (Evidence-backed Intent Graph)**: the semantic graph derived from the ETG, versionable and evidence-backed claim by claim.
+- **RawTraceEvent**: the normalized, versioned fact envelope; the body is kept as a hash/ref.
+- **logical ID / version ID**: identity stable across revisions / a single immutable content version.
+- **revision**: a snapshot of node/edge membership at one event watermark.
+- **watermark**: the largest `ingestSeq` this view has taken in; not source time.
+- **event sketch**: the mechanically compressed, redacted, provider-facing minimal input.
+- **patch**: the explicit graph operations a provider proposes; not committed semantics.
+- **reducer**: the component that deterministically validates, canonicalizes, and transaction-commits a patch.
+- **evidence**: an auditable reference from a claim to a raw event/artifact.
+- **ghost state**: the deterministic UI state while a chunk is pending; contains no unverified model output.
+- **ArtifactStore**: the large-object boundary of `put/stat/getRange/deleteTrace`.
+- **source identity**: the session/event combination used for idempotency in an adapter source.
+- **outbox**: the event record persisted in the same transaction as the business write, used for SSE/queue publication.
+- **raw-only**: the degraded mode that can still browse ingested facts when the semantic pipeline is unavailable.

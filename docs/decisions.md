@@ -3,186 +3,186 @@ status: current
 owner: maintainers
 last_reviewed: 2026-08-10
 normative: true
-milestone: Gate 0-Gate 5 与 post-Gate 5
+milestone: Gate 0-Gate 5 and post-Gate 5
 ---
 
-# 决策记录（ADR）
+# Decisions
 
-本文收录全部 14 条 ADR，逐条保留原文的决定文本与自身状态行；ADR 一旦 Accepted 就不再改写结论，替代关系由新 ADR 声明。文末的 [ADR 索引](#adr-索引) 给出按主题的快速导航与当前 supersede 关系。
+This document collects all 14 ADRs, preserving each one's original decision text and its own status line; once an ADR is Accepted its conclusions are no longer rewritten, and a supersession is declared by a new ADR. The [ADR index](#adr-index) at the end of the document gives quick navigation by topic and the current supersede relationships.
 
-## ADR 0001：ETG 与 EIG 分层
+## ADR 0001: ETG and EIG layering
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：Execution Trace Graph 保存不可变观察事实；Evidence-backed Intent Graph 是可重建、可版本化、逐 claim 链回 ETG 的解释层。原因是可理解性不能污染保真数据。代价是双层存储与 revision 管理；收益是 provider 变化、人工修订和重新计算不会改写执行历史。
+Decision: the Execution Trace Graph holds immutable observed facts; the Evidence-backed Intent Graph is a rebuildable, versionable interpretation layer that chains every claim back to the ETG. The reason is that comprehensibility must not contaminate fidelity data. The cost is two-layer storage and revision management; the benefit is that provider changes, human revisions and recomputation do not rewrite execution history.
 
-## ADR 0002：契约事实源
+## ADR 0002: Contract source of truth
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：Zod 是领域/API schema 唯一源，Drizzle 与已提交 migration 是持久化事实源；JSON Schema/OpenAPI 必须由代码生成并通过 drift 检查。Accepted ADR 解释无法由类型表达的规则。历史 JSON Schema 不直接参与运行时校验，避免手写副本分叉。
+Decision: Zod is the single source for domain/API schemas, and Drizzle plus committed migrations are the persistence source of truth; JSON Schema/OpenAPI must be generated from code and pass a drift check. Accepted ADRs explain the rules that types cannot express. Historical JSON Schema does not take part in runtime validation directly, which avoids hand-written copies diverging.
 
-## ADR 0003：不可变 revision 与 watermark
+## ADR 0003: Immutable revisions and watermarks
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：logical ID 与 version ID 分离；revision 保存 parent、`live|final|human` branch 和 event watermark，通过 membership 表复用版本。Replay 使用 ingest/revision commit watermark 表示当时已知，source time 只决定时间轴位置。迟到 event 使 final stale，并以新 final 纠正，不覆写历史。
+Decision: logical IDs and version IDs are separate; a revision stores its parent, a `live|final|human` branch and an event watermark, and reuses versions through the membership table. Replay uses the ingest/revision commit watermark to represent what was known at the time, and source time only determines the position on the timeline. A late event makes a final stale and is corrected by a new final, without overwriting history.
 
-## ADR 0004：确定性 reducer
+## ADR 0004: Deterministic reducer
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：provider 仅提交带 schema version、nonce、base revision、tmp refs 和显式 operation 的 patch。Reducer 校验 schema、allowlist、evidence、artifact/agent refs、cycle、status、dedupe、pin、方向和 confidence 后提交。相同输入必须产生相同结果；坏输出不得以 proposed node 泄露到正式图。
+Decision: the provider submits only patches carrying a schema version, nonce, base revision, tmp refs and explicit operations. The reducer commits after validating schema, allowlist, evidence, artifact/agent refs, cycle, status, dedupe, pin, direction and confidence. The same input must produce the same result; bad output must not leak into the official graph as proposed nodes.
 
-## ADR 0005：内容寻址 ArtifactStore
+## ADR 0005: Content-addressed ArtifactStore
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：大对象使用 SHA-256 内容寻址，默认存在本地 named volume。公共接口固定 `put`、`stat`、`getRange`、`deleteTrace`，后续可加 S3 adapter。MinIO 因分发与维护状态不作为默认依赖。数据库只保留 hash、长度、media type 与 ref；删除以 trace 为隔离单位。
+Decision: large objects use SHA-256 content addressing and are stored by default in a local named volume. The public interface is fixed at `put`, `stat`, `getRange` and `deleteTrace`, and an S3 adapter can be added later. MinIO is not a default dependency because of its distribution and maintenance status. The database keeps only hash, length, media type and ref; deletion is isolated per trace.
 
-## ADR 0006：PostgreSQL 幂等与 outbox
+## ADR 0006: PostgreSQL idempotency and outbox
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：BullMQ 按 at-least-once 使用，正确性由 PostgreSQL input hash、base revision 与唯一约束保证。raw insert/command、revision/job result、SSE event 分别与其业务写入同事务。Redis 丢失可以重建投递；数据库提交前不得 ack。
+Decision: BullMQ is used at-least-once, and correctness is guaranteed by PostgreSQL input hash, base revision and unique constraints. Raw insert/command, revision/job result and SSE event each share a transaction with their business write. Losing Redis allows delivery to be rebuilt; nothing may be acked before the database commits.
 
-## ADR 0007：REST 快照与 durable SSE
+## ADR 0007: REST snapshots and durable SSE
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：MVP 用 `/api/v1` REST 读写和 SSE 增量，不引入 WebSocket。OTLP 保留标准 `POST /v1/traces`。SSE ID 来自持久 outbox，支持 `Last-Event-ID` 和 `?cursor=`；早于保留窗口的 cursor 先发 `resync.required` 再补最早可用事件。生成 OpenAPI只列真实 route。
+Decision: the MVP uses `/api/v1` REST for reads and writes and SSE for increments, without introducing WebSocket. OTLP keeps the standard `POST /v1/traces`. SSE IDs come from the durable outbox and support `Last-Event-ID` and `?cursor=`; a cursor older than the retention window first emits `resync.required` and then backfills from the earliest available event. The generated OpenAPI lists only real routes.
 
-## ADR 0008：pnpm TypeScript monorepo
+## ADR 0008: pnpm TypeScript monorepo
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：用 pnpm workspace + Turbo 管理 Next web、Fastify API、BullMQ worker、Collector 和共享 packages。版本精确锁定，CI frozen lockfile。边界包分别承载 schema、config、db、storage、ingest、adapter、summarizer、reducer、layout、UI 与 fixtures，禁止跨层复制契约。
+Decision: pnpm workspace + Turbo manage the Next web, Fastify API, BullMQ worker, Collector and shared packages. Versions are pinned exactly, and CI uses a frozen lockfile. The boundary packages carry schema, config, db, storage, ingest, adapter, summarizer, reducer, layout, UI and fixtures respectively, and copying contracts across layers is forbidden.
 
-## ADR 0009：本地单用户与 loopback
+## ADR 0009: Local single-user and loopback
 
-_状态：accepted · owner：security · last_reviewed：2026-08-03 · milestone：Gate 0_
+_Status: accepted · owner: security · last_reviewed: 2026-08-03 · milestone: Gate 0_
 
-决定：首发无 auth/RBAC/tenant。默认 Compose 仅将 Web 发布到 Docker 自动分配的 `127.0.0.1` 端口；API、PostgreSQL 与 Redis 只在私有 bridge 内可达。显式固定 Web 端口仍只能绑定 loopback。这是部署边界，不等于输入可信：仍需 XSS、路径、prompt injection 和 secret redaction 防护。任何公网或 LAN 暴露都必须先新增认证、CSRF/CORS、租户隔离和威胁模型。
+Decision: the first release has no auth/RBAC/tenant. The default Compose publishes only the web on a `127.0.0.1` port automatically assigned by Docker; the API, PostgreSQL and Redis are reachable only inside the private bridge. Explicitly fixing the web port still binds to loopback only. This is a deployment boundary, and does not mean input is trusted: XSS, path, prompt injection and secret redaction protections are still required. Any public-internet or LAN exposure must first add authentication, CSRF/CORS, tenant isolation and a threat model.
 
-## ADR 0010：provider egress 安全门
+## ADR 0010: Provider egress safety gate
 
-_状态：accepted · owner：security · last_reviewed：2026-08-01 · milestone：Gate 0_
+_Status: accepted · owner: security · last_reviewed: 2026-08-01 · milestone: Gate 0_
 
-决定：默认强制 `PROVIDER_MODE=mock`、`PROVIDER_EGRESS_ENABLED=false`。真实 provider 只有 egress、allowlisted host、key、明确 model 和正预算同时满足才启用；发送前做 redaction/event cap，返回后做本地 schema/reducer。不自动 fallback；timeout、429、预算或坏 JSON 退化 raw-only，不阻塞 ingestion。
+Decision: `PROVIDER_MODE=mock` and `PROVIDER_EGRESS_ENABLED=false` are enforced by default. A real provider is enabled only when egress, an allowlisted host, a key, an explicit model and a positive budget are all satisfied at once; redaction/event cap happen before sending, and local schema/reducer after the response. There is no automatic fallback; timeout, 429, budget or bad JSON degrade to raw-only and do not block ingestion.
 
-## ADR 0011：独立 Collector
+## ADR 0011: Standalone Collector
 
-_状态：superseded · owner：security · last_reviewed：2026-08-06 · milestone：Gate 0_
+_Status: superseded · owner: security · last_reviewed: 2026-08-06 · milestone: Gate 0_
 
-决定：API 不读取宿主机目录。Collector CLI 只处理 `--path` 显式授权，绝不扫描 home，默认拒绝 symlink 边界；checkpoint 记录 realpath、file identity、offset 和 prefix hash，以识别 append/rotation/truncation。实现对显式 file 或显式 directory 的一层 regular files 做 import；follow 只允许 Codex/Claude 单文件。
+Decision: the API does not read host directories. The Collector CLI handles only what `--path` explicitly authorizes, never scans home, and rejects symlink boundaries by default; the checkpoint records realpath, file identity, offset and prefix hash in order to recognize append/rotation/truncation. The implementation imports an explicit file, or one level of regular files under an explicit directory; follow is allowed only for a single Codex/Claude file.
 
-状态：独立 Collector、显式授权、API 不扫描宿主目录和 symlink 拒绝结论继续有效；“一层 regular files/直接 import”实现限制由 [`0012`](#adr-0012显式授权根内的两阶段会话导入) 的递归、两阶段 guided import 替代。
+Status: the conclusions on a standalone Collector, explicit authorization, the API not scanning host directories, and symlink rejection remain in force; the "one level of regular files / direct import" implementation limit is replaced by the recursive, two-phase guided import of [`0012`](#adr-0012-two-phase-session-import-inside-explicitly-authorized-roots).
 
-## ADR 0012：显式授权根内的两阶段会话导入
+## ADR 0012: Two-phase session import inside explicitly authorized roots
 
-_状态：accepted · owner：ingestion · last_reviewed：2026-08-06 · milestone：post-Gate 5 import UX_
+_Status: accepted · owner: ingestion · last_reviewed: 2026-08-06 · milestone: post-Gate 5 import UX_
 
-### 背景
+### Context
 
-ADR 0011 建立了不可突破的权限边界：API 不读取宿主目录，Collector 只处理操作者显式命名的 path。后续实际使用发现，仅把目录中的文件批量导入或用 `--dry-run` 列文件名不足以支持数百个 Codex/Claude session：操作者无法在发送 raw facts 前判断会话是否可读、属于哪个项目、何时活跃，也无法稳定选择少数会话。文件末尾损坏时，边解析边发送还可能留下半导入 trace。
+ADR 0011 established a permission boundary that cannot be broken through: the API does not read host directories, and the Collector handles only paths the operator names explicitly. Later real use showed that bulk-importing the files in a directory, or listing file names with `--dry-run`, is not enough to support hundreds of Codex/Claude sessions: the operator cannot tell, before raw facts are sent, whether a session is readable, which project it belongs to, or when it was active, and cannot reliably select a few sessions. When the tail of a file is corrupt, parsing and sending at the same time can also leave a half-imported trace.
 
-对 Paseo 的 provider-session import 研究表明，成熟导入流程应拆成轻量 listing 与 selected import 两阶段，并以稳定 handle、bounded descriptor、失败隔离和明确 empty/error 状态连接 CLI/UI。详细来源与差异分析见 [`design/research/import-experience.md`](design/research/import-experience.md)。
+Research into Paseo's provider-session import shows that a mature import flow should be split into two phases, a lightweight listing and a selected import, and should connect CLI/UI through stable handles, bounded descriptors, failure isolation and explicit empty/error states. For detailed sources and a difference analysis see [`design/research/import-experience.md`](design/research/import-experience.md).
 
-### 决定
+### Decision
 
-1. **权限边界不变**：API/worker/Web server 不扫描宿主文件系统；Collector 不自动读取 home。Collector 的 ingestion origin 在 local MVP 只允许 `localhost`、IPv4 `127.0.0.0/8` 或 IPv6 `::1`，防止误配置把 raw session 发往远端。每次 discovery/import 必须有操作者显式命名的 regular file 或 directory root，每层拒绝 symlink。
-2. **两阶段协议**：
-   - `discover` 在授权根内生成 versioned `SessionCatalog`，不联系 API、不写 checkpoint、不发送 raw facts；
-   - `import --session <opaque-id>` 可重复指定 catalog ID，只导入被选择的 candidate，不以 native path/session ID 作为公开选择器，也不在 import 时重新执行内容搜索。
-3. **catalog 最小披露**：默认 descriptor 只包含 opaque ID、source、generic title、project basename hint、activity/mtime、byte/event/warning counts；绝对路径、根内相对路径、文件名和 native session ID 不进入 stdout。只有 `--include-previews` 明确 opt-in 后才输出 bounded visible first/last prompt preview 与内容标题；hidden reasoning/thinking 永不进入 catalog。
-4. **stale selection fail-visible**：opaque ID 绑定 source、授权 root、root-relative placement、size、mtime 和 file identity 的本地选择上下文。候选变化后旧 ID 不匹配，必须刷新 catalog；禁止旧 preview 静默指向变化后的文件。
-5. **完整 preflight**：每个文件必须在发送第一条 raw fact 前完成 adapter parse、隐私 omission 和 Zod validation。 malformed/unsupported/visible-event-empty candidate 发送 0 events；同批其他文件继续。stat/realpath/race/越界 candidate 计入 `rejectedFiles` 并让命令非零退出，不能静默消失。API 在单文件发送过程中失败仍可能留下前缀 raw facts，这些是不可覆盖的已观察事实，重试依靠 source identity 幂等补齐。
-6. **有界资源**：先以最多 32 并发读取 metadata，对全部 candidate 排序并裁剪 limit，再只检查 recent/selected window；discovery 只保留 descriptor，import 按 bounded concurrency 逐文件 preflight→send，内存上界由 concurrency 与单文件大小决定，不由目录总文件数决定。单文件默认上限 64 MiB，可用 `--max-file-mib` 显式调整，超限 candidate 在读取前失败。
-7. **契约来源**：`SessionCatalogSchema`、`SessionImportOutcomeSchema` 与 `SessionImportSummarySchema` 位于 `packages/schema`，生成 JSON Schema；catalog、逐会话成功结果和聚合 summary 在写 stdout 前必须通过 schema。未来 Tauri/Web picker 只能消费该 catalog/progress 协议，不得绕过 Collector 让 API 扫目录。
-8. **兼容性**：现有无 `--session` 批量 import、`--max-files`、`--newest`、`--concurrency`、`--dry-run` 和单文件 `follow` 保留。`dry-run` 升级为完整 preflight catalog，但默认不输出 prompt preview。
+1. **The permission boundary is unchanged**: the API/worker/web server do not scan the host filesystem; the Collector does not read home automatically. In the local MVP the Collector's ingestion origin allows only `localhost`, IPv4 `127.0.0.0/8` or IPv6 `::1`, which prevents a misconfiguration from sending raw sessions to a remote host. Every discovery/import must have a regular file or directory root that the operator names explicitly, and symlinks are rejected at every level.
+2. **Two-phase protocol**:
+   - `discover` generates a versioned `SessionCatalog` inside the authorized root, without contacting the API, writing a checkpoint, or sending raw facts;
+   - `import --session <opaque-id>` can be given catalog IDs repeatedly, imports only the selected candidates, does not use a native path/session ID as a public selector, and does not re-run a content search at import time.
+3. **Minimal catalog disclosure**: by default a descriptor contains only the opaque ID, source, generic title, project basename hint, activity/mtime, and byte/event/warning counts; absolute paths, root-relative paths, file names and native session IDs do not reach stdout. Only after an explicit `--include-previews` opt-in are a bounded visible first/last prompt preview and the content title emitted; hidden reasoning/thinking never enters the catalog.
+4. **Stale selection fails visibly**: an opaque ID binds a local selection context of source, authorized root, root-relative placement, size, mtime and file identity. Once the candidates change the old ID no longer matches and the catalog must be refreshed; an old preview must never silently point at a changed file.
+5. **Full preflight**: every file must complete adapter parse, privacy omission and Zod validation before the first raw fact is sent. A malformed/unsupported/visible-event-empty candidate sends 0 events; the other files in the same batch continue. A stat/realpath/race/out-of-bounds candidate is counted into `rejectedFiles` and makes the command exit non-zero, and must not disappear silently. If the API fails partway through sending a single file, a prefix of raw facts may still be left behind; those are observed facts that cannot be overwritten, and a retry relies on source identity idempotency to fill in the rest.
+6. **Bounded resources**: metadata is read first with at most 32-way concurrency, all candidates are sorted and trimmed to the limit, and only the recent/selected window is then inspected; discovery keeps descriptors only, import runs preflight→send file by file at bounded concurrency, and the memory ceiling is determined by concurrency and single-file size, not by the total number of files in the directory. The per-file default cap is 64 MiB, adjustable explicitly with `--max-file-mib`, and a candidate over the cap fails before it is read.
+7. **Contract source**: `SessionCatalogSchema`, `SessionImportOutcomeSchema` and `SessionImportSummarySchema` live in `packages/schema` and generate JSON Schema; the catalog, the per-session success results and the aggregate summary must pass the schema before being written to stdout. A future Tauri/web picker may only consume this catalog/progress protocol, and must not bypass the Collector to let the API scan directories.
+8. **Compatibility**: the existing bulk import without `--session`, together with `--max-files`, `--newest`, `--concurrency`, `--dry-run` and single-file `follow`, are retained. `dry-run` is upgraded to a full preflight catalog, but does not emit prompt previews by default.
 
-### 后果
+### Consequences
 
-优点：导入前可验证、可选择、可脚本化；坏文件不会产生 adapter-level 半导入；stdout 默认不泄露 home path/native ID/prompt；未来图形 picker 有稳定契约。代价：discovery 会读取并解析 limit 内候选，较纯 `stat` 慢；catalog ID 是本地授权根作用域内的短期 selector，不是持久 domain identity；单文件 API 发送仍不是跨事件原子事务。
+Benefits: import is verifiable, selectable and scriptable beforehand; a bad file does not produce an adapter-level half import; stdout does not leak home path/native ID/prompt by default; a future graphical picker has a stable contract. Costs: discovery reads and parses the candidates within the limit, which is slower than pure `stat`; a catalog ID is a short-lived selector scoped to the local authorized root, not a durable domain identity; sending a single file to the API is still not an atomic transaction across events.
 
-ADR 0012 替代 ADR 0011 中“一层 regular files/只有直接 import”的实现限制，但不替代其独立 Collector、显式授权、API 不读宿主目录和 symlink 拒绝结论。
+ADR 0012 replaces the "one level of regular files / direct import only" implementation limit in ADR 0011, but does not replace its conclusions on a standalone Collector, explicit authorization, the API not reading host directories, and symlink rejection.
 
-## ADR 0013：浏览器交付的会话上传
+## ADR 0013: Browser-delivered session upload
 
-_状态：accepted · owner：ingestion · last_reviewed：2026-08-09 · milestone：post-Gate 5 import UX_
+_Status: accepted · owner: ingestion · last_reviewed: 2026-08-09 · milestone: post-Gate 5 import UX_
 
-### 背景
+### Context
 
-ADR 0012 建立的两阶段 guided import 只有 CLI 入口。Web UI 的整个导入界面是 `/traces` 空状态里一段不可复制的 `<pre>` 命令清单，操作者必须离开浏览器、拼出授权根路径、再回来刷新。同时四个 adapter 中有三个只接受行分隔 JSONL，一份整文档 `.json` session 会以 `MalformedAdapterInputError` 被拒绝。
+The two-phase guided import established by ADR 0012 has a CLI entry point only. The web UI's entire import surface is a non-copyable `<pre>` list of commands in the `/traces` empty state, so the operator has to leave the browser, put together the authorized root path, and come back and refresh. At the same time three of the four adapters accept only line-delimited JSONL, so a whole-document `.json` session is rejected with `MalformedAdapterInputError`.
 
-关键区分：**操作者在浏览器里显式选择并交出的字节，不是宿主目录扫描。** 文件选择器由用户代理拥有，网页只能拿到用户主动交出的 `File`。这条边界与 ADR 0012 §1 的"API 不扫描宿主文件系统"完全兼容。
+The key distinction: **bytes the operator explicitly selects and hands over in the browser are not a host directory scan.** The file picker is owned by the user agent, and a web page can only obtain the `File` a user actively hands over. This boundary is fully compatible with "the API does not scan the host filesystem" in ADR 0012 §1.
 
-### 决定
+### Decision
 
-1. **权限边界不变**：API 仍然不枚举任何目录。新增的两条路由只处理请求体里已经到达的字节，不接受路径参数，不做任何文件系统读取。ADR 0012 §1 与 §7 继续成立；服务端目录选择器仍然被禁止。
-2. **共享 preflight 核心**：`packages/adapters/src/session.ts` 的 `prepareSessionBytes` 是 CLI 与上传路径唯一的解析入口——先完整 parse + Zod validate，再由调用方发出第一条 raw fact。Collector 的 `prepareSession` 保留 fs 半边（size gate、`O_NOFOLLOW`、读前读后 identity/size/mtime 复核）后委托给它。
-3. **同一 trace 身份**：`buildCompletionMarker` 由文件 SHA-256 而非传输方式派生 `trace_complete` 的 `sourceEventId`。CLI 导入过的文件在浏览器重传得到 `inserted: 0`、相同 `traceId`；反向亦然。两条路径互为幂等。
-4. **预览是 opt-in**：`POST /api/v1/imports/candidates` 默认返回 generic title 与 `null` preview，只有 `includePreviews: true` 才返回内容标题和 bounded first/last prompt preview，上限 160 字符，与 catalog 的 `--include-previews` 同一实现（`redactCatalogEntry`）。hidden reasoning/thinking 永不进入 candidate。
-5. **有界 head 检查**：候选检查只读每个文件前 64 KiB，单请求最多 50 个候选，不完整 head 在最后一个换行处截断。检查路由不写任何东西，只发一次数据库查询（`listTracesByIds`）判断是否已导入。
-6. **上传上限是配置项**：`IMPORT_UPLOAD_MAX_BYTES` 默认 64 MiB，与 collector 的 `DEFAULT_MAX_FILE_MIB` 一致。超限由 Fastify 的 `FST_ERR_CTP_BODY_TOO_LARGE` 映射为 413 `payload_too_large`，媒体类型不符映射为 415 `unsupported_media_type`——这两个此前都会错误地变成 500。
-7. **容器 JSON**：`readSessionRecords` 在既有 JSONL 解析之上追加顶层数组与单个 pretty-printed 对象两个分支。JSONL 输入走第一分支，`line`/`bytes` 逐字节不变，已导入 trace 的 fallback `sourceEventId` 因此保持稳定。只有此前会抛错的输入才会到达容器分支；仍然无法解析时重新抛出原始 `parseJsonLines` 错误，collector 的 `preflight_failed` 脱敏路径不受影响。
-8. **文件名只用于 sourceIdentity**：`safeIdentifier(basename(fileName))` 与 collector 从磁盘 basename 派生的值相同，因此同一文件的浏览器导入和 CLI 导入落在同一 project。文件名不进入 descriptor，也不回显到 catalog 输出。
+1. **The permission boundary is unchanged**: the API still does not enumerate any directory. The two new routes handle only the bytes that have already arrived in the request body, accept no path parameter, and perform no filesystem read. ADR 0012 §1 and §7 continue to hold; a server-side directory picker is still forbidden.
+2. **Shared preflight core**: `prepareSessionBytes` in `packages/adapters/src/session.ts` is the only parsing entry point for both the CLI and the upload path — a full parse + Zod validate first, and only then does the caller emit the first raw fact. The Collector's `prepareSession` keeps the fs half (size gate, `O_NOFOLLOW`, identity/size/mtime recheck before and after the read) and then delegates to it.
+3. **The same trace identity**: `buildCompletionMarker` derives the `sourceEventId` of `trace_complete` from the file's SHA-256 rather than from the transport. A file already imported by the CLI, re-uploaded in the browser, yields `inserted: 0` and the same `traceId`; the reverse holds too. The two paths are mutually idempotent.
+4. **Previews are opt-in**: `POST /api/v1/imports/candidates` returns a generic title and `null` previews by default, and only `includePreviews: true` returns the content title and a bounded first/last prompt preview, capped at 160 characters, sharing one implementation (`redactCatalogEntry`) with the catalog's `--include-previews`. Hidden reasoning/thinking never enters a candidate.
+5. **Bounded head inspection**: candidate inspection reads only the first 64 KiB of each file, at most 50 candidates per request, and an incomplete head is truncated at the last newline. The inspection route writes nothing, and issues a single database query (`listTracesByIds`) to decide whether something is already imported.
+6. **The upload cap is a configuration key**: `IMPORT_UPLOAD_MAX_BYTES` defaults to 64 MiB, matching the collector's `DEFAULT_MAX_FILE_MIB`. Exceeding it is mapped by Fastify's `FST_ERR_CTP_BODY_TOO_LARGE` to 413 `payload_too_large`, and a mismatched media type is mapped to 415 `unsupported_media_type` — both of which previously turned incorrectly into 500.
+7. **Container JSON**: `readSessionRecords` adds two branches, a top-level array and a single pretty-printed object, on top of the existing JSONL parsing. JSONL input takes the first branch, `line`/`bytes` are unchanged byte for byte, and the fallback `sourceEventId` of already-imported traces therefore stays stable. Only input that previously threw reaches the container branches; when it still cannot be parsed the original `parseJsonLines` error is rethrown, so the collector's `preflight_failed` redaction path is unaffected.
+8. **The file name is used only for sourceIdentity**: `safeIdentifier(basename(fileName))` produces the same value the collector derives from the on-disk basename, so a browser import and a CLI import of the same file land in the same project. The file name does not enter the descriptor, and is not echoed into catalog output.
 
-### 后果
+### Consequences
 
-优点：不装 CLI 也能导入；同一文件两条路径身份一致；413/415 变成真实语义；`.json` session 不再被拒。代价：上传字节在浏览器 `File`、Next `arrayBuffer()` 和 Fastify `Buffer` 三处完整驻留内存，这是 loopback 单用户 MVP 的可接受取舍，也是上限做成配置键而非常量的原因；head 检查对超过 64 KiB 且没有换行的整文档 JSON 会报 `preflight_failed`，但该候选仍可导入，因为上传路径在完整字节上重新检测。
+Benefits: import works without installing the CLI; the same file has the same identity on both paths; 413/415 gain real semantics; `.json` sessions are no longer rejected. Costs: the uploaded bytes reside fully in memory in three places — the browser `File`, Next's `arrayBuffer()` and Fastify's `Buffer` — which is an acceptable trade-off for a loopback single-user MVP, and is also why the cap is a configuration key rather than a constant; head inspection reports `preflight_failed` for a whole-document JSON larger than 64 KiB with no newline, but that candidate is still importable, because the upload path re-detects on the full bytes.
 
-本 ADR 不替代 ADR 0012；它在同一权限边界内新增一个由操作者交付字节的入口。
+This ADR does not replace ADR 0012; it adds, within the same permission boundary, one more entry point where the operator delivers the bytes.
 
-## ADR 0014：PostgreSQL 单源作业调度
+## ADR 0014: PostgreSQL single-source job scheduling
 
-_状态：accepted · owner：architecture · last_reviewed：2026-08-10 · milestone：post-Gate 5 runtime slimming_
+_Status: accepted · owner: architecture · last_reviewed: 2026-08-10 · milestone: post-Gate 5 runtime slimming_
 
-### 背景
+### Context
 
-Gate 3 起，summary 作业的分发写成了「PostgreSQL 出队 → Redis 入队 → 同进程取回」的往返：`apps/worker/src/main.ts` 每 2 秒调用 `listRunnableSummaryJobIds()` 从 PostgreSQL 取出待办 ID，用 `queue.add()` 写进 Redis，再由同一进程内 `concurrency: 1` 的 BullMQ `Worker` 取回执行。队列两端都在同一个进程里。
+Since Gate 3, summary job dispatch has been written as a "dequeue from PostgreSQL → enqueue into Redis → fetch back in the same process" round trip: every 2 seconds `apps/worker/src/main.ts` calls `listRunnableSummaryJobIds()` to take the pending IDs out of PostgreSQL, writes them into Redis with `queue.add()`, and a BullMQ `Worker` with `concurrency: 1` inside the same process takes them back and runs them. Both ends of the queue are in the same process.
 
-复核这条链路时确认：**重试、退避与崩溃恢复完全不经过 BullMQ**。
+Reviewing this chain confirmed: **retry, backoff and crash recovery do not go through BullMQ at all**.
 
-- `failSummaryJob` 把作业置为 `status='failed'` 并设 `next_attempt_at = now() + 5s`；reducer 拒绝的 patch 与预算/provider 拒绝走 `retry=false`，置为 `status='cancelled'`、`next_attempt_at = null`，是取消而不是重试。
-- `listRunnableSummaryJobIds` 的查询同时捞取 `next_attempt_at` 到期的 `pending`/`failed` 作业，以及 `status='running'` 且 `updated_at` 超过 5 分钟的作业——后者就是被杀死 worker 的收割器。`claimSummaryJob` 用同一组条件做带条件的原子 `UPDATE`，并递增 `attempt_count`。
-- BullMQ 侧从未配置 `attempts`（默认 1 次），且 `removeOnComplete`/`removeOnFail` 均为 `true`，因此它既不重试也不保留死信。
+- `failSummaryJob` sets a job to `status='failed'` and sets `next_attempt_at = now() + 5s`; a patch rejected by the reducer and a budget/provider rejection take `retry=false` and are set to `status='cancelled'` with `next_attempt_at = null`, which is a cancellation rather than a retry.
+- The query in `listRunnableSummaryJobIds` picks up both `pending`/`failed` jobs whose `next_attempt_at` is due and jobs with `status='running'` whose `updated_at` is older than 5 minutes — the latter is exactly the reaper for killed workers. `claimSummaryJob` performs a conditional atomic `UPDATE` with the same set of conditions, and increments `attempt_count`.
+- The BullMQ side never configured `attempts` (1 by default), and both `removeOnComplete` and `removeOnFail` are `true`, so it neither retries nor keeps dead letters.
 
-换言之，队列层没有承担任何正确性或可用性职责，它只是把一个进程内的函数调用绕成了一次网络往返，代价是第三个运行时依赖、第三个 pinned 镜像与随之而来的第六个 Compose 服务、一个 native addon（经 `bullmq` → `msgpackr` 引入的 `msgpackr-extract`）、一个配置键、一个健康维度和一段威胁面。完整证据与实施范围见[运行时瘦身与队列移除设计](design/research/slim-runtime-and-queue-removal.md)。
+In other words, the queue layer carried no correctness or availability responsibility; it merely detoured an in-process function call into a network round trip, at the cost of a third runtime dependency, a third pinned image and the sixth Compose service that came with it, a native addon (`msgpackr-extract`, pulled in via `bullmq` → `msgpackr`), a configuration key, a health dimension and a stretch of threat surface. For the full evidence and implementation scope see [the runtime slimming and queue removal design](design/research/slim-runtime-and-queue-removal.md).
 
-### 决定
+### Decision
 
-1. **PostgreSQL `summary_jobs` 是唯一的分发来源。** 不存在第二个投递媒介，作业状态机、退避与租约收割都由该表表达；`claimSummaryJob` 的条件 `UPDATE` 是唯一的领取权威。
-2. **调度是进程内串行 runner。** `apps/worker/src/runner.ts` 的 `createSummaryRunner().runDueJobs()` 顺序处理当轮全部到期作业，`apps/worker/src/main.ts` 以 `SUMMARY_POLL_INTERVAL_MS`（2000 ms）轮询驱动，并用 in-flight 门跳过上一轮尚未跑完的 tick。并发保持 1，与被移除的 BullMQ `concurrency: 1` 一致。轮询延迟仍是最多 2 秒，与移除前相同，不是回退。
-3. **崩溃恢复由租约而非队列承担。** worker 被杀死留下的 `running` 行在五分钟后被重新选中；退避重试由 `next_attempt_at` 驱动。这两条在移除前就已经是唯一生效的路径。
-4. **`/readyz` 的依赖集缩小为 `{ postgres }`。** 这是一次**已发布响应契约的变更**，体现在生成的 [OpenAPI](contracts/api/openapi.yaml) 中。不保留 `redis: "skipped"` 占位：生成的契约只暴露真实存在的依赖，长期返回一个不存在的依赖项是不诚实的描述。当前消费者只有本仓库内的 Web 状态页与 Compose `api` healthcheck，且两者都只判断状态码，不读取 `dependencies` 结构。
-5. **默认栈只有两个镜像。** `postgres` 与一个应用镜像；api/worker/web/migrate 四个服务共用该镜像的同一批层，加上 `postgres` 共五个 Compose 服务（`migrate` 为一次性）。`infra/images.lock` 相应地只固定两个 digest-pinned image。
-6. **PostgreSQL 作业领取仍是正确性权威。** input hash、base revision、job nonce、唯一约束与单事务提交没有任何改动，因此 ADR 0006 关于幂等与 outbox 的结论原样成立，并且在移除一个 at-least-once 中间层之后更强。
+1. **PostgreSQL `summary_jobs` is the only source of dispatch.** There is no second delivery medium; the job state machine, backoff and lease reaping are all expressed by that table; the conditional `UPDATE` in `claimSummaryJob` is the only claiming authority.
+2. **Scheduling is an in-process serial runner.** `createSummaryRunner().runDueJobs()` in `apps/worker/src/runner.ts` processes all of the current round's due jobs in order, `apps/worker/src/main.ts` drives it by polling at `SUMMARY_POLL_INTERVAL_MS` (2000 ms), and an in-flight gate skips a tick while the previous round is still running. Concurrency stays at 1, matching the removed BullMQ `concurrency: 1`. Polling latency is still at most 2 seconds, the same as before the removal, and is not a regression.
+3. **Crash recovery is carried by leases rather than by a queue.** A `running` row left behind by a killed worker is selected again after five minutes; backoff retries are driven by `next_attempt_at`. Both of these were already the only paths in effect before the removal.
+4. **The dependency set of `/readyz` shrinks to `{ postgres }`.** This is a **change to a published response contract**, reflected in the generated [OpenAPI](contracts/api/openapi.yaml). No `redis: "skipped"` placeholder is kept: the generated contract exposes only the dependencies that really exist, and returning a nonexistent dependency indefinitely is a dishonest description. The only current consumers are the web status page and the Compose `api` healthcheck inside this repository, and both only check the status code and do not read the `dependencies` structure.
+5. **The default stack has only two images.** `postgres` and one application image; the four services api/worker/web/migrate share the same set of layers of that image, and together with `postgres` that is five Compose services (`migrate` is one-shot). `infra/images.lock` correspondingly pins only two digest-pinned images.
+6. **PostgreSQL job claiming is still the correctness authority.** Input hash, base revision, job nonce, unique constraints and single-transaction commit are unchanged, so ADR 0006's conclusions on idempotency and the outbox hold as they are, and are stronger after an at-least-once intermediate layer has been removed.
 
-### Superseded 范围
+### Superseded scope
 
-本 ADR **只** supersede 以下三处与队列传输相关的条款，三个 ADR 的其余结论全部继续有效：
+This ADR supersedes **only** the following three queue-transport-related clauses; all the other conclusions of the three ADRs continue to hold:
 
-| ADR                                                              | 被 supersede 的条款                                        | 继续成立的部分                                                                                                                                    |
-| ---------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`0006`](#adr-0006postgresql-幂等与-outbox) transactional outbox | 「BullMQ 按 at-least-once 使用」「Redis 丢失可以重建投递」 | PostgreSQL input hash / base revision / 唯一约束保证正确性；raw insert、revision/job result、SSE event 各自与业务写入同事务；数据库提交前不得 ack |
-| [`0008`](#adr-0008pnpm-typescript-monorepo) TypeScript monorepo  | 组成清单中的「BullMQ worker」                              | pnpm workspace + Turbo 布局、精确版本锁定、frozen lockfile、边界包分层与禁止跨层复制契约                                                          |
-| [`0009`](#adr-0009本地单用户与-loopback) loopback 单用户         | 「Redis 只在私有 bridge 内可达」                           | 首发无 auth/RBAC/tenant；只有 Web 发布到 `127.0.0.1`；API 与 PostgreSQL 无宿主端口；任何公网/LAN 暴露都必须先新增认证与威胁模型                   |
+| ADR                                                                        | Superseded clause                                                           | What continues to hold                                                                                                                                                                                                               |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| [`0006`](#adr-0006-postgresql-idempotency-and-outbox) transactional outbox | "BullMQ is used at-least-once" "Losing Redis allows delivery to be rebuilt" | PostgreSQL input hash / base revision / unique constraints guarantee correctness; raw insert, revision/job result and SSE event each share a transaction with their business write; nothing may be acked before the database commits |
+| [`0008`](#adr-0008-pnpm-typescript-monorepo) TypeScript monorepo           | "BullMQ worker" in the composition list                                     | the pnpm workspace + Turbo layout, exact version pinning, frozen lockfile, boundary-package layering and the ban on copying contracts across layers                                                                                  |
+| [`0009`](#adr-0009-local-single-user-and-loopback) loopback single-user    | "Redis is reachable only inside the private bridge"                         | no auth/RBAC/tenant at first release; only the web is published to `127.0.0.1`; the API and PostgreSQL have no host port; any public-internet/LAN exposure must first add authentication and a threat model                          |
 
-三个原 ADR 的正文不修改，符合「一旦 Accepted 不改写结论」的仓库规则。
+The bodies of the three original ADRs are not modified, which conforms to the repository rule that "once Accepted, conclusions are not rewritten".
 
-### 后果
+### Consequences
 
-优点：外部运行时依赖从三个减到两个；分发链路少一次网络往返与一个 native addon；`/readyz` 与 OpenAPI 只描述真实存在的依赖；排障面收敛到一张可用 SQL 直接查询的表（见 [Runbook：Summary 作业队列](operations/runbooks.md#runbooksummary-作业队列)）。
+Benefits: external runtime dependencies drop from three to two; the dispatch chain loses one network round trip and one native addon; `/readyz` and OpenAPI describe only the dependencies that really exist; the troubleshooting surface converges onto a single table that can be queried directly with SQL (see [Runbook: Summary job queue](operations/runbooks.md#runbook-summary-job-queue)).
 
-代价：**不再提供跨主机 worker 水平扩展的现成路径。** 移除队列后 worker 与 API 只能靠共享数据库协调，仓库不再随栈提供任何分布式投递组件。ADR 0009 已经把首发定为单主机单用户，因此这是与既有边界一致的 YAGNI 取舍，而不是新的技术限制：`claimSummaryJob` 是带条件的原子 `UPDATE`，`summary_jobs` 本就支持多消费者，将来确需扩展时可以直接多进程（乃至多主机连同一个 PostgreSQL）竞争同一张表，或重新引入队列并新建 ADR。
+Costs: **there is no longer a ready-made path for horizontally scaling workers across hosts.** After the queue is removed the worker and the API can only coordinate through the shared database, and the repository no longer ships any distributed delivery component with the stack. ADR 0009 already fixed the first release as single-host single-user, so this is a YAGNI trade-off consistent with the existing boundary rather than a new technical limitation: `claimSummaryJob` is a conditional atomic `UPDATE`, `summary_jobs` already supports multiple consumers, and when scaling really is needed later, multiple processes (or even multiple hosts connected to the same PostgreSQL) can contend for the same table directly, or a queue can be reintroduced with a new ADR.
 
-`/readyz` 契约变更对仓库外消费者是破坏性的；当前没有仓库外消费者，风险局限在本仓库内。
+The `/readyz` contract change is breaking for consumers outside the repository; there are currently no consumers outside the repository, so the risk is confined to this repository.
 
-## ADR 索引
+## ADR index
 
-_状态：current · owner：architecture · last_reviewed：2026-08-10 · milestone：Gate 0_
+_Status: current · owner: architecture · last_reviewed: 2026-08-10 · milestone: Gate 0_
 
-Accepted：[`0001`](#adr-0001etg-与-eig-分层) 双图、[`0002`](#adr-0002契约事实源) 契约事实源、[`0003`](#adr-0003不可变-revision-与-watermark) revision、[`0004`](#adr-0004确定性-reducer) reducer、[`0005`](#adr-0005内容寻址-artifactstore) artifact、[`0006`](#adr-0006postgresql-幂等与-outbox) outbox、[`0007`](#adr-0007rest-快照与-durable-sse) REST/SSE、[`0008`](#adr-0008pnpm-typescript-monorepo) monorepo、[`0009`](#adr-0009本地单用户与-loopback) loopback、[`0010`](#adr-0010provider-egress-安全门) provider gate、[`0012`](#adr-0012显式授权根内的两阶段会话导入) 两阶段 guided import、[`0013`](#adr-0013浏览器交付的会话上传) 浏览器交付的会话上传、[`0014`](#adr-0014postgresql-单源作业调度) PostgreSQL 单源作业调度。ADR 0011 的权限边界由 0012 保留，其旧的一层文件实现限制已 superseded。ADR 0014 只 supersede 0006、0008、0009 中与队列传输相关的条款；0006 的 PostgreSQL 幂等/outbox 结论与 0009 的 loopback 边界继续成立。
+Accepted: [`0001`](#adr-0001-etg-and-eig-layering) dual graphs, [`0002`](#adr-0002-contract-source-of-truth) contract source of truth, [`0003`](#adr-0003-immutable-revisions-and-watermarks) revisions, [`0004`](#adr-0004-deterministic-reducer) reducer, [`0005`](#adr-0005-content-addressed-artifactstore) artifacts, [`0006`](#adr-0006-postgresql-idempotency-and-outbox) outbox, [`0007`](#adr-0007-rest-snapshots-and-durable-sse) REST/SSE, [`0008`](#adr-0008-pnpm-typescript-monorepo) monorepo, [`0009`](#adr-0009-local-single-user-and-loopback) loopback, [`0010`](#adr-0010-provider-egress-safety-gate) provider gate, [`0012`](#adr-0012-two-phase-session-import-inside-explicitly-authorized-roots) two-phase guided import, [`0013`](#adr-0013-browser-delivered-session-upload) browser-delivered session upload, [`0014`](#adr-0014-postgresql-single-source-job-scheduling) PostgreSQL single-source job scheduling. The permission boundary of ADR 0011 is retained by 0012, and its old one-level file implementation limit has been superseded. ADR 0014 supersedes only the queue-transport-related clauses in 0006, 0008 and 0009; 0006's PostgreSQL idempotency/outbox conclusions and 0009's loopback boundary continue to hold.
 
-ADR 一旦 Accepted 不改写结论；替代时新建 ADR 并标记 superseded。Draft 接口不进入实际 OpenAPI。
+Once an ADR is Accepted its conclusions are not rewritten; a replacement creates a new ADR and marks the old one superseded. Draft interfaces do not enter the actual OpenAPI.
