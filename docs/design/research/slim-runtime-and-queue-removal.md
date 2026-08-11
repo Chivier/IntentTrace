@@ -8,7 +8,7 @@ milestone: post-Gate 5 runtime slimming
 
 # 运行时瘦身与队列移除设计
 
-> 本设计已实施完成，结论由 [ADR 0014](../../decisions.md#adr-0014postgresql-单源作业调度) 承载。**本文件整体是改造前写下的设计记录**：全部八节——背景、目标与非目标、设计 A、设计 B、门禁影响清单、验证、风险与取舍、明确不做——记录的都是改造前的系统状态与当时的实施计划，没有任何一节描述当前系统。当前部署、契约与排障事实以 ADR 0014、[部署](../../operations.md#部署) 与 [Runbook：Summary 作业队列](../../operations/runbooks.md#runbooksummary-作业队列) 为准。
+> 本设计已实施完成，结论由 [ADR 0014](../../decisions.md#adr-0014-postgresql-single-source-job-scheduling) 承载。**本文件整体是改造前写下的设计记录**：全部八节——背景、目标与非目标、设计 A、设计 B、门禁影响清单、验证、风险与取舍、明确不做——记录的都是改造前的系统状态与当时的实施计划，没有任何一节描述当前系统。当前部署、契约与排障事实以 ADR 0014、[部署](../../operations.md#deployment) 与 [Runbook：Summary 作业队列](../../operations/runbooks.md#runbook-summary-job-queue) 为准。
 >
 > 实施过程中有三处结论被修正。正文按「设计记录不追改」保留原样，以 ADR 0014 为准：默认栈的计数单位是**镜像**而不是容器（两个镜像，五个 Compose 服务，`migrate` 为一次性）；跨主机 worker 并非技术上不可行，只是不再随栈提供现成路径（`claimSummaryJob` 是带条件的原子 `UPDATE`，对多消费者安全）；`/readyz` 在仓库内有两个消费者——Web 状态页与 Compose `api` healthcheck——且两者都只判断状态码，不读取 `dependencies` 结构。
 
@@ -115,7 +115,7 @@ Web 的监听方式随之变化：standalone `server.js` 读取 `PORT`（默认 
 
 ### ADR 处理
 
-三个已 Accepted 的 ADR 提到 Redis/BullMQ：[`0006`](../../decisions.md#adr-0006postgresql-幂等与-outbox)（BullMQ 按 at-least-once 使用）、[`0008`](../../decisions.md#adr-0008pnpm-typescript-monorepo)（组成中列出 BullMQ worker）、[`0009`](../../decisions.md#adr-0009本地单用户与-loopback)（Redis 只在私有 bridge 内可达）。按仓库规则「ADR 一旦 Accepted 不改写结论」，三者均不修改，由新建的 ADR 0014 统一 supersede 这三处与队列相关的条款，并明确保留 0006 的 PostgreSQL 幂等/outbox 结论与 0009 的 loopback 边界结论。
+三个已 Accepted 的 ADR 提到 Redis/BullMQ：[`0006`](../../decisions.md#adr-0006-postgresql-idempotency-and-outbox)（BullMQ 按 at-least-once 使用）、[`0008`](../../decisions.md#adr-0008-pnpm-typescript-monorepo)（组成中列出 BullMQ worker）、[`0009`](../../decisions.md#adr-0009-local-single-user-and-loopback)（Redis 只在私有 bridge 内可达）。按仓库规则「ADR 一旦 Accepted 不改写结论」，三者均不修改，由新建的 ADR 0014 统一 supersede 这三处与队列相关的条款，并明确保留 0006 的 PostgreSQL 幂等/outbox 结论与 0009 的 loopback 边界结论。
 
 ### 必须改写的规范文档
 

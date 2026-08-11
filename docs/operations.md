@@ -3,18 +3,18 @@ status: accepted
 owner: maintainers
 last_reviewed: 2026-08-10
 normative: true
-milestone: Gate 0-Gate 5 与 macOS distribution
+milestone: Gate 0-Gate 5 and macOS distribution
 ---
 
-# 运维
+# Operations
 
-本文覆盖 Compose 部署拓扑、健康与可观测性、备份恢复演练，以及 macOS Tauri 壳与 DMG 分发。故障处置步骤单独放在 [`operations/runbooks.md`](operations/runbooks.md)。
+This document covers the Compose deployment topology, health and observability, the backup and restore drill, and the macOS Tauri shell and DMG distribution. Incident-handling steps live separately in [`operations/runbooks.md`](operations/runbooks.md).
 
-## 部署
+## Deployment
 
-正式验证拓扑是 Linux x86_64 单主机 Docker Compose：五个服务——`postgres`，以及共用同一个应用镜像的 `migrate`（一次性）、`api`、`worker`、`web`——但整栈只有两个镜像。macOS Tauri 壳复用同一拓扑并要求 Docker Desktop。默认只有 Web 发布到 Docker 自动分配的 `127.0.0.1` 临时端口；API、PostgreSQL、worker 和 migrate 均无宿主端口。PostgreSQL 与 artifacts 各用 named volume。
+The formally verified topology is a Linux x86_64 single-host Docker Compose: five services — `postgres`, plus `migrate` (one-shot), `api`, `worker` and `web`, which share one and the same application image — but only two images in the whole stack. The macOS Tauri shell reuses the same topology and requires Docker Desktop. By default only Web is published, on an ephemeral `127.0.0.1` port that Docker allocates automatically; API, PostgreSQL, worker and migrate all have no host port. PostgreSQL and artifacts each use a named volume.
 
-没有队列容器：summary 作业由 worker 直接轮询 PostgreSQL `summary_jobs` 分发，见 [ADR 0014](decisions.md#adr-0014postgresql-单源作业调度)。从带 Redis 的旧栈升级时，`pnpm docker:up` 的 `--remove-orphans` 只清理孤立容器，named volume 需要手工删除一次：`docker volume rm intenttrace_redis-data`（栈已停止时执行；仓库中不再有任何东西引用它）。网络不得设置固定全局 name 或 external reuse，以免两个 Compose project 的 `api`/`postgres` DNS alias 混用。PostgreSQL 与 API 采用同样的 internal-only 发布策略。扩大网络边界前必须增加认证和新的安全 ADR。
+There is no queue container: summary jobs are dispatched by the worker polling PostgreSQL `summary_jobs` directly, see [ADR 0014](decisions.md#adr-0014-postgresql-single-source-job-scheduling). When upgrading from an older stack that had Redis, the `--remove-orphans` of `pnpm docker:up` cleans up orphaned containers only, and the named volume has to be deleted manually once: `docker volume rm intenttrace_redis-data` (run it while the stack is stopped; nothing in the repository references it any more). The network must not be given a fixed global name or external reuse, so that the `api`/`postgres` DNS aliases of two Compose projects cannot be mixed up. PostgreSQL and the API follow the same internal-only publishing policy. Widening the network boundary requires adding authentication and a new security ADR first.
 
 ```bash
 docker compose config --quiet
@@ -23,31 +23,31 @@ pnpm docker:url
 pnpm docker:status
 ```
 
-`docker:up` 使用 Compose `--wait`，只有 migration 成功且带 healthcheck 的服务健康后才返回，并打印 Web、health 与 API status proxy 地址。需要固定入口时可临时设置 `INTENTTRACE_WEB_PORT`；不设置时由 Docker 分配空闲端口。镜像版本与解析 digest 记录在 `infra/images.lock`。此部署不具备 HA、rolling upgrade、公网 TLS 或 auth；不得直接改成 `0.0.0.0` 暴露宿主端口。
+`docker:up` uses Compose `--wait` and returns only after the migration has succeeded and the services that have a healthcheck are healthy, and it prints the Web, health and API status proxy addresses. When a fixed entry point is needed, `INTENTTRACE_WEB_PORT` can be set temporarily; when it is not set, Docker allocates a free port. Image versions and resolved digests are recorded in `infra/images.lock`. This deployment has no HA, no rolling upgrade, no public TLS and no auth; it must not simply be changed to `0.0.0.0` to expose host ports.
 
-桌面归档由 `pnpm desktop:prepare` 生成且不进 Git；Tauri Rust 只用硬编码参数调用 Docker CLI，不给前端通用 shell 权限。DMG 构建必须在 macOS；对外分发还必须完成 Apple codesign/notarization。详见 [macOS Tauri 与 DMG](#macos-tauri-与-dmg)。
+The desktop archive is produced by `pnpm desktop:prepare` and does not go into Git; the Tauri Rust side calls the Docker CLI with hard-coded arguments only and gives the frontend no general shell permission. The DMG build must happen on macOS; external distribution must additionally complete Apple codesign/notarization. Details in [macOS Tauri and DMG](#macos-tauri-and-dmg).
 
-## 可观测性
+## Observability
 
-API 提供 `/healthz`（进程）、`/readyz`、`/version` 和最小 Prometheus `/metrics`；web 提供 `/healthz` 与 readiness proxy。`/readyz` 的 `dependencies` 只有 `postgres` 一项，这是生成 OpenAPI 里的已发布响应契约，不含任何占位依赖。日志是结构化 server log并 redacts authorization/cookie。Worker 日志声明轮询间隔与 provider；provider-call audit 保存 model/hash/usage/cost，不保存正文。
+The API provides `/healthz` (process), `/readyz`, `/version` and a minimal Prometheus `/metrics`; web provides `/healthz` and a readiness proxy. The `dependencies` of `/readyz` has a single entry, `postgres`; this is the published response contract in the generated OpenAPI and contains no placeholder dependency. Logs are structured server logs and redact authorization/cookie. The worker log states the polling interval and the provider; the provider-call audit keeps model/hash/usage/cost and not the body.
 
-当前 outbox/job/provider tables 可诊断 watermark、attempt、失败码、SSE backlog 和 token/cost。更细的 ingest/latency histogram 仍是 post-MVP observability enhancement；label 禁止 raw text、user path、event ID 高基数或 key。
+The current outbox/job/provider tables can diagnose watermarks, attempts, failure codes, SSE backlog and token/cost. A finer ingest/latency histogram is still a post-MVP observability enhancement; labels must not contain raw text, user paths, high-cardinality event IDs or keys.
 
-告警应指向 runbook，并区分 liveness、dependency readiness 与产品降级。Provider outage 不是 raw browsing outage；worker 或 provider 故障不应把 PostgreSQL 已入库 trace 标丢失。
+Alerts should point at a runbook and distinguish liveness, dependency readiness and product degradation. A provider outage is not a raw browsing outage; a worker or provider failure must not mark traces already stored in PostgreSQL as lost.
 
-## 备份与恢复
+## Backup and restore
 
-一致备份包含 PostgreSQL dump/physical snapshot、artifact volume 和 manifest（commit、migration、image digest、每 trace artifact hash）。没有需要单独备份的队列存储：作业分发状态就在 `summary_jobs` 里，随数据库一起恢复，未完成的作业按 `next_attempt_at` 与五分钟 `running` 租约自行被重新领取。
+A consistent backup contains the PostgreSQL dump/physical snapshot, the artifact volume and a manifest (commit, migration, image digest, per-trace artifact hashes). There is no queue storage that needs a separate backup: the job dispatch state is in `summary_jobs` and is restored together with the database, and unfinished jobs get re-claimed on their own according to `next_attempt_at` and the five-minute `running` lease.
 
-演练：停止写入或取得一致 watermark → 备份 DB/artifact → 在空目录启动锁定版本 → restore DB → restore artifacts → migrate no-op → 校验 row counts/hash/revision memberships → 启动服务 → raw/status/SSE smoke。原环境保留到校验完成。
+Drill: stop writes or obtain a consistent watermark → back up DB/artifacts → start the locked version in an empty directory → restore DB → restore artifacts → migrate no-op → verify row counts/hashes/revision memberships → start the services → raw/status/SSE smoke. The original environment is kept until verification is complete.
 
-`pnpm backup -- <directory>` 创建 PostgreSQL custom dump、artifact tar 和逐文件 SHA-256 manifest。`pnpm backup:verify -- <directory>` 校验 hash/tar，并恢复到临时隔离数据库核对 trace/raw/revision counts，最后删除临时库。2026-08-03 合成环境演练通过；它不等于用户真实磁盘故障恢复证据。备份文件按 trace 同等敏感处理。
+`pnpm backup -- <directory>` creates a PostgreSQL custom dump, an artifact tar and a per-file SHA-256 manifest. `pnpm backup:verify -- <directory>` verifies the hashes/tar, restores into a temporary isolated database to cross-check trace/raw/revision counts, and finally drops the temporary database. The synthetic-environment drill passed on 2026-08-03; that is not the same as evidence of recovery from a real user disk failure. Backup files are handled as being just as sensitive as traces.
 
-## macOS Tauri 与 DMG
+## macOS Tauri and DMG
 
-`apps/desktop` 是 Tauri 2 launcher，不是另一套数据库实现。`pnpm desktop:prepare` 生成过滤后的 `intenttrace-stack.tar.gz`；bundle 首次运行把它安全释放到 app local-data，查找 Docker Desktop CLI，以固定 `docker compose -p intenttrace-desktop` 参数构建栈，再查询 Docker 动态分配的 `127.0.0.1` Web 端口并打开 `/traces`。前端没有通用 shell permission。
+`apps/desktop` is a Tauri 2 launcher, not a second database implementation. `pnpm desktop:prepare` produces a filtered `intenttrace-stack.tar.gz`; on its first run the bundle safely extracts it into the app local-data, looks up the Docker Desktop CLI, builds the stack with fixed `docker compose -p intenttrace-desktop` arguments, then queries the `127.0.0.1` Web port Docker allocated dynamically and opens `/traces`. The frontend has no general shell permission.
 
-本地 macOS 构建：安装 Xcode Command Line Tools、Rust、Node/pnpm 和 Docker Desktop，然后执行：
+Local macOS build: install the Xcode Command Line Tools, Rust, Node/pnpm and Docker Desktop, then run:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -55,6 +55,6 @@ pnpm desktop:prepare
 pnpm --filter @intenttrace/desktop tauri build --target universal-apple-darwin --bundles dmg
 ```
 
-`.github/workflows/macos-dmg.yml` 提供手动 universal build。对外分发必须配置 `APPLE_CERTIFICATE`、`APPLE_CERTIFICATE_PASSWORD`、`APPLE_SIGNING_IDENTITY`、`APPLE_ID`、`APPLE_PASSWORD`、`APPLE_TEAM_ID`，并保存 codesign/notarization/staple/安装证据；无凭据产物只能作为内部未签名构建，不得称为 release。DMG 启动仍依赖 Docker Desktop，且只支持 macOS 12+、桌面宽度至少 1024px。
+`.github/workflows/macos-dmg.yml` provides a manual universal build. External distribution must configure `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` and keep codesign/notarization/staple/install evidence; an artifact built without credentials can only serve as an internal unsigned build and must not be called a release. Launching the DMG still depends on Docker Desktop, and only macOS 12+ with a desktop width of at least 1024px is supported.
 
-Linux evidence 仅覆盖 JSON/CSP、Rust formatting、Cargo dependency lock 和资源归档；Tauri WebKit native compile、DMG、Apple signature/notarization 均是 macOS 独立门禁。
+The Linux evidence covers only JSON/CSP, Rust formatting, the Cargo dependency lock and the resource archive; the Tauri WebKit native compile, the DMG and the Apple signature/notarization are all separate macOS gates.

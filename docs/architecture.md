@@ -6,35 +6,35 @@ normative: true
 milestone: Gate 0-Gate 5
 ---
 
-# 架构
+# Architecture
 
-本文合并了系统边界、必须始终成立的不变量，以及导入、语义和浏览三条链路的时序。总览描述组件职责，不变量是任何实现都不得违反的约束，数据流给出各链路的具体次序。
+This document merges the system boundary, the invariants that must always hold, and the ordering of the three chains: import, semantics and browsing. The overview describes component responsibilities, the invariants are constraints that no implementation may violate, and the data flow gives the concrete ordering of each chain.
 
-## 架构总览
+## Architecture overview
 
-系统分成事实层 ETG 和派生层 EIG。Collector 只读取操作员显式路径并把输入提交给 API；API 负责校验、分配 trace 内单调 `ingestSeq`、事务写 raw event/command/outbox；worker 以 at-least-once 方式处理 summary command；provider 只能提出 patch；deterministic reducer 校验后以 immutable revision 提交；web 通过 REST 快照和 durable SSE 展示。
+The system splits into the fact layer ETG and the derived layer EIG. The Collector reads only the paths the operator names explicitly and submits the input to the API; the API validates, assigns a per-trace monotonic `ingestSeq`, and transactionally writes raw event/command/outbox; the worker processes summary commands at-least-once; the provider can only propose patches; the deterministic reducer validates and then commits as an immutable revision; the web presents through REST snapshots and durable SSE.
 
-PostgreSQL 是事实、revision、job 幂等和 outbox 的权威，同时是唯一的作业分发来源：不存在外部队列，worker 直接轮询 `summary_jobs`。ArtifactStore 保存 raw payload/大对象，默认 filesystem named volume，接口保留 S3 adapter。Graph 布局在 web worker 计算并尊重 pinned/稳定增量位置。
+PostgreSQL is the authority for facts, revisions, job idempotency and the outbox, and is at the same time the only source of job dispatch: there is no external queue, and the worker polls `summary_jobs` directly. The ArtifactStore holds raw payloads/large objects, defaults to a filesystem named volume, and keeps room in its interface for an S3 adapter. Graph layout is computed in a web worker and respects pinned/stable incremental positions.
 
-当前 API 已公开实际实现的 `/api/v1/events`、trace/raw/snapshot/graph/artifact/provider audit/human edit/delete、`POST /api/v1/imports/candidates` 与 `POST /api/v1/imports/sessions`、durable SSE 及 OTLP `POST /v1/traces`；生成 OpenAPI 是路由事实源。浏览器导入只处理操作者显式交出的字节，与 Collector 共享同一 preflight 核心与同一 trace 身份，因此两条路径互为幂等。Worker 以进程内串行 runner 按固定间隔轮询 `summary_jobs`，PostgreSQL job claim、input hash、base revision 和 commit transaction 是幂等权威。Tauri 壳不复制数据库到宿主端口，而是启动同一隔离 Compose 栈。
+The API currently exposes the actually implemented `/api/v1/events`, trace/raw/snapshot/graph/artifact/provider audit/human edit/delete, `POST /api/v1/imports/candidates` and `POST /api/v1/imports/sessions`, durable SSE, and OTLP `POST /v1/traces`; the generated OpenAPI is the source of truth for routes. Browser import handles only the bytes the operator explicitly hands over, and shares the same preflight core and the same trace identity with the Collector, so the two paths are mutually idempotent. The worker polls `summary_jobs` at a fixed interval with an in-process serial runner; the PostgreSQL job claim, input hash, base revision and commit transaction are the idempotency authority. The Tauri shell does not replicate the database to a host port; instead it starts the same isolated Compose stack.
 
-## 系统不变量
+## System invariants
 
-1. Raw event 只追加；start、end、correction、trace complete 都是新事实，禁止原地修改。
-2. raw payload 只以 hash/ref 持久化；数据库 envelope 保留来源、lineage、时间、状态和 artifact refs。
-3. 每个 trace 的 `ingestSeq` 由 PostgreSQL 事务单调分配；source identity + 相同 hash 幂等，不同 hash 是 `409 integrity_conflict`。
-4. EIG 可删除重建；logical node/edge ID 稳定，version immutable，revision membership 复用未变化版本。
-5. provider 永不写库，只能输出受 nonce、base revision、allowlist 和 schema 约束的 patch。
-6. reducer 独立计算 confidence、状态、cycle、dedupe、pin 与 evidence；模型建议不是提交事实。
-7. raw insert、summary command、revision commit、SSE outbox 各自在对应 PostgreSQL 事务内原子提交。
-8. worker/provider 故障不破坏已入库 raw 查询；provider 失败回退 raw-only。
-9. 默认无云 egress、无 home 扫描、无真实 session 自动读取、无隐藏 chain-of-thought。
-10. 所有外部可达端口只绑定 loopback；该约束改变前必须增加 auth/threat-model ADR。
+1. Raw execution events are append-only facts; start, end, correction and trace complete are all new facts, and in-place modification is forbidden.
+2. Raw payloads are persisted only as hash/ref; the database envelope keeps source, lineage, time, status and artifact refs.
+3. Each trace's `ingestSeq` is assigned monotonically by a PostgreSQL transaction; the same source identity plus the same hash is idempotent, a different hash is `409 integrity_conflict`.
+4. The EIG can be deleted and rebuilt; logical node/edge IDs are stable, versions are immutable, and revision membership reuses unchanged versions.
+5. The provider never writes to the database; it can only emit patches constrained by nonce, base revision, allowlist and schema.
+6. The reducer independently computes confidence, status, cycle, dedupe, pin and evidence; a model suggestion is not a committed fact.
+7. Raw insert, summary command, revision commit and SSE outbox each commit atomically within their corresponding PostgreSQL transaction.
+8. A worker/provider failure does not break queries over already ingested raw data; a provider failure falls back to raw-only.
+9. By default there is no cloud egress, no home scanning, no automatic reading of real sessions, and no hidden chain-of-thought.
+10. All externally reachable ports bind to loopback only; before that constraint changes, an auth/threat-model ADR must be added.
 
-## 数据流与时序
+## Data flow and ordering
 
-导入：operator → Collector explicit path validation → adapter normalize → API transaction（identity check、`ingestSeq`、raw envelope、artifact metadata、summary command、outbox）→ REST response。重复投递先比较 canonical payload hash；相同返回原 server ID，不同返回 integrity conflict。
+Import: operator → Collector explicit path validation → adapter normalize → API transaction (identity check, `ingestSeq`, raw envelope, artifact metadata, summary command, outbox) → REST response. A repeated delivery first compares the canonical payload hash; an identical hash returns the original server ID, a different one returns an integrity conflict.
 
-语义：worker 轮询 `summary_jobs` 并原子领取 command → 读取 watermark 以内 event sketch → 创建 nonce/input hash → mock 或允许的 provider 返回 patch → reducer 解析 schema/allowlist/base revision → 单事务写 immutable versions、revision membership、job result、SSE outbox → 同事务把作业置为 `committed`。重投以 input hash + base revision 返回已有结果。
+Semantics: the worker polls `summary_jobs` and atomically claims a command → reads the event sketch within the watermark → creates a nonce/input hash → the mock or an allowed provider returns a patch → the reducer resolves schema/allowlist/base revision → a single transaction writes immutable versions, revision membership, job result and SSE outbox → the same transaction sets the job to `committed`. A redelivery returns the existing result by input hash + base revision.
 
-浏览：web 先请求快照，再以快照 cursor 建立 SSE；按 outbox ID 应用事件。断线传 `Last-Event-ID` 或 `?cursor=`；有缺口就补发，cursor 超出 retention 返回显式错误并重新取快照。迟到 raw event 在新 ingest watermark 出现；若 final 已存在则标 stale，再产生新 final revision。
+Browsing: the web requests a snapshot first, then establishes SSE with the snapshot cursor; events are applied by outbox ID. On disconnect it passes `Last-Event-ID` or `?cursor=`; gaps are backfilled, and a cursor beyond retention returns an explicit error and re-fetches the snapshot. A late raw event appears at the new ingest watermark; if a final already exists it is marked stale, and a new final revision is then produced.

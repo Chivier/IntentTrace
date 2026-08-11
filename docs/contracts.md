@@ -6,80 +6,80 @@ normative: true
 milestone: Gate 0-Gate 5
 ---
 
-# 契约
+# Contracts
 
-本文是数据、幂等、reducer、artifact、adapter、provider 与兼容性七类契约的集合。API 层面的路由、错误码与流协议单独放在 [`contracts/api.md`](contracts/api.md)，生成的 OpenAPI 在 [`contracts/api/openapi.yaml`](contracts/api/openapi.yaml)。
+This document is the collection of the seven contract categories: data, idempotency, reducer, artifact, adapter, provider, and compatibility. API-level routes, error codes, and the stream protocol live separately in [`contracts/api.md`](contracts/api.md), and the generated OpenAPI is in [`contracts/api/openapi.yaml`](contracts/api/openapi.yaml).
 
-## 领域模型
+## Domain model
 
-`RawTraceEvent` 是 `schemaVersion` 版本化 envelope：server event ID、workspace/project/trace、source kind/session/event ID、adapter name/version、source time、server `ingestSeq`、agent/span/parent lineage、event kind、状态、payload hash/ref、artifact refs。数据库不得内联完整 raw payload。
+`RawTraceEvent` is an envelope versioned by `schemaVersion`: server event ID, workspace/project/trace, source kind/session/event ID, adapter name/version, source time, server `ingestSeq`, agent/span/parent lineage, event kind, status, payload hash/ref, artifact refs. The database MUST NOT inline the full raw payload.
 
-EIG 的 `SemanticNode` 分 `request|goal|work|decision|issue|handoff|result`，状态为 `proposed|active|blocked|completed|abandoned|superseded`；正式已提交图不接收 provider 的 proposed 可见状态。每个 node version 有 intent/action/outcome claim，它们分别引用 evidence。Edge 有独立 logical/version ID、方向、kind 和 evidence。
+The EIG's `SemanticNode` is divided into `request|goal|work|decision|issue|handoff|result`, with status `proposed|active|blocked|completed|abandoned|superseded`; the officially committed graph does not accept a provider's proposed visible status. Every node version has intent/action/outcome claims, and each of them references evidence separately. An edge has its own logical/version ID, direction, kind, and evidence.
 
-`suggestedConfidence` 只存在于 provider patch；canonical claim 的 `confidence` 是 reducer 按证据规则得到的 `high|medium|low`。`stated|inferred|mixed` 表示 provenance，不表示概率。
+`suggestedConfidence` exists only in the provider patch; the `confidence` of a canonical claim is the `high|medium|low` that the reducer derives from the evidence rules. `stated|inferred|mixed` expresses provenance, not probability.
 
-## Revision 模型
+## Revision model
 
-Revision 是不可变图快照引用集，不复制未变化实体。字段至少含 revision ID、trace ID、parent revision ID、branch kind、event watermark、status、stale reason、created at/source job。Node/edge membership 指向 immutable version；logical ID 在版本间稳定。迟到事实不会改写图内容或 membership；数据库只允许 revision 的 `stale` 元数据执行一次单向 `false → true` 迁移，任何反向迁移或同时修改其他字段均被触发器拒绝。
+A revision is an immutable set of graph-snapshot references; it does not copy unchanged entities. Its fields include at least revision ID, trace ID, parent revision ID, branch kind, event watermark, status, stale reason, created at/source job. Node/edge membership points at immutable versions; logical IDs are stable across versions. Late-arriving facts do not rewrite graph content or membership; the database allows a revision's `stale` metadata a single one-way `false → true` transition only, and any reverse transition, or any simultaneous modification of other fields, is rejected by a trigger.
 
-`live` revision 可随已验证 chunk 增长；`final` 只在 complete marker 与 reconciliation 后生成；`human` 从选定 parent 分支并保存 pin/edit。迟到 event 高于 final watermark 时，旧 final 保留但标 stale，后续生成新 final。并发 reducer 必须以 `baseRevisionId` compare-and-commit；过期 base 返回冲突并重新排队，不能自动覆写。
+A `live` revision MAY grow with verified chunks; a `final` revision is produced only after the complete marker and reconciliation; a `human` revision branches from a chosen parent and stores pins/edits. When a late event is above the final watermark, the old final is retained but marked stale, and a new final is produced afterwards. Concurrent reducers MUST compare-and-commit on `baseRevisionId`; a stale base returns a conflict and is re-queued, and cannot be overwritten automatically.
 
-Replay 查询必须同时给定 trace 与 watermark/revision，不能以当前 membership 回填历史时刻。
+A replay query MUST be given both the trace and a watermark/revision; it cannot backfill a historical point in time from current membership.
 
-## Event 排序与幂等
+## Event ordering and idempotency
 
-Source time 可缺失、重复或回退，只用于展示。规范处理顺序是 trace 内服务器分配的 `ingestSeq`，分配与 raw insert 在同一事务，不能由 Redis 或进程内计数器承担。
+Source time MAY be missing, duplicated, or move backwards, and is used for display only. The canonical processing order is the server-assigned `ingestSeq` within a trace; the assignment happens in the same transaction as the raw insert, and cannot be delegated to Redis or an in-process counter.
 
-幂等 identity 为 source kind + source session ID + source event ID。Canonical normalization 后计算 payload SHA-256：首次写入分配 server ID/sequence；重复 identity + 相同 hash 返回原记录并标 `duplicate`; 重复 identity + 不同 hash 返回 HTTP 409、code `integrity_conflict`，两份内容都不被覆盖。
+The idempotency identity is source kind + source session ID + source event ID. The payload SHA-256 is computed after canonical normalization: the first write is assigned a server ID/sequence; a repeated identity with the same hash returns the original record marked `duplicate`; a repeated identity with a different hash returns HTTP 409 with code `integrity_conflict`, and neither copy is overwritten.
 
-start/end/correction/complete/late 都是追加 event。乱序可接受；malformed ID 在 adapter 边界 fail-visible，只有规范明确允许的修复才可产生新 normalized 字段，并保留原 payload ref。
+start/end/correction/complete/late are all append events. Out-of-order arrival is acceptable; a malformed ID fails visibly at the adapter boundary, and only a repair that the specification explicitly permits MAY produce new normalized fields, while retaining the original payload ref.
 
-## Reducer 契约
+## Reducer contract
 
-Patch 必须包含 `schemaVersion`、`jobNonce`、`baseRevisionId`、有序 operations 和 unresolved questions。新增实体用本 patch 唯一的 `tmp:<n>` 引用；其他 ID 必须属于 base revision 或 allowlist。Operation 是显式 `add_node|update_node|add_edge|retire_edge|supersede_node|suggest_merge`，不接受通用 JSON Patch。
+A patch MUST contain `schemaVersion`, `jobNonce`, `baseRevisionId`, ordered operations, and unresolved questions. New entities use a `tmp:<n>` reference that is unique within this patch; every other ID MUST belong to the base revision or the allowlist. Operations are the explicit `add_node|update_node|add_edge|retire_edge|supersede_node|suggest_merge`; generic JSON Patch is not accepted.
 
-Reducer 按固定顺序执行：schema/size → nonce/base/input hash → evidence/artifact/agent allowlist → temp ref 解析 → field operation → status transition → edge direction/self-edge/cycle → dedupe/merge → pin precedence → claim confidence → canonical sort/hash → transaction commit。任何失败都拒绝整个 patch。
+The reducer runs in a fixed order: schema/size → nonce/base/input hash → evidence/artifact/agent allowlist → temp ref resolution → field operation → status transition → edge direction/self-edge/cycle → dedupe/merge → pin precedence → claim confidence → canonical sort/hash → transaction commit. Any failure rejects the entire patch.
 
-数组只能 `replace|append_unique|remove`；nullable 字段用显式 `clear`，不得把缺失解释为清空。Human pinned title/parent/status/claim 优先于 provider；provider 不能 retire/supersede pinned entity。`depends_on`/`decomposes_to` 等方向写入 schema 映射并测试。重复相同 patch 返回既有 revision。
+Arrays only allow `replace|append_unique|remove`; nullable fields use an explicit `clear`, and absence MUST NOT be interpreted as clearing. Human-pinned title/parent/status/claim take precedence over the provider; a provider cannot retire/supersede a pinned entity. Directions such as `depends_on`/`decomposes_to` are written into the schema mapping and tested. Re-submitting the same patch returns the existing revision.
 
-Evidence 规则：每个 add/update node 与 edge 至少一个允许 event；completion/result 必须包含 outcome evidence；只有显式通过测试、已创建 artifact、成功命令或直接结果才可得 high。模型建议最多降低审查优先级，不能提高最终等级。
+Evidence rules: every add/update of a node or edge requires at least one permitted event; completion/result MUST contain outcome evidence; only an explicitly passing test, a created artifact, a successful command, or a direct result MAY reach high. A model suggestion can at most lower review priority; it cannot raise the final level.
 
-## Artifact 与 Evidence 契约
+## Artifact and evidence contract
 
-Artifact 以 `(traceId, sha256)` 内容寻址，metadata 记录 byte length、media type、创建时间和可选 redaction state。`put` 必须先计算 hash、原子落盘；`stat` 不返回内容；`getRange` 只读明确范围；`deleteTrace` 删除该 trace 名空间。路径不能由用户输入拼接。
+Artifacts are content-addressed by `(traceId, sha256)`, and their metadata records byte length, media type, creation time, and an optional redaction state. `put` MUST compute the hash first and land the bytes on disk atomically; `stat` does not return content; `getRange` reads only an explicit range; `deleteTrace` deletes that trace's namespace. Paths cannot be assembled from user input.
 
-Evidence 是 claim 到 raw event/artifact 的关系，记录 evidence kind 与可选 range。Intent、action、outcome 分别建立 claim，不能用同一个“node confidence”掩盖证据差异。UI 展示摘要默认转义；源码、终端、HTML 都按 untrusted content 处理，下载与内联渲染有独立 media policy。
+Evidence is the relationship from a claim to a raw event/artifact, recording the evidence kind and an optional range. Intent, action, and outcome each establish their own claim; a single "node confidence" cannot be used to mask differences in evidence. Summaries the UI displays are escaped by default; source code, terminal output, and HTML are all handled as untrusted content, and download and inline rendering have separate media policies.
 
-删除 trace 时先阻止新写入，再删除数据库 membership/evidence/metadata 与 artifact namespace，最后写本地 audit 结果；备份中删除遵循 retention 文档，不承诺即时物理抹除。
+Deleting a trace first blocks new writes, then deletes the database membership/evidence/metadata and the artifact namespace, and finally writes a local audit result; deletion inside backups follows the retention document, and immediate physical erasure is not promised.
 
-## Adapter 契约
+## Adapter contract
 
-Adapter 声明 source kind、adapter name/version、支持的 source versions 和 capability。输入必须转为 canonical envelope，未知 source version 返回可诊断错误，禁止 best-effort 静默吞字段。所有 adapter 都输出 source identity、lineage、source time、status、payload hash/ref 与 warnings。
+An adapter declares its source kind, adapter name/version, supported source versions, and capabilities. Input MUST be converted into the canonical envelope, an unknown source version returns a diagnosable error, and an adapter MUST NOT swallow fields silently on a best-effort basis. Every adapter emits source identity, lineage, source time, status, payload hash/ref, and warnings.
 
-MVP adapter：canonical JSONL、OTLP HTTP JSON、Codex session、Claude session。每种至少三份匿名 fixture：正常、边界/乱序、未知/畸形。Codex/Claude 不依赖隐藏推理字段；只导入用户可见 message、tool/result、必要 metadata 与 artifact references。Codex `reasoning`、`encrypted_content`、world state/instruction snapshot，以及 Claude `thinking`/`redacted_thinking`、file-history snapshot、duplicate last-prompt 等记录必须产生可计数 warning 后丢弃；生成的 event 和 artifact 都不得包含这些结构。
+MVP adapters: canonical JSONL, OTLP HTTP JSON, Codex session, Claude session. Each has at least three anonymized fixtures: normal, boundary/out-of-order, unknown/malformed. Codex/Claude do not depend on hidden reasoning fields; only user-visible messages, tool/result records, necessary metadata, and artifact references are imported. Records such as Codex `reasoning`, `encrypted_content`, and world state/instruction snapshots, as well as Claude `thinking`/`redacted_thinking`, file-history snapshots, and duplicate last-prompts, MUST produce a countable warning and then be discarded; the generated events and artifacts MUST NOT contain these structures.
 
-Canonical event `name` 必须是可读的 bounded preview，而不是 `message`/`assistant`/`response_item` 等结构占位：message 提取可见 text，tool call 提取 tool name 与 input preview，tool result 提取 output preview，error/lifecycle/agent activity 分别生成明确标签。完整脱敏 source record 保存在 `payloadRef`，raw UI 按需读取；纯 Codex reasoning 或纯 Claude thinking 记录不能生成空 event。preview 不是独立事实，完整 payload 仍是证据权威。
+The canonical event `name` MUST be a readable bounded preview rather than a structural placeholder such as `message`/`assistant`/`response_item`: a message extracts its visible text, a tool call extracts the tool name and an input preview, a tool result extracts an output preview, and error/lifecycle/agent activity each produce an explicit label. The fully redacted source record is stored in `payloadRef` and read on demand by the raw UI; a pure Codex reasoning record or a pure Claude thinking record cannot produce an empty event. A preview is not an independent fact; the complete payload remains the evidentiary authority.
 
-Collector 的 guided import 在 adapter 前后增加两阶段边界：`discover`/`dry-run` 只返回经 `SessionCatalogSchema` 校验的 bounded descriptor，默认不输出 visible prompt；`import --session` 用 opaque、授权根作用域内且绑定候选 metadata 的 catalog ID 精确选择。绝对/相对 path、文件名和 native session ID 不属于公开 catalog。真正 import 必须先完整消费 adapter 输出并通过 Zod validation，再发送该文件的第一条 event；preflight warning 只允许 code、计数和不含 source 正文的诊断；无法安全描述的 candidate 必须计入 `rejectedFiles`，不能静默跳过。
+The collector's guided import adds a two-phase boundary before and after the adapter: `discover`/`dry-run` returns only bounded descriptors validated by `SessionCatalogSchema`, and does not emit visible prompts by default; `import --session` selects precisely with a catalog ID that is opaque, scoped inside an authorized root, and bound to the candidate metadata. Absolute/relative paths, file names, and native session IDs are not part of the public catalog. A real import MUST fully consume the adapter output and pass Zod validation before sending that file's first event; a preflight warning may only carry a code, counts, and diagnostics containing no source body text; a candidate that cannot be described safely MUST be counted in `rejectedFiles`, and cannot be skipped silently.
 
-Source format version 与客户端版本分开：只有显式 `codex-jsonl-*`/`claude-jsonl-*` 声明参与 compatibility gate，Codex/Claude CLI 的普通 semver 仅记录为 `clientVersion`。发生改变 canonical event content 的 adapter major upgrade 时，normalization namespace 必须变化，使新导入形成独立 trace；禁止覆盖旧 raw facts。离线 `import` 在文件末尾追加由完整文件 SHA-256 派生 ID 的确定性 `trace_complete` marker；同一 adapter major 下完整重放 marker 和所有 event 均幂等，文件变化生成新 marker。`follow` 不伪造完成状态。
+Source format versions are kept separate from client versions: only an explicit `codex-jsonl-*`/`claude-jsonl-*` declaration participates in the compatibility gate, while the ordinary semver of the Codex/Claude CLI is recorded only as `clientVersion`. On an adapter major upgrade that changes canonical event content, the normalization namespace MUST change so that new imports form an independent trace; old raw facts MUST NOT be overwritten. An offline `import` appends at the end of the file a deterministic `trace_complete` marker whose ID is derived from the SHA-256 of the whole file; under the same adapter major, a full replay of both the marker and all events is idempotent, and a change to the file produces a new marker. `follow` does not fake a completion status.
 
-OTLP 接受 HTTP JSON 和 gzip，处理标准 trace/span ID、64-bit 字符串编码及 partial-success；gRPC 延后。Adapter 不写数据库、不访问 provider，也不决定语义 node。
+OTLP accepts HTTP JSON and gzip, and handles standard trace/span IDs, 64-bit string encoding, and partial-success; gRPC is deferred. Adapters do not write to the database, do not reach providers, and do not decide semantic nodes.
 
-## Summarizer Provider 契约
+## Summarizer provider contract
 
-Provider 接收确定性 event sketch、root intent、active nodes、candidate parents、allowlisted event/artifact/agent IDs、locale、prompt version、job nonce 和 base revision。默认不发送源码正文、完整文档、完整终端日志或 secret；chunk input 先 canonical hash 以便缓存和审计。
+The provider receives a deterministic event sketch, root intent, active nodes, candidate parents, allowlisted event/artifact/agent IDs, locale, prompt version, job nonce, and base revision. Source code bodies, complete documents, complete terminal logs, and secrets are not sent by default; chunk input is canonically hashed first so that it can be cached and audited.
 
-每个 summary job 的 sketch 只包含 `(previous job watermark, current watermark]` 的确定性 chunk，不能反复发送整个 trace 前缀。Sketch 至少携带 event ID、kind、status、agent、可读 bounded name、content type 和该 event 的 allowlisted artifact IDs。永久 mock provider 必须优先选择 error、user/assistant message、tool result/call 等内容事件，避免 token count、mode、context 等遥测占据语义节点；final marker 可作为完成证据，但不能用 “Offline import complete” 取代实际 outcome 内容。
+The sketch of each summary job contains only the deterministic chunk in `(previous job watermark, current watermark]`, and cannot repeatedly send the entire trace prefix. A sketch carries at least the event ID, kind, status, agent, readable bounded name, content type, and that event's allowlisted artifact IDs. The permanent mock provider MUST prefer content events such as errors, user/assistant messages, and tool results/calls, so that telemetry such as token counts, mode, and context does not occupy semantic nodes; the final marker MAY serve as completion evidence, but "Offline import complete" cannot be used in place of the actual outcome content.
 
-输出只能是 provider patch，随后本地完整 Zod 与 reducer 校验。Mock provider 永久可用且无网络。真实 provider 只有在 Gate 4 egress gate 开启后可选；registry 记录 provider、model/snapshot、能力、价格日期和 prompt version，业务逻辑不写死价格或“最新模型”。
+The output can only be a provider patch, which is then fully validated locally by Zod and the reducer. The mock provider is permanently available and needs no network. A real provider is optional only after the Gate 4 egress gate is opened; the registry records the provider, model/snapshot, capabilities, price date, and prompt version, and business logic does not hard-code prices or a "latest model".
 
-Timeout、429、预算耗尽、bad JSON、schema/reducer 拒绝都产生结构化 provider call 结果并回退 raw-only；默认不跨 provider fallback。不得记录 key、Authorization header 或未 redacted prompt。
+Timeouts, 429s, budget exhaustion, bad JSON, and schema/reducer rejections all produce a structured provider call result and fall back to raw-only; there is no cross-provider fallback by default. Keys, Authorization headers, and un-redacted prompts MUST NOT be logged.
 
-## 兼容性策略
+## Compatibility policy
 
-Envelope、patch、checkpoint、SSE 和公开 API 均有显式版本。增加 optional 字段属于同 minor；改变语义、required 字段或 enum 删除需新 major 和 migration/adapter。读取器必须拒绝未知 major，未知 minor 字段可在 schema 允许时忽略并保留原 payload ref。
+The envelope, patch, checkpoint, SSE, and public API all carry explicit versions. Adding an optional field stays within the same minor; changing semantics, changing required fields, or removing an enum member requires a new major plus a migration/adapter. A reader MUST reject an unknown major; unknown minor fields MAY be ignored where the schema allows it, while retaining the original payload ref.
 
-依赖全部精确版本，lockfile 由 CI frozen 安装。根级 `pnpm-workspace.yaml` override 也是受审依赖契约；当前将 Next 的传递依赖固定为 `postcss 8.5.25`、`sharp 0.35.0`，用于修复 2026-08-03 审计命中的已知漏洞。升级单独提交，必须通过 typecheck、production audit、migration 空库/重复运行、schema drift、fixtures、许可证与 Compose smoke。生成 JSON Schema/OpenAPI 属于提交产物；源码与生成物不一致时 CI 失败。
+All dependencies are exact versions, and CI installs the lockfile frozen. The root-level `pnpm-workspace.yaml` overrides are also an audited dependency contract; they currently pin Next's transitive dependencies to `postcss 8.5.25` and `sharp 0.35.0`, to fix the known vulnerabilities that the 2026-08-03 audit hit. Upgrades are committed separately, and MUST pass typecheck, production audit, migration on an empty database and on a repeated run, schema drift, fixtures, licensing, and the Compose smoke test. Generated JSON Schema/OpenAPI are committed artifacts; CI fails when the source and the generated artifacts disagree.
 
-第一发布支持 Linux x86_64。Node Collector 使用可移植 API，但 macOS/Windows 在完成 fixture 与 follow/rotation 验证前不做正式支持声明。
+The first release supports Linux x86_64. The Node collector uses portable APIs, but no official support claim is made for macOS/Windows until fixture and follow/rotation verification is complete.

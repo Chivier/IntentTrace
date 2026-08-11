@@ -110,7 +110,7 @@ for (const entry of required) {
 }
 
 const decisions = await readFile(join(docsRoot, "decisions.md"), "utf8");
-const adrSections = [...decisions.matchAll(/^## ADR (\d{4})：/gmu)].map((match) => match[1]);
+const adrSections = [...decisions.matchAll(/^## ADR (\d{4})[:：]/gmu)].map((match) => match[1]);
 const expectedAdrSections = Array.from({ length: 14 }, (_, index) =>
   String(index + 1).padStart(4, "0"),
 );
@@ -119,8 +119,8 @@ if (adrSections.join(",") !== expectedAdrSections.join(","))
     `docs/decisions.md must contain ADR sections ${expectedAdrSections[0]}-${expectedAdrSections.at(-1)} in order, found [${adrSections.join(",")}]`,
   );
 
-if (!/^## ADR 索引$/mu.test(decisions))
-  failures.push("docs/decisions.md must keep its `## ADR 索引` section");
+if (!/^## ADR index$/mu.test(decisions))
+  failures.push("docs/decisions.md must keep its `## ADR index` section");
 
 const allFiles = await walk(docsRoot);
 const normativeMarkdown = allFiles.filter(

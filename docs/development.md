@@ -6,13 +6,13 @@ normative: true
 milestone: Gate 0-Gate 5
 ---
 
-# 开发
+# Development
 
-本文覆盖开发环境、贡献流程、仓库布局与质量/发布过程。四节按“先跑起来、再提交、再定位代码、最后过门禁”的顺序排列。
+This document covers the development environment, the contribution flow, the repository layout, and the quality/release process. The four sections are ordered as "get it running first, then commit, then locate the code, and finally pass the gate".
 
-## 开始开发
+## Getting started
 
-要求 Linux x86_64、Node `24.18.1`、pnpm `11.18.0`（Corepack）、Docker/Compose。不要复制真实 provider key 或 session。
+Requires Linux x86_64, Node `24.18.1`, pnpm `11.18.0` (Corepack), and Docker/Compose. Do not copy real provider keys or sessions.
 
 ```bash
 corepack enable
@@ -23,33 +23,33 @@ pnpm docker:url
 pnpm demo:load
 ```
 
-默认全栈全部运行在 Docker 中，命令打印唯一的动态 loopback Web 地址。`demo:load` 只导入固定 seed 合成 fixture。Collector 先用 `… dev discover --source … --path …` 在显式授权根内返回 versioned、默认无 prompt 正文的 catalog，再用 `… dev import --source … --path … --session <opaque-id> --api <web-origin>` 精确导入；`--session` 可重复。它不会自动扫描 home，默认拒绝每层 symlink，并把完整 preflight 后的归一化事件发到 Web 内部代理。无选择器的原批量 import 仍保留。
+By default the entire stack runs inside Docker, and the command prints the one dynamic loopback web address. `demo:load` imports only the fixed-seed synthetic fixture. The collector first uses `… dev discover --source … --path …` to return a versioned catalog, with no prompt bodies by default, inside an explicitly authorized root, and then uses `… dev import --source … --path … --session <opaque-id> --api <web-origin>` for a precise import; `--session` may be repeated. It does not scan home automatically, rejects a symlink at every level by default, and sends normalized events to the web internal proxy only after a complete preflight. The original bulk import without a selector is still retained.
 
-API 和 PostgreSQL 只通过 Compose project-scoped private network（默认项目为 `intenttrace_default`）及服务 DNS 名互联，容器内部端口分别为 3001 和 5432，宿主没有对应 listener。默认栈只有 `postgres` 与共用同一应用镜像的 api/worker/web/migrate。不同 `-p` 项目拥有独立 network/volume，避免桌面壳、干净验收栈与开发栈之间的同名 DNS 污染。只有确需调试宿主进程时才使用显式、临时的 Compose override；不得把固定数据库端口重新加入默认拓扑。
+The API and PostgreSQL are connected only through the Compose project-scoped private network (the default project is `intenttrace_default`) and service DNS names; their in-container ports are 3001 and 5432 respectively, and the host has no corresponding listener. The default stack has only `postgres` plus api/worker/web/migrate sharing one application image. Different `-p` projects own independent networks/volumes, which avoids same-name DNS pollution between the desktop shell, the clean acceptance stack, and the development stack. Use an explicit, temporary Compose override only when debugging a host process is genuinely required; a fixed database port must not be added back into the default topology.
 
-源码检查与构建仍可在宿主运行。备份使用 `pnpm backup -- <dir>`，恢复演练使用 `pnpm backup:verify -- <dir>`。macOS 壳运行 `pnpm desktop:prepare`，真正 DMG 只能在 macOS 执行 `pnpm desktop:build`。提交前执行 AGENTS/CI 的完整质量命令。
+Source checks and builds can still run on the host. Back up with `pnpm backup -- <dir>`, and run restore drills with `pnpm backup:verify -- <dir>`. The macOS shell runs `pnpm desktop:prepare`; a real DMG can only be built by running `pnpm desktop:build` on macOS. Run the full AGENTS/CI quality commands before committing.
 
-## 贡献流程
+## Contribution flow
 
-项目采用 GNU AGPL v3.0 only（SPDX：`AGPL-3.0-only`），并使用 Developer Certificate of Origin 1.1；贡献者通过 `git commit -s` 声明有权按项目许可证提交贡献。分支/提交聚焦一个可审阅边界。设计决策先写或更新 ADR，行为变更先补 contract/fixture，再实现；依赖升级独立提交并记录许可证与 migration 影响。根目录 `CONTRIBUTING.md` 是面向外部贡献者的完整流程。
+The project uses GNU AGPL v3.0 only (SPDX: `AGPL-3.0-only`) and the Developer Certificate of Origin 1.1; through `git commit -s` a contributor declares the right to submit the contribution under the project license. A branch/commit focuses on one reviewable boundary. For a design decision, write or update an ADR first; for a behavior change, add the contract/fixture first, then implement it; a dependency upgrade is a separate commit and records the license and migration impact. The root `CONTRIBUTING.md` is the full process for external contributors.
 
-PR 描述分开写 implemented、automated verified、environment verified、deferred、blocked。不得把静态检查、mock fixture、Compose smoke 或真实 provider/用户环境证据混为一谈。截图只能证明所示界面，不证明后端语义正确。
+A PR description writes implemented, automated verified, environment verified, deferred, and blocked separately. Static checks, mock fixtures, Compose smoke, and real provider/user-environment evidence must not be conflated. A screenshot proves only the interface it shows; it does not prove that the backend semantics are correct.
 
-安全问题走根目录 `SECURITY.md`；不要在 issue/fixture 粘贴 key、真实 session、完整终端日志或未匿名代码。
+Security issues go through the root `SECURITY.md`; do not paste keys, real sessions, complete terminal logs, or unanonymized code into an issue/fixture.
 
-## 仓库指南
+## Repository guide
 
-`apps/web` 是状态页和 Trace Workbench，`apps/api` 是 Fastify REST/OTLP/SSE，`apps/worker` 是异步语义 pipeline，`apps/collector` 是显式路径 CLI，`apps/desktop` 是 Tauri Docker 启动壳。共享包按依赖方向分层：schema/config → db/storage/ingest/adapters → summarizer/reducer/layout/ui/fixtures。App 可以组合 package；低层 package 不依赖 app。
+`apps/web` is the status page and the Trace Workbench, `apps/api` is the Fastify REST/OTLP/SSE service, `apps/worker` is the asynchronous semantic pipeline, `apps/collector` is the explicit-path CLI, and `apps/desktop` is the Tauri Docker launch shell. Shared packages are layered by dependency direction: schema/config → db/storage/ingest/adapters → summarizer/reducer/layout/ui/fixtures. An app may compose packages; a lower-layer package does not depend on an app.
 
-`docs/design/source` 只保存历史输入；`generated/` JSON Schema、OpenAPI 和 Drizzle migration 属于需要提交的产物。`infra` 保存 Compose、多阶段 Dockerfile 和 image lock。真实 `.env`、session、artifact volume 和 provider key 永不提交。
+`docs/design/source` keeps historical inputs only; the `generated/` JSON Schema, OpenAPI, and Drizzle migrations are artifacts that must be committed. `infra` keeps Compose, the multi-stage Dockerfile, and the image lock. Real `.env` files, sessions, artifact volumes, and provider keys are never committed.
 
-修改契约时同时更新代码、测试、生成物和相应规范文档。不要把 prototype HTML/CSS 复制到 Next；重建组件时以 accessibility 和真实状态为准。
+When a contract changes, update the code, the tests, the generated artifacts, and the corresponding normative document at the same time. Do not copy prototype HTML/CSS into Next; when rebuilding a component, accessibility and real state are authoritative.
 
-## 质量与发布过程
+## Quality and release process
 
-本地/CI 顺序：frozen install → production dependency audit → format → lint → typecheck → unit → contract → e2e → build → docs → schema drift → Compose config/smoke → migrate twice。失败不得进入下一 Gate。生成物必须在检查前重新生成并保持工作树无 drift。
+Local/CI order: frozen install → production dependency audit → format → lint → typecheck → unit → contract → e2e → build → docs → schema drift → Compose config/smoke → migrate twice. A failure must not proceed to the next Gate. Generated artifacts must be regenerated before the checks and leave the working tree free of drift.
 
-本地强制门禁（与 CI 同序，`pnpm install --frozen-lockfile` 与 `pnpm audit --prod` 之后）：
+The mandatory local gate (same order as CI, after `pnpm install --frozen-lockfile` and `pnpm audit --prod`):
 
 ```bash
 pnpm format:check
@@ -63,6 +63,6 @@ pnpm docs:check
 pnpm schema:check
 ```
 
-证据等级分为 authored-unexecuted、automated-verified、environment-verified、release-verified。只有在目标 Linux、锁定 Compose images、健康端点、备份恢复与 acceptance matrix 全部通过后才能声明 release-ready；fixture/mock 不能证明 provider 或真实用户 trace。
+Evidence levels are authored-unexecuted, automated-verified, environment-verified, and release-verified. Release-ready may only be declared after the target Linux, the locked Compose images, the health endpoints, backup restore, and the acceptance matrix all pass; a fixture/mock cannot prove a provider or a real user trace.
 
-发布版本记录 schema/migration、image digests、Node/pnpm/lockfile、commit、命令和已知限制。首发明确 single-host、非 HA、loopback。
+A release records the schema/migration, image digests, Node/pnpm/lockfile, commit, commands, and known limitations. The first release states explicitly that it is single-host, non-HA, and loopback.

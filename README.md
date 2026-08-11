@@ -20,13 +20,13 @@ The screenshots in this README — the workbench above and the [trace list](docs
 
 ## Why IntentTrace
 
-- **Raw facts are immutable.** Raw execution events are append-only and are never overwritten by model output. See [system invariants](docs/architecture.md#系统不变量).
-- **Semantic conclusions stay traceable.** Every claim resolves back to a raw event or to artifact evidence. See [the artifact and evidence contract](docs/contracts.md#artifact-与-evidence-契约).
-- **Replay against the information available then.** Graph, Gantt, raw events and evidence share one ingest watermark. See [data flow](docs/architecture.md#数据流与时序).
-- **A deterministic commit boundary.** The model only proposes; Zod validation and a deterministic reducer decide whether a revision is committed. See [the reducer contract](docs/contracts.md#reducer-契约).
-- **Several ways in.** Canonical JSONL, OTLP HTTP JSON/gzip, and Codex/Claude sessions from explicitly chosen files. See [the adapter contract](docs/contracts.md#adapter-契约).
-- **Local-first, degrading instead of failing.** When the provider is unavailable, the raw trace and evidence paths keep working. See [the provider outage runbook](docs/operations/runbooks.md#runbookprovider-outage).
-- **Human revisions.** Edit, pin and feedback, with an immutable revision history preserved. See [the revision model](docs/contracts.md#revision-模型).
+- **Raw facts are immutable.** Raw execution events are append-only and are never overwritten by model output. See [system invariants](docs/architecture.md#system-invariants).
+- **Semantic conclusions stay traceable.** Every claim resolves back to a raw event or to artifact evidence. See [the artifact and evidence contract](docs/contracts.md#artifact-and-evidence-contract).
+- **Replay against the information available then.** Graph, Gantt, raw events and evidence share one ingest watermark. See [data flow](docs/architecture.md#data-flow-and-ordering).
+- **A deterministic commit boundary.** The model only proposes; Zod validation and a deterministic reducer decide whether a revision is committed. See [the reducer contract](docs/contracts.md#reducer-contract).
+- **Several ways in.** Canonical JSONL, OTLP HTTP JSON/gzip, and Codex/Claude sessions from explicitly chosen files. See [the adapter contract](docs/contracts.md#adapter-contract).
+- **Local-first, degrading instead of failing.** When the provider is unavailable, the raw trace and evidence paths keep working. See [the provider outage runbook](docs/operations/runbooks.md#runbook-provider-outage).
+- **Human revisions.** Edit, pin and feedback, with an immutable revision history preserved. See [the revision model](docs/contracts.md#revision-model).
 
 ## Quick start
 
@@ -85,7 +85,7 @@ pnpm --filter @intenttrace/collector dev import \
   --session "paste-24-character-catalog-id" --api "$WEB_ORIGIN"
 ```
 
-Both paths run the same whole-file adapter and Zod preflight before the first raw fact is sent, drop the same content at the adapter level (Codex `reasoning` and `encrypted_content` blocks, Claude `thinking` and `redacted_thinking` blocks, system instructions, and internal world-state and file-history snapshots), and derive the same content-hash completion marker, so a browser import and a CLI import of the same file are mutually idempotent. The opaque catalog ID scheme, the `O_NOFOLLOW` preflight, the 64 MiB per-file default and `--max-file-mib`, the loopback-only `--api` restriction, the bulk flags (`--newest`, `--max-files`, `--concurrency`, `--dry-run`) and the `--include-previews` consent flag are documented in [the import experience research](docs/design/research/import-experience.md#intenttrace-目标体验) and in [data handling](docs/security.md#数据处理).
+Both paths run the same whole-file adapter and Zod preflight before the first raw fact is sent, drop the same content at the adapter level (Codex `reasoning` and `encrypted_content` blocks, Claude `thinking` and `redacted_thinking` blocks, system instructions, and internal world-state and file-history snapshots), and derive the same content-hash completion marker, so a browser import and a CLI import of the same file are mutually idempotent. The opaque catalog ID scheme, the `O_NOFOLLOW` preflight, the 64 MiB per-file default and `--max-file-mib`, the loopback-only `--api` restriction, the bulk flags (`--newest`, `--max-files`, `--concurrency`, `--dry-run`) and the `--include-previews` consent flag are documented in [the import experience research](docs/design/research/import-experience.md#intenttrace-目标体验) and in [data handling](docs/security.md#data-handling).
 
 ## Architecture
 
@@ -116,7 +116,7 @@ Core boundaries:
 4. A provider returns only proposals; a deterministic reducer validates and commits them.
 5. The system does not reconstruct, store or display hidden chain-of-thought.
 
-Details: [architecture overview](docs/architecture.md#架构总览), [data flow and ordering](docs/architecture.md#数据流与时序), [ADR index](docs/decisions.md#adr-索引).
+Details: [architecture overview](docs/architecture.md#architecture-overview), [data flow and ordering](docs/architecture.md#data-flow-and-ordering), [ADR index](docs/decisions.md#adr-index).
 
 ## Documentation
 
@@ -135,19 +135,19 @@ Details: [architecture overview](docs/architecture.md#架构总览), [data flow 
 Full navigation, including testing, database, product spec and research notes: [`docs/README.md`](docs/README.md).
 
 > [!NOTE]
-> `docs/` is written in Chinese. This README is currently the only English surface; translating the documentation tree is open follow-up work.
+> `docs/` is in English, except the project records under `docs/project/` and the design and research notes under `docs/design/`, which are still in Chinese.
 
 ## Telemetry and data egress
 
 **IntentTrace's own code collects no telemetry.** There is no analytics client, crash reporter or usage ping anywhere in the tree, and IntentTrace itself reports nothing at install, start or run time.
 
-**Its build tools do ship telemetry, enabled by default, and the stack disables it.** `pnpm build` is `turbo run build`, so `NEXT_TELEMETRY_DISABLED=1` and `TURBO_TELEMETRY_DISABLED=1` are set in `infra/Dockerfile`, `infra/compose.yaml` and the CI workflow — the quick start above therefore sends nothing to Vercel. Running `pnpm build`, `pnpm dev` or `pnpm typecheck` on the host instead of through Docker is subject to both vendors' defaults; export the same two variables to opt out there too. See [data handling](docs/security.md#数据处理) for the vendors' own opt-out commands and their caveat.
+**Its build tools do ship telemetry, enabled by default, and the stack disables it.** `pnpm build` is `turbo run build`, so `NEXT_TELEMETRY_DISABLED=1` and `TURBO_TELEMETRY_DISABLED=1` are set in `infra/Dockerfile`, `infra/compose.yaml` and the CI workflow — the quick start above therefore sends nothing to Vercel. Running `pnpm build`, `pnpm dev` or `pnpm typecheck` on the host instead of through Docker is subject to both vendors' defaults; export the same two variables to opt out there too. See [data handling](docs/security.md#data-handling) for the vendors' own opt-out commands and their caveat.
 
 **Cloud provider egress is off by default.** `PROVIDER_MODE` defaults to `mock` and `PROVIDER_EGRESS_ENABLED` defaults to `false`, which is also what the test suite runs against.
 
 Selecting `PROVIDER_MODE=openai` or `PROVIDER_MODE=deepseek` makes configuration loading fail unless every gate is satisfied at once: `PROVIDER_EGRESS_ENABLED=true`, a positive `PROVIDER_DAILY_BUDGET_USD` (default `0`), an API key, an explicit model, and a base URL whose host is exactly `api.openai.com` or `api.deepseek.com`. Only then may the worker send a deterministic event sketch, truncated to `PROVIDER_MAX_EVENTS` events (default `256`) and redacted, under a `PROVIDER_TIMEOUT_MS` timeout (default `30000`). Source text, complete documents, whole terminal logs, environment variables, credentials and absolute user paths are never sent; provider responses are treated as untrusted input; and a timeout, an HTTP 429, an exhausted budget or malformed JSON falls back to the raw-only path rather than to another provider. Prompt and response bodies are never persisted — only the model, hashes, token counts, cost and a redaction report are.
 
-The full boundary is in [security](docs/security.md#provider-egress-policy); every configuration key and its default is in [reference](docs/reference.md#配置参考).
+The full boundary is in [security](docs/security.md#provider-egress-policy); every configuration key and its default is in [reference](docs/reference.md#configuration-reference).
 
 ## Current limitations
 
@@ -163,7 +163,7 @@ Strict evidence for what is implemented, verified or blocked: [`docs/project/pro
 
 - **Bug reports and feature requests** — [GitHub Issues](https://github.com/chivier/IntentTrace/issues). Best for: reproducible defects and scoped proposals with an expected-versus-actual description.
 - **Usage questions** — [the support guide](.github/SUPPORT.md). Best for: setup, Docker and import problems that are not defects.
-- **Security reports** — follow the repository security policy and report privately; never open a public issue. Best for: anything that weakens the boundaries described in [security](docs/security.md#威胁模型).
+- **Security reports** — follow the repository security policy and report privately; never open a public issue. Best for: anything that weakens the boundaries described in [security](docs/security.md#threat-model).
 
 Never paste API keys, real trace payloads, session logs or private source code into a public issue.
 
@@ -171,7 +171,7 @@ Never paste API keys, real trace payloads, session logs or private source code i
 
 Bug reports, documentation improvements, adapter fixtures, accessibility fixes and small pull requests are welcome. A behavioural or contract change must update the schema, migration, OpenAPI, tests and docs together, and model output must never overwrite raw facts. Contributions are offered under the project licence, declared with `git commit -s` (Developer Certificate of Origin 1.1).
 
-Start with [the contribution flow](docs/development.md#贡献流程) and [the repository guide](docs/development.md#仓库指南); the full external-contributor process is in `CONTRIBUTING.md`. The mandatory local and CI gate sequence is listed in [quality and release process](docs/development.md#质量与发布过程).
+Start with [the contribution flow](docs/development.md#contribution-flow) and [the repository guide](docs/development.md#repository-guide); the full external-contributor process is in `CONTRIBUTING.md`. The mandatory local and CI gate sequence is listed in [quality and release process](docs/development.md#quality-and-release-process).
 
 ## License
 
