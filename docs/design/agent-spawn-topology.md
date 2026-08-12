@@ -39,14 +39,17 @@ milestone: Gate 5
 
 ## 概念模型
 
-四种关系，彼此正交：
+五种关系，彼此正交：
 
-| 关系  | 含义                              | 事实来源                                        |
-| ----- | --------------------------------- | ----------------------------------------------- |
-| lane  | 一个 agent 的执行序列             | `agentId`                                       |
-| spawn | 父 agent 的某次调用创建了子 agent | 父侧 `agent_handoff` + 子侧 `agent_start`       |
-| join  | 子 agent 的产物被父 agent 收敛    | 子侧 `agent_end` + 父侧等待调用的 `tool_result` |
-| human | 人对某个节点的干预                | 真人 `user_message`；`node_feedback` 行         |
+| 关系    | 含义                                      | 事实来源                                        |
+| ------- | ----------------------------------------- | ----------------------------------------------- |
+| lane    | 一个 agent 的执行序列                     | `agentId`                                       |
+| spawn   | 父 agent 的某次调用创建了子 agent         | 父侧 `agent_handoff` + 子侧 `agent_start`       |
+| join    | 子 agent 的产物被父 agent 收敛            | 子侧 `agent_end` + 父侧等待调用的 `tool_result` |
+| message | 两个 agent 之间的直接通信，可以是兄弟之间 | 带发送方与接收方的消息事件                      |
+| human   | 人对某个节点的干预                        | 真人 `user_message`；`node_feedback` 行         |
+
+`message` 不是 spawn 的特例。Codex 0.147 的 `response_item.agent_message` 带结构化的 `author` 与 `recipient`（实测见后续一节），我们自己的 harness 有 `hub send` 直接 DM，两者都允许兄弟 agent 之间不经父节点通信。只按 spawn 树建图会丢掉这类边，图会退化成树而不是它本来的样子。
 
 关键区分：机器注入的任务书与真人请求在当前模型里都是 `kind: user_message`，无法区分。demo 录制 6 条 `user_message` 中只有第 1 条是真人，其余 5 条是编排者派活时注入的任务书。任务书是**子 lane 的目标**，不是用户意图。
 
@@ -81,6 +84,7 @@ milestone: Gate 5
 | `depends_on`    | 消费方节点 → 持有该 artifact 的生产方节点      | 两个节点的 `artifactIds` 交集非空                                    |
 | `produces`      | 代持写入节点 → 持有该 artifact 的节点          | `file_write.attributes.onBehalfOf` + `artifactRefs`                  |
 | `blocks`        | 工具缺失的 issue 节点 → 被阻塞 lane 的后继节点 | `tool_result` 且 `status = "error"`                                  |
+| `hands_off_to`  | 发送方 lane 的节点 → 接收方 lane 的节点        | 带 `author`/`recipient` 的 agent 间消息事件，且两者不同 lane         |
 | `revises`       | 人的反馈 → 目标节点                            | `node_feedback` 行（`packages/db/src/schema.ts:421`）                |
 
 两条兜底规则，二者都优先于"把边画出来"：
@@ -127,4 +131,19 @@ recorder 变更：
 
 ## 后续
 
-adapter 改造单独成文。已核实的事实：三个 harness 都以一等字段记录 spawn——Claude Code 在 `<root>/subagents/agent-<id>.meta.json` 的 `{agentType, description, toolUseId, parentAgentId, spawnDepth}`，Codex 在子 rollout 的 `session_meta.payload.parent_thread_id` 与 `source.subagent.thread_spawn`，opencode 在 `session.parent_id` 与 `task` part 的 `state.metadata.sessionId`。当前 `packages/adapters/src/claude.ts:267` 与 `packages/adapters/src/codex.ts:306` 把整个 session 压成单一 `agentId`，`packages/adapters/src/common.ts:112` 又让每个 session 文件自成一条 trace，因此这些字段全部丢失。读取兄弟子 transcript 会触碰[适配器契约](../contracts.md#adapter-contract)与安全边界中"服务端不枚举目录"的约束，需要把 `AdapterInput`（`packages/adapters/src/types.ts:10-13`）从单文件改为 session bundle，由浏览器目录选择或 Collector 授权根提供。
+adapter 改造单独成文。三个 harness 都以一等字段记录 spawn，且父子两侧通常都有记录。
+
+**Codex 0.147**（在本机实跑一次 `codex exec` 派发单个子 agent 所得，`[features] multi_agent = true`，parent `019ff6d2-88ce…` / child `019ff6d2-acd9…`）：
+
+- 父侧 spawn 调用：`response_item.function_call`，`name: "spawn_agent"`，`namespace: "collaboration"`，`call_id`，`arguments{task_name, fork_turns, message}`（`message` 加密）。
+- 父侧 spawn 事实：`event_msg.sub_agent_activity = {event_id: <同 call_id>, occurred_at_ms, agent_thread_id: <子 thread id>, agent_path: "/root/banana_reply", kind: "started"}`。这是带子 thread id 的父侧边。
+- 父 turn 归因：`function_call.internal_chat_message_metadata_passthrough.turn_id`，配合 `sub_agent_activity.event_id == call_id` 可精确定位派发发生在哪一轮，不需要用时间窗猜。
+- 子侧：`session_meta.payload` 同时给出 `id`、`parent_thread_id`、`session_id`（等于父 thread id，即 trace 键）与 `source.subagent.thread_spawn{parent_thread_id, depth, agent_path, agent_nickname, agent_role}`。
+- join 与 agent 间通信：`response_item.agent_message` 带结构化 `author` 与 `recipient`（父侧收到 `author: "/root/banana_reply"`、`recipient: "/root"`；子侧收到 `author: "/root"`、`recipient: "/root/banana_reply"`），正文是 `Message Type: FINAL_ANSWER|NEW_TASK` 信封。`agent_path` 本身是层级路径，`/root/<task_name>` 直接编码了树形位置。
+- 另有 `world_state` 增量记录在线 subagent 名册（`{"environments": {"subagents": "- banana_reply: Einstein"}}`）与 `inter_agent_communication_metadata`。
+
+旧版本不能这么读：本机 993 个历史 rollout 里 `spawn_agent` 出现 0 次，2026-06 那批 0.141 的子 agent 只有子侧 `parent_thread_id`，join 是注入父 transcript 的 `<subagent_notification>` 文本。adapter 必须按 `cli_version` 分支，并把文本解析当作旧版兜底而不是主路径。
+
+**Claude Code** 在 `<root>/subagents/agent-<id>.meta.json` 的 `{agentType, description, toolUseId, parentAgentId, spawnDepth}`，`toolUseId` 即父侧 `Agent` 工具调用的 id；**opencode** 在 `session.parent_id` 与 `task` part 的 `state.metadata.sessionId`。
+
+当前 `packages/adapters/src/claude.ts:267` 与 `packages/adapters/src/codex.ts:306` 把整个 session 压成单一 `agentId`，`packages/adapters/src/common.ts:112` 又让每个 session 文件自成一条 trace，因此这些字段全部丢失。读取兄弟子 transcript 会触碰[适配器契约](../contracts.md#adapter-contract)与安全边界中"服务端不枚举目录"的约束，需要把 `AdapterInput`（`packages/adapters/src/types.ts:10-13`）从单文件改为 session bundle，由浏览器目录选择或 Collector 授权根提供。
