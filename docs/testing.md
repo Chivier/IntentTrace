@@ -24,7 +24,7 @@ The fixed-seed fixture has at least 2,000 raw events and 6 agents: 1 orchestrato
 
 Every event has a stable source identity, source/source-ingest time, lineage, and a payload hash/ref; it includes duplicates, out-of-order events, late events, missing optional fields, and rotation boundaries. The golden manifest records the generator version, seed, event count, agent count, and file hashes; no real session or secret is committed.
 
-`generateAcceptanceFixture(2048)` already implements the fixed seed, six agents, parallel lanes, handoff, failure/repair, malformed ID observation, join, and the final marker; `pnpm demo:load` imports through the actual web→API path. Each of the four adapters has three anonymized fixtures. The duplicate/late variants of the current generator are tested separately by the repository/environment scenarios, and a synthetic story is not treated as evidence of real semantic quality.
+`generateAcceptanceFixture(2048)` already implements the fixed seed, six agents, parallel lanes, handoff, failure/repair, malformed ID observation, join, and the final marker; `pnpm demo:load:synthetic` imports through the actual web→API path. `pnpm demo:load` now imports the committed real recording `packages/test-fixtures/fixtures/demo/imo-2025-p1-parallel-solve.jsonl` (231 events, 6 agents, 8 error events); it is a recording, and is not evidence of real semantic quality. Each of the four adapters has three anonymized fixtures. The duplicate/late variants of the current generator are tested separately by the repository/environment scenarios, and a synthetic story is not treated as evidence of real semantic quality.
 
 ## Mandatory acceptance matrix
 

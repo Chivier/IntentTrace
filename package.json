@@ -26,6 +26,7 @@
     "docker:down": "node scripts/docker-stack.mjs down",
     "docker:check": "node scripts/check-compose.mjs",
     "demo:load": "tsx scripts/load-demo.ts",
+    "demo:load:synthetic": "tsx scripts/load-demo-synthetic.ts",
     "screenshots:readme": "node scripts/capture-readme-screenshots.mjs",
     "desktop:prepare": "node scripts/prepare-desktop-stack.mjs",
     "desktop:check": "pnpm desktop:prepare && pnpm --filter @intenttrace/desktop check",
