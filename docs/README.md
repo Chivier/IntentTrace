@@ -30,6 +30,7 @@ This is the entry point for engineering and product facts. Implementation status
 | [`project/progress.md`](project/progress.md)                                                             | Append-only progress record with commands, commits and environment evidence (Chinese)                     |
 | [`design/source-package.md`](design/source-package.md)                                                   | Original design-package registry and deviation notes (Chinese)                                            |
 | [`design/agent-spawn-topology.md`](design/agent-spawn-topology.md)                                       | Agent spawn/join topology design: canonical fields, reducer-derived edges (Chinese)                       |
+| [`design/research/agent-spawn-formats.md`](design/research/agent-spawn-formats.md)                       | Measured survey of how six agent harnesses record subagent spawns (Chinese)                               |
 | [`design/research/import-experience.md`](design/research/import-experience.md)                           | External research on chat-history import experience (Chinese)                                             |
 | [`design/research/slim-runtime-and-queue-removal.md`](design/research/slim-runtime-and-queue-removal.md) | Runtime slimming and queue removal design, a historical record from before that change (Chinese)          |
 
