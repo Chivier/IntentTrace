@@ -554,3 +554,18 @@ grok -p "$PROMPT" --output-format json                                        # 
 ```
 
 各 store 的 diff 方式：Codex/Claude/omp/pi 数文件，opencode 数 SQLite 行，Grok 数 session 目录。
+
+## 附录：逐 harness 原始报告
+
+本文是汇总。每个 harness 的完整实测报告——逐条 verbatim 记录样本、全语料计数、探针命令与前后 diff、以及该格式独有的陷阱清单——保留在 `spawn-formats/` 下，未经压缩改写：
+
+| harness          | 原始报告                                                       |
+| ---------------- | -------------------------------------------------------------- |
+| OpenAI Codex CLI | [`spawn-formats/codex.md`](spawn-formats/codex.md)             |
+| Claude Code      | [`spawn-formats/claude-code.md`](spawn-formats/claude-code.md) |
+| opencode         | [`spawn-formats/opencode.md`](spawn-formats/opencode.md)       |
+| Oh My Pi (omp)   | [`spawn-formats/omp.md`](spawn-formats/omp.md)                 |
+| pi coding agent  | [`spawn-formats/pi.md`](spawn-formats/pi.md)                   |
+| Grok Build       | [`spawn-formats/grok-build.md`](spawn-formats/grok-build.md)   |
+
+六份报告共用同一组标题（版本与启用、trace 位置、父侧、子侧、链接、join、agent 间消息、嵌套与身份、探针记录、陷阱），可以逐节横向对读。所有主机路径已改写为 `~` 或 `<user>`，隐藏推理内容未被复制。
