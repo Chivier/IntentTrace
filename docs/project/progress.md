@@ -1,14 +1,14 @@
 ---
 status: current
 owner: program
-last_reviewed: 2026-08-11
+last_reviewed: 2026-08-12
 normative: true
 milestone: Gate 5
 ---
 
 # 实施进度
 
-证据更新至 2026-08-11；workspace 为本地 IntentTrace checkout（公开文档不记录个人绝对路径）；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.1`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
+证据更新至 2026-08-12；workspace 为本地 IntentTrace checkout（公开文档不记录个人绝对路径）；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.1`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
 
 ## Planned
 
@@ -68,6 +68,7 @@ milestone: Gate 5
 
 ## Environment verified
 
+- README 真实 demo trace（2026-08-12，本地）：把 `pnpm demo:load` 从固定 seed 合成 fixture 切到提交进仓库的真实录制 `packages/test-fixtures/fixtures/demo/imo-2025-p1-parallel-solve.jsonl`（231 events、6 个 agent 泳道、8 条 `status=error`、24m02s 墙钟），在动态入口 `127.0.0.1:32773` 上首次导入 `231 inserted / 0 duplicates`、重跑 `0 inserted / 231 duplicates`；worker 消化 6 个 summary job 后 `/graph` 返回 6 个节点（r1/r50/r100/r150/r200/r231 对应 1/2/3/4/5/6 个节点），其中三个 `issue` 节点标题即工具失败原文（`Tool result: eval · Tool eval not found`、`… write …`、`… glob …`），`/snapshot` 的 `agents` 为 6；workbench 实测：Evidence inspector 对 eval issue 给出 `#50 tool_result · ImoConstructions` 且 `Open sanitized source payload` 返回 `{"tool":"eval","result":"Tool eval not found"}`，watermark 拖到 100 时 `Raw Events` 显示 `100 immutable facts`、result 节点证据行为 `outside playhead`（节点集合由 revision 决定，不随 watermark 变化）；`pnpm screenshots:readme` 以新标题 `IMO 2025 P1 solved by six parallel agents` 重新生成 1200×420 与 1600×1000 两张 PNG。录制在生成时丢弃全部隐藏推理块并把主机路径改写为 `~`，仓库内 fixture 不含 `/home/`。该证据只证明本地栈上的导入、成图与截图，不证明真实 provider 的语义质量，也不构成任何性能 SLA。
 - 2026-08-10 遥测边界修正：`turbo telemetry status` 与 `next telemetry status` 实测均为 Enabled，而 `pnpm docker:up` 会执行 `turbo run build`，因此原 README 「不向任何第三方上报」的表述不成立。已在 `infra/Dockerfile`（builder 与 runtime 两段）、当前 `docker-compose.yml` 与 CI workflow 的 `env:` 中为既有的 `NEXT_TELEMETRY_DISABLED=1` 补齐 `TURBO_TELEMETRY_DISABLED=1`，并实测 `TURBO_TELEMETRY_DISABLED=1` 使 turbo 报告 Disabled。README 现分三条陈述：本项目自身代码不上报、镜像与 CI 已关闭构建工具遥测、宿主直接运行 `pnpm build`/`dev`/`typecheck` 仍受两家默认值约束。
 - 运行时瘦身栈（2026-08-10）：`pnpm docker:up` 恢复可用（改造前必然以 `bundle resource is missing` 失败），动态入口 `127.0.0.1:32773→3000`；`postgres`/`api`/`web` healthy、`migrate` 一次性 `Exited (0)`、`worker` 常驻，API 与 PostgreSQL 无宿主端口。全新数据库上的 `pnpm demo:load` 为 2048 inserted / 0 duplicates、revision watermark `2048`、42/42 summary jobs committed、43 个 semantic revision、42 个 node version；本轮复核该库为 1 trace / 2,048 raw events / 42 个 summary job（该项由未按状态限定的 `count(*)` 得出。“42 个全部为 committed”另行实测：`select status, count(*) from summary_jobs where trace_id = '13527fcf-93ea-5feb-8880-2ac95ab8550c' group by status` 返回唯一一行 `committed | 42`，该 trace 就是 `demo:load` 建立的作业集；同批的 `select trace_id, count(*) from summary_jobs group by trace_id` 给出 `13527fcf…|42` 与 `33333333…|2`，证明后来只有 worker-only 演练自己上传的 2 个作业挂在另一个 trace 下。整表层面的 42 基线已不可复现——那 2 行是演练自身产生的、不删数据就无法退回）/ 43 revisions，与之一致。无 broker 的重试路径已单独证明：worker 缩到 0 副本时把一个尚无 revision 的 job 置为 `status='failed'`/`attempt_count=0`，恢复 worker 后它被重新领取并最终 `committed` 且产出 revision（该项最初的 SQL 有混淆，已重做）。仅本机观测，不作为 SLA。
 - worker-only 可用性演练（2026-08-10）：补上此前的空缺——outage 演练只在移除 Redis 前的三镜像栈上做过（同时停 Redis 与 worker），两镜像栈上的 worker-only 演练一直未执行。本轮只 `docker compose stop worker`（`Exited (0)`，日志出现 `received SIGTERM; finishing current job`），随后经 Web 动态入口 `127.0.0.1:32773` 的 API 路径分 3 页（`limit=1000` + `after` 游标）取回全部 2,048 个 raw event，三页均为 HTTP 200 且与数据库 `count(*)` 一致；`/api/v1/traces`、`/healthz`、`/api/status` 同为 200。事前预测 `/readyz` 会返回 200——`apps/api/src/main.ts` 只探测 `select 1`，`ReadySchema.dependencies` 只有 `postgres`，worker 从来不是就绪维度；实测 `HTTP 200 {"service":"api","status":"ready","dependencies":{"postgres":"ok"}}`，与预测一致，`api` 容器 healthcheck 全程 healthy。**这一项不构成就绪契约的前后对比**：`git show c0fdde4^:apps/api/src/main.ts` 显示移除前的探针是 postgres **与** redis，同样不含 worker，因此同一个 worker-only 场景在三镜像栈上也会返回 200；历史记录里的 503 属于那次演练被一并停掉的 Redis 探针，不属于 worker。移除真正带来的就绪变化更窄：Redis 故障不再可能让 readiness 降级，因为该依赖已不存在。停机期间经 `/api/v1/imports/sessions` 上传 `jsonl/valid.jsonl` 新建 trace，产生的 2 个 summary job 在 6 秒（3 个轮询周期）内保持 `pending`；`docker compose start worker` 后 3 秒内两者均 `committed`，其中 `final` job 首次尝试因 base revision 被同批 `live` 提交顶掉而抛 `StaleSummaryJobError`，经 transaction rebase 在 `attempt_count=2` 提交，全程无 broker。演练后计数为 2 traces / 2,050 raw events / 44 committed jobs（`select count(*) from summary_jobs where status='committed'` 复测为 `44`，整表 `select status, count(*) from summary_jobs group by status` 亦为唯一一行 `committed | 44`）/ 46 revisions / 44 node versions。仅本机观测，不作为 SLA。

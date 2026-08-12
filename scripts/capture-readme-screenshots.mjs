@@ -5,7 +5,7 @@ import process from "node:process";
 
 import { chromium } from "@playwright/test";
 
-const demoTitle = "Deterministic six-agent repair and join";
+const demoTitle = "IMO 2025 P1 solved by six parallel agents";
 
 function resolveOrigin() {
   if (process.env.INTENTTRACE_WEB_ORIGIN) return process.env.INTENTTRACE_WEB_ORIGIN;
@@ -39,7 +39,7 @@ try {
     colorScheme: "dark",
   });
 
-  // Keep README captures synthetic-only even when the local stack contains private traces.
+  // Keep README captures limited to the recorded demo trace even when the local stack holds private traces.
   await page.route("**/api/v1/traces", async (route) => {
     await route.fulfill({ json: { traces: [demo], nextCursor: null } });
   });
@@ -68,4 +68,4 @@ try {
   await browser.close();
 }
 
-process.stdout.write(`Captured synthetic-only README screenshots from ${origin}.\n`);
+process.stdout.write(`Captured README screenshots of the recorded demo trace from ${origin}.\n`);
