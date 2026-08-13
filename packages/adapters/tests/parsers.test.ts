@@ -121,6 +121,23 @@ describe("implemented trace adapters", () => {
     const event = records.find((record) => record.type === "event");
     expect(event?.type === "event" ? event.event.status : null).toBe("error");
   });
+  it("maps Claude bundle child lanes, sidecar parentage, joins, and inferred peers", async () => {
+    const parts = [
+      { path: "root.jsonl", bytes: await fixture("claude", "topology/root.jsonl") },
+      { path: "subagents/agent-child.jsonl", bytes: await fixture("claude", "topology/subagents/agent-child.jsonl") },
+      { path: "subagents/agent-child.meta.json", bytes: await fixture("claude", "topology/subagents/agent-child.meta.json") },
+    ];
+    const records: AdapterRecord[] = [];
+    for await (const record of new ClaudeSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    const events = records.filter((record) => record.type === "event");
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["claude-root", "child-agent"]));
+    const child = events.find((record) => record.event.agentId === "child-agent");
+    expect(child?.event.attributes.parentAgentId).toBe("claude-root");
+    expect(child?.event.parentSpanId).toBe("toolu-child-1");
+    expect(child?.event.attributes.topologyProvenance).toBe("stated");
+    expect(events.some((record) => record.event.attributes.joinedBy === "child-agent")).toBe(true);
+    expect(events.some((record) => record.event.attributes.senderAgentId === "claude-root" && record.event.attributes.recipientAgentId === "child-agent")).toBe(true);
+  });
 
   it("accepts Claude client versions while omitting thinking and file snapshots", async () => {
     const adapter = new ClaudeSessionAdapter();
