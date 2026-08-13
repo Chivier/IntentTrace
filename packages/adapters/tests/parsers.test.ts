@@ -288,6 +288,84 @@ describe("implemented trace adapters", () => {
     expect(serialized).not.toMatch(/\/home\//u);
   });
 
+  it.each([
+    ["codex", "codex-child"],
+    ["claude", "child-agent"],
+    ["opencode", "ses-child"],
+    ["omp", "Child"],
+    ["grok", "grok-child"],
+  ] as const)("emits reducer-derivable spawn and join facts for %s", async (source, childLane) => {
+    const bundles: Record<string, () => Promise<{ adapter: TraceAdapter; parts: { path: string; bytes: Uint8Array }[] }>> = {
+      codex: async () => ({
+        adapter: new CodexSessionAdapter(),
+        parts: [
+          { path: "parent.jsonl", bytes: await fixture("codex", "topology/parent.jsonl") },
+          { path: "child.jsonl", bytes: await fixture("codex", "topology/child.jsonl") },
+        ],
+      }),
+      claude: async () => ({
+        adapter: new ClaudeSessionAdapter(),
+        parts: [
+          { path: "root.jsonl", bytes: await fixture("claude", "topology/root.jsonl") },
+          { path: "subagents/agent-child.jsonl", bytes: await fixture("claude", "topology/subagents/agent-child.jsonl") },
+          { path: "subagents/agent-child.meta.json", bytes: await fixture("claude", "topology/subagents/agent-child.meta.json") },
+        ],
+      }),
+      opencode: async () => ({
+        adapter: new OpenCodeSessionAdapter(),
+        parts: [
+          { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
+          { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
+          { path: "tool-output/tool-truncated", bytes: await fixture("opencode", "topology/tool-truncated") },
+        ],
+      }),
+      omp: async () => ({
+        adapter: new OmpSessionAdapter(),
+        parts: [
+          { path: "root.jsonl", bytes: await fixture("omp", "topology/root.jsonl") },
+          { path: "root/Child.jsonl", bytes: await fixture("omp", "topology/Child.jsonl") },
+          { path: "root/Sibling.jsonl", bytes: await fixture("omp", "topology/Sibling.jsonl") },
+        ],
+      }),
+      grok: async () => ({
+        adapter: new GrokSessionAdapter(),
+        parts: [
+          { path: "parent/updates.jsonl", bytes: await fixture("grok", "topology/parent/updates.jsonl") },
+          { path: "parent/subagents/child/meta.json", bytes: await fixture("grok", "topology/parent/subagents/child/meta.json") },
+          { path: "parent/subagents/child/output.json", bytes: await fixture("grok", "topology/parent/subagents/child/output.json") },
+          { path: "child/updates.jsonl", bytes: await fixture("grok", "topology/child/updates.jsonl") },
+        ],
+      }),
+    };
+    const { adapter, parts } = await bundles[source]!();
+    const records: AdapterRecord[] = [];
+    for await (const record of adapter.parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    const events = records.filter((record) => record.type === "event").map((record) => record.event);
+
+    const childStart = events.find(
+      (event) => event.kind === "agent_start" && event.agentId === childLane && typeof event.attributes.parentAgentId === "string",
+    );
+    expect(childStart, "child agent_start with parentAgentId").toBeDefined();
+    const parentLane = String(childStart!.attributes.parentAgentId);
+    const spawnPartner = events.find(
+      (event) =>
+        event.agentId === parentLane &&
+        ((childStart!.parentSpanId !== undefined && event.spanId === childStart!.parentSpanId) ||
+          (Array.isArray(event.attributes.spawnedAgentIds) && (event.attributes.spawnedAgentIds as string[]).includes(childLane))),
+    );
+    expect(spawnPartner, "parent fact matching child parentSpanId or spawnedAgentIds").toBeDefined();
+
+    const joinResult = events.find(
+      (event) =>
+        event.kind === "tool_result" &&
+        Array.isArray(event.attributes.joinedAgentIds) &&
+        (event.attributes.joinedAgentIds as string[]).includes(childLane),
+    );
+    expect(joinResult, "parent tool_result carrying joinedAgentIds").toBeDefined();
+    const childEnd = events.find((event) => event.kind === "agent_end" && event.agentId === childLane);
+    expect(childEnd, "child agent_end").toBeDefined();
+  });
+
   it("accepts a single pretty-printed JSON object as one record", async () => {
     const records = await parse(
       new CodexSessionAdapter(),

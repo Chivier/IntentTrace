@@ -246,11 +246,12 @@ export class CodexSessionAdapter implements TraceAdapter {
           attributes.topologyProvenance = childPart?.historyMode === "paginated" ? "inferred" : "stated";
           parentSpanId = stringValue(payload.event_id) ?? undefined;
         }
+        const finalAnswer = Boolean(author && recipient && /FINAL_ANSWER/iu.test(messageText(payload)));
         if (author && recipient) {
           attributes.senderAgentId = author;
           attributes.recipientAgentId = recipient;
           attributes.messageId = eventId;
-          if (/FINAL_ANSWER/iu.test(messageText(payload))) {
+          if (finalAnswer) {
             attributes.joinedBy = author;
             attributes.joinedAgentIds = [author];
           }
@@ -272,10 +273,10 @@ export class CodexSessionAdapter implements TraceAdapter {
             {
               sourceEventId: eventId,
               occurredAt: typeof object.timestamp === "string" ? object.timestamp : undefined,
-              kind: codexKind(object.type, sanitizedPayload),
+              kind: finalAnswer ? "tool_result" : codexKind(object.type, sanitizedPayload),
               name: display.name,
               status: object.type === "event_msg" && payloadType === "error" ? "error" : "ok",
-              agentId: eventLane,
+              agentId: finalAnswer && recipient ? recipient : eventLane,
               spanId: stringValue(payload.call_id) ?? undefined,
               parentSpanId,
               attributes,
@@ -291,6 +292,32 @@ export class CodexSessionAdapter implements TraceAdapter {
           bytes: new TextEncoder().encode(JSON.stringify(sanitizedObject)),
           mediaType: "application/json",
         };
+        if (finalAnswer && author) {
+          yield {
+            type: "event",
+            event: normalizeEvent(
+              {
+                source: "codex",
+                formatVersion: version,
+                adapterVersion: this.manifest.adapterVersion,
+                sourceIdentity: input.sourceIdentity,
+                sessionId: `${root}@${this.manifest.adapterVersion}`,
+                line: record.line,
+              },
+              {
+                sourceEventId: `agent-end-${author}`,
+                occurredAt: typeof object.timestamp === "string" ? object.timestamp : undefined,
+                kind: "agent_end",
+                name: displayName("Subagent final answer", author),
+                status: "ok",
+                agentId: author,
+                attributes: { recordType: "agent_end", contentType: "agent_activity", joinedBy: recipient ?? root },
+                payload: { agent: author, recipient },
+                traceTitle: "Codex session",
+              },
+            ),
+          };
+        }
       }
     }
   }

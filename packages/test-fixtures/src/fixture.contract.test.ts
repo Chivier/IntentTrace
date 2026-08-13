@@ -69,11 +69,47 @@ describe("topology fixture policy", () => {
         .filter((file) => statSync(file).isFile());
       for (const file of files) {
         const text = readFileSync(file, "latin1");
-        expect(text).not.toMatch(/\/home\/|[A-Z]:\\/u);
+        expect(text).not.toMatch(/(?:\/home\/|\/Users\/)(?!must-not-persist)|[A-Z]:\\/u);
         expect(text).not.toMatch(/(?:api[_-]?key|authorization|secret|password)\s*[:=]/iu);
-        expect(text).not.toMatch(/"(?:thinking|reasoning|agent_thought_chunk|thinkingSignature)"\s*:/u);
+        expect(text).not.toMatch(/"(?:thinking|reasoning|agent_thought_chunk|thinkingSignature)"\s*:\s*"(?!must-not-persist)/u);
         expect(text).not.toMatch(/gAAAA[A-Za-z0-9_-]{8,}/u);
       }
     }
+  });
+
+  it("only allows synthetic marker text inside hidden-content values", () => {
+    const hiddenKeys = new Set(["thinking", "reasoning", "thinkingSignature", "signature", "encrypted_content", "systemPrompt"]);
+    const marker = /^must-not-persist/u;
+    const violations: string[] = [];
+    const walk = (value: unknown, path: string): void => {
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => walk(item, `${path}[${index}]`));
+        return;
+      }
+      if (value === null || typeof value !== "object") return;
+      const object = value as Record<string, unknown>;
+      const hiddenBlock = object.type === "thinking" || object.type === "redacted_thinking" || object.sessionUpdate === "agent_thought_chunk";
+      for (const [key, item] of Object.entries(object)) {
+        const hidden = hiddenKeys.has(key) || (hiddenBlock && (key === "content" || key === "text"));
+        if (hidden && typeof item === "string" && !marker.test(item)) violations.push(`${path}.${key}`);
+        walk(item, `${path}.${key}`);
+      }
+    };
+    for (const source of ["codex", "claude", "opencode", "omp", "grok"]) {
+      const root = new URL(`../fixtures/${source}/topology/`, import.meta.url);
+      const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+        .map((file) => new URL(String(file), root))
+        .filter((file) => statSync(file).isFile() && /\.(?:jsonl|json)$/u.test(file.pathname));
+      for (const file of files) {
+        for (const line of readFileSync(file, "utf8").split("\n").filter((entry) => entry.trim().length > 0)) {
+          try {
+            walk(JSON.parse(line), `${source}:${file.pathname.split("/").at(-1)}`);
+          } catch {
+            violations.push(`${source}: unparseable fixture line`);
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
   });
 });
