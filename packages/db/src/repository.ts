@@ -530,9 +530,35 @@ export class IntentTraceRepository {
       order by created_at desc, id desc limit 1
     `;
     const baseRevisionId = baseRows[0]?.id;
+    const isLaneBoundary = input.kind === "agent_start" || input.kind === "agent_end";
+    if (baseRevisionId && isLaneBoundary && BigInt(ingestSeq) > 1n) {
+      const priorWatermark = String(BigInt(ingestSeq) - 1n);
+      const priorInputHash = payloadHash({
+        traceId: input.traceId,
+        eventWatermark: priorWatermark,
+        baseRevisionId,
+      });
+      const priorJobs = await tx<Array<{ id: string }>>`
+        insert into summary_jobs (
+          trace_id, chunk_id, base_revision_id, job_nonce, input_hash, event_watermark,
+          branch_kind, prompt_version, policy_version
+        ) values (
+          ${input.traceId}, ${randomUUID()}, ${baseRevisionId}, ${randomUUID()}, ${priorInputHash},
+          ${priorWatermark}, ${late ? "final" : "live"}, 'mock-v1', 'local-safe-v1'
+        )
+        on conflict (trace_id, input_hash) do nothing
+        returning id
+      `;
+      if (priorJobs[0]) {
+        await tx`
+          insert into stream_events (trace_id, type, payload)
+          values (${input.traceId}, 'semantic_chunk.pending', ${tx.json({ jobId: priorJobs[0].id, eventWatermark: priorWatermark })})
+        `;
+      }
+    }
     const shouldSummarize =
       Boolean(baseRevisionId) &&
-      (ingestSeq === "1" || BigInt(ingestSeq) % 50n === 0n || completed || late);
+      (ingestSeq === "1" || BigInt(ingestSeq) % 50n === 0n || isLaneBoundary || completed || late);
     if (baseRevisionId && shouldSummarize) {
       const inputHash = payloadHash({
         traceId: input.traceId,
@@ -978,7 +1004,7 @@ export class IntentTraceRepository {
       ) or (
         status = 'running' and updated_at < now() - interval '5 minutes'
       )
-      order by created_at, id
+      order by trace_id, event_watermark, id
       limit ${Math.max(1, Math.min(1000, limit))}
     `;
     return rows.map((row) => row.id);
@@ -986,7 +1012,7 @@ export class IntentTraceRepository {
 
   async claimSummaryJob(jobId: string): Promise<SummaryJobContext | null> {
     const job = await this.sql.begin(async (tx) => {
-      const rows = await tx<
+      const runnable = await tx<
         Array<{
           id: string;
           trace_id: string;
@@ -1000,13 +1026,37 @@ export class IntentTraceRepository {
           policy_version: string;
         }>
       >`
-        update summary_jobs set
-          status = 'running', attempt_count = attempt_count + 1,
-          updated_at = now(), last_error_code = null
+        select id, trace_id, chunk_id, base_revision_id, job_nonce, input_hash,
+          event_watermark, branch_kind, prompt_version, policy_version
+        from summary_jobs
         where id = ${jobId} and (
           (status in ('pending', 'failed') and (next_attempt_at is null or next_attempt_at <= now()))
           or (status = 'running' and updated_at < now() - interval '5 minutes')
         )
+        for update
+      `;
+      const selected = runnable[0];
+      if (!selected) return null;
+
+      const latest = await tx<Array<{ id: string }>>`
+        select id from semantic_revisions where trace_id = ${selected.trace_id}
+        order by created_at desc, id desc limit 1
+      `;
+      const baseRevisionId = latest[0]?.id;
+      if (!baseRevisionId) throw new RepositoryNotFoundError("semantic revision");
+      const inputHash = payloadHash({
+        traceId: selected.trace_id,
+        eventWatermark: String(selected.event_watermark),
+        baseRevisionId,
+      });
+      const jobNonce =
+        baseRevisionId === selected.base_revision_id ? selected.job_nonce : randomUUID();
+      const rows = await tx<typeof runnable>`
+        update summary_jobs set
+          status = 'running', attempt_count = attempt_count + 1,
+          base_revision_id = ${baseRevisionId}, job_nonce = ${jobNonce}, input_hash = ${inputHash},
+          updated_at = now(), last_error_code = null
+        where id = ${jobId}
         returning id, trace_id, chunk_id, base_revision_id, job_nonce, input_hash,
           event_watermark, branch_kind, prompt_version, policy_version
       `;

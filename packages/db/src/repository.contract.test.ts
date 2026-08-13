@@ -123,6 +123,103 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
     }
   }
 
+  it("orders idempotent lane-boundary summary chunks by watermark without rebase churn", async () => {
+    const ids = scope();
+    const events = [
+      event(ids, "evt-root-request", { agentId: "root" }),
+      event(ids, "evt-root-work", { kind: "log", agentId: "root" }),
+      event(ids, "evt-child-a-start", { kind: "agent_start", agentId: "child-a" }),
+      event(ids, "evt-child-a-work", { kind: "log", agentId: "child-a" }),
+      event(ids, "evt-child-a-end", { kind: "agent_end", agentId: "child-a" }),
+      event(ids, "evt-root-between", { kind: "log", agentId: "root" }),
+      event(ids, "evt-child-b-start", { kind: "agent_start", agentId: "child-b" }),
+      event(ids, "evt-child-b-work", { kind: "log", agentId: "child-b" }),
+      event(ids, "evt-child-b-end", { kind: "agent_end", agentId: "child-b" }),
+    ];
+    try {
+      for (const item of events) await repository.ingest(item);
+      for (const item of events) expect((await repository.ingest(item)).duplicate).toBe(true);
+
+      const jobs = await sql<
+        Array<{
+          id: string;
+          event_watermark: string;
+          chunk_after: string;
+          input_hash: string;
+          kind: RawTraceEventInput["kind"];
+          agent_id: string | null;
+        }>
+      >`
+        select sj.id, sj.event_watermark::text, sj.input_hash, re.kind, re.agent_id,
+          coalesce(lag(sj.event_watermark) over (order by sj.event_watermark), 0)::text as chunk_after
+        from summary_jobs sj
+        join raw_events re
+          on re.trace_id = sj.trace_id and re.ingest_seq = sj.event_watermark
+        where sj.trace_id = ${ids.traceId}
+        order by sj.event_watermark
+      `;
+      expect(
+        jobs.map(
+          ({ event_watermark: watermark, chunk_after: chunkAfter, kind, agent_id: agentId }) => ({
+            watermark,
+            chunkAfter,
+            kind,
+            agentId,
+          }),
+        ),
+      ).toEqual([
+        { watermark: "1", chunkAfter: "0", kind: "user_message", agentId: "root" },
+        { watermark: "2", chunkAfter: "1", kind: "log", agentId: "root" },
+        { watermark: "3", chunkAfter: "2", kind: "agent_start", agentId: "child-a" },
+        { watermark: "4", chunkAfter: "3", kind: "log", agentId: "child-a" },
+        { watermark: "5", chunkAfter: "4", kind: "agent_end", agentId: "child-a" },
+        { watermark: "6", chunkAfter: "5", kind: "log", agentId: "root" },
+        { watermark: "7", chunkAfter: "6", kind: "agent_start", agentId: "child-b" },
+        { watermark: "8", chunkAfter: "7", kind: "log", agentId: "child-b" },
+        { watermark: "9", chunkAfter: "8", kind: "agent_end", agentId: "child-b" },
+      ]);
+      expect(new Set(jobs.map((job) => job.input_hash))).toHaveLength(jobs.length);
+      for (const [index, job] of jobs.entries()) {
+        await sql`
+          update summary_jobs
+          set created_at = ${new Date(Date.UTC(2026, 7, 3, 0, 0, jobs.length - index))}
+          where id = ${job.id}
+        `;
+      }
+      const jobIds = new Set(jobs.map((job) => job.id));
+      expect((await repository.listRunnableSummaryJobIds()).filter((id) => jobIds.has(id))).toEqual(
+        jobs.map((job) => job.id),
+      );
+
+      for (const expected of jobs) {
+        const job = await repository.claimSummaryJob(expected.id);
+        expect(job).toMatchObject({ eventWatermark: expected.event_watermark });
+        const revisionId = await repository.commitSummaryJob(expected.id, {
+          state: job!.graph,
+          changedNodeIds: [],
+          changedEdgeIds: [],
+          provider: "contract",
+          model: "contract",
+          requestHash: "a".repeat(64),
+          responseHash: "b".repeat(64),
+          diagnostics: [],
+          egress: "none",
+        });
+        expect(revisionId).toBeDefined();
+      }
+      const attempts = await sql<Array<{ event_watermark: string; attempt_count: number }>>`
+        select event_watermark::text, attempt_count
+        from summary_jobs where trace_id = ${ids.traceId}
+        order by event_watermark
+      `;
+      expect(attempts).toEqual(
+        jobs.map((job) => ({ event_watermark: job.event_watermark, attempt_count: 1 })),
+      );
+    } finally {
+      await discard(ids.traceId);
+    }
+  });
+
   it("resolves a producer causation reference inside the ingest transaction", async () => {
     const ids = scope();
     try {
