@@ -66,7 +66,12 @@ export class OpenCodeSessionAdapter implements TraceAdapter {
         const part = normalized.parts.find((candidate) => candidate.path === name || candidate.path.endsWith(`/${name}`));
         if (part) await writeFile(join(work, name), part.bytes);
       }
-      const overflow = new Map(normalized.parts.map((part) => [posix.basename(part.path), part.bytes]));
+      const overflowByPath = new Map(normalized.parts.filter((part) => part.path.startsWith("tool-output/")).map((part) => [part.path, part.bytes]));
+      const overflowBasenameCounts = new Map<string, number>();
+      for (const part of normalized.parts.filter((candidate) => candidate.path.startsWith("tool-output/"))) {
+        const basename = posix.basename(part.path);
+        overflowBasenameCounts.set(basename, (overflowBasenameCounts.get(basename) ?? 0) + 1);
+      }
       const db = new DatabaseSync(join(work, "opencode.db"), { readOnly: true });
       try {
         const sessions = db.prepare("SELECT id,parent_id,version,time_created,agent FROM session ORDER BY time_created ASC, id ASC").all() as unknown as SessionRow[];
@@ -171,13 +176,14 @@ export class OpenCodeSessionAdapter implements TraceAdapter {
           let recovered = false;
           if (task && (metadata.truncated === true || output.includes("[Session persistence truncated large content]"))) {
             const outputPath = str(metadata.outputPath);
-            const bytes = outputPath ? overflow.get(posix.basename(outputPath)) : undefined;
-            if (bytes) {
-              output = decodeAdapterBytes(bytes);
-              recovered = true;
-            } else {
-              yield { type: "warning", code: "truncated_output_unresolved", message: "OpenCode truncated task output has no supplied overflow part", sourceEventId: eventId };
-            }
+            const normalizedOutputPath = outputPath?.replaceAll("\\", "/");
+            const pathValid = normalizedOutputPath?.startsWith("tool-output/") === true && !normalizedOutputPath.split("/").includes("..");
+            const basename = normalizedOutputPath ? posix.basename(normalizedOutputPath) : "";
+            const ambiguous = (overflowBasenameCounts.get(basename) ?? 0) > 1;
+            const bytes = pathValid && !ambiguous && normalizedOutputPath ? overflowByPath.get(normalizedOutputPath) : undefined;
+            if (outputPath && (!pathValid || ambiguous)) yield { type: "warning", code: "truncated_output_overflow_ambiguous", message: "OpenCode overflow reference is ambiguous or outside the supplied bundle", sourceEventId: eventId };
+            if (bytes) { output = decodeAdapterBytes(bytes); recovered = true; }
+            else if (!outputPath || pathValid) yield { type: "warning", code: "truncated_output_unresolved", message: "OpenCode truncated task output has no supplied overflow part", sourceEventId: eventId };
           }
           const envelope = task ? taskEnvelope(output) : null;
           const child = task ? str(metadata.sessionId) ?? envelope?.child ?? null : null;

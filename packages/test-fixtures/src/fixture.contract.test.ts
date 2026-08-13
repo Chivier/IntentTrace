@@ -81,35 +81,40 @@ describe("topology fixture policy", () => {
     const hiddenKeys = new Set(["thinking", "reasoning", "thinkingSignature", "signature", "encrypted_content", "systemPrompt"]);
     const marker = /^must-not-persist/u;
     const violations: string[] = [];
-    const walk = (value: unknown, path: string): void => {
+    const walk = (value: unknown, path: string, hiddenContext = false): void => {
       if (Array.isArray(value)) {
-        value.forEach((item, index) => walk(item, `${path}[${index}]`));
+        value.forEach((item, index) => walk(item, `${path}[${index}]`, hiddenContext));
         return;
       }
-      if (value === null || typeof value !== "object") return;
+      if (value === null || typeof value !== "object") {
+        if (hiddenContext && typeof value === "string" && !marker.test(value)) violations.push(path);
+        return;
+      }
       const object = value as Record<string, unknown>;
-      const hiddenBlock = object.type === "thinking" || object.type === "redacted_thinking" || object.sessionUpdate === "agent_thought_chunk";
+      const block = object.type === "thinking" || object.type === "redacted_thinking" || object.type === "agent_thought_chunk" || object.type === "encrypted_content";
       for (const [key, item] of Object.entries(object)) {
-        const hidden = hiddenKeys.has(key) || (hiddenBlock && (key === "content" || key === "text"));
-        if (hidden && typeof item === "string" && !marker.test(item)) violations.push(`${path}.${key}`);
-        walk(item, `${path}.${key}`);
+        const discriminator = key === "type" && block;
+        walk(item, `${path}.${key}`, discriminator ? false : hiddenContext || hiddenKeys.has(key) || block);
       }
     };
     for (const source of ["codex", "claude", "opencode", "omp", "grok"]) {
       const root = new URL(`../fixtures/${source}/topology/`, import.meta.url);
-      const files = readdirSync(root, { recursive: true, encoding: "utf8" })
-        .map((file) => new URL(String(file), root))
-        .filter((file) => statSync(file).isFile() && /\.(?:jsonl|json)$/u.test(file.pathname));
-      for (const file of files) {
-        for (const line of readFileSync(file, "utf8").split("\n").filter((entry) => entry.trim().length > 0)) {
-          try {
-            walk(JSON.parse(line), `${source}:${file.pathname.split("/").at(-1)}`);
-          } catch {
-            violations.push(`${source}: unparseable fixture line`);
-          }
-        }
+      const files = readdirSync(root, { recursive: true, encoding: "utf8" }).map((file) => new URL(String(file), root)).filter((file) => statSync(file).isFile() && /\.(?:jsonl|json)$/u.test(file.pathname));
+      for (const file of files) for (const line of readFileSync(file, "utf8").split("\n").filter((entry) => entry.trim().length > 0)) {
+        try { walk(JSON.parse(line), `${source}:${file.pathname.split("/").at(-1)}`); } catch { violations.push(`${source}: unparseable fixture line`); }
       }
     }
     expect(violations).toEqual([]);
+    const directViolations: string[] = [];
+    const directWalk = (value: unknown, path: string, hiddenContext = false): void => {
+      if (Array.isArray(value)) return value.forEach((item, index) => directWalk(item, `${path}[${index}]`, hiddenContext));
+      if (value === null || typeof value !== "object") { if (hiddenContext && typeof value === "string" && !marker.test(value)) directViolations.push(path); return; }
+      const object = value as Record<string, unknown>; const block = object.type === "thinking" || object.type === "encrypted_content";
+      for (const [key, item] of Object.entries(object)) directWalk(item, `${path}.${key}`, hiddenContext || hiddenKeys.has(key) || block);
+    };
+    directWalk({ thinking: { text: "real hidden" } }, "object");
+    directWalk({ thinking: ["real hidden"] }, "array");
+    directWalk({ type: "encrypted_content", value: "not-a-token" }, "encrypted");
+    expect(directViolations.length).toBeGreaterThanOrEqual(2);
   });
 });

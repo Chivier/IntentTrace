@@ -244,6 +244,7 @@ const confidentialKeys = new Set([
   "prompt_body",
 ]);
 const pathKeys = new Set(["cwd", "child_cwd", "grok_home", "directory", "homeDir", "resolvedPath"]);
+const usernameKeys = new Set(["username", "user_name", "userName"]);
 const reasoningBlockTypes = new Set(["thinking", "redacted_thinking", "agent_thought_chunk"]);
 const confidentialBlockTypes = new Set(["encrypted_content"]);
 const hostPathPattern = /(?:\/home\/[^\s"'\\/]+|\/Users\/[^\s"'\\/]+)/gu;
@@ -298,6 +299,12 @@ export function sanitizeVendorValue(value: unknown): VendorSanitizeResult {
   }
   const object = objectRecord(value);
   if (!object) return { value, reasoning: 0, confidential: 0 };
+  if (object.type === "thinking" || object.type === "redacted_thinking" || object.type === "reasoning" || object.type === "agent_thought_chunk") {
+    return { value: { type: object.type }, reasoning: 1, confidential: 0 };
+  }
+  if (object.type === "encrypted_content") {
+    return { value: { type: object.type }, reasoning: 0, confidential: 1 };
+  }
   const output: Record<string, unknown> = {};
   let reasoning = 0;
   let confidential = 0;
@@ -307,6 +314,10 @@ export function sanitizeVendorValue(value: unknown): VendorSanitizeResult {
       continue;
     }
     if (confidentialKeys.has(key)) {
+      confidential += 1;
+      continue;
+    }
+    if (usernameKeys.has(key)) {
       confidential += 1;
       continue;
     }

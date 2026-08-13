@@ -213,6 +213,28 @@ describe("implemented trace adapters", () => {
     expect(serialized).not.toContain("must-not-persist");
     expect(serialized).not.toMatch(/\/home\//u);
   });
+  it("rejects ambiguous duplicate-basename OpenCode overflow references", async () => {
+    const records: AdapterRecord[] = [];
+    for await (const record of new OpenCodeSessionAdapter().parse({
+      parts: [
+        { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
+        { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
+        { path: "tool-output/tool-truncated", bytes: await fixture("opencode", "topology/tool-truncated") },
+        { path: "tool-output/alternate/tool-truncated", bytes: new TextEncoder().encode("ambiguous") },
+      ],
+      sourceIdentity: "anonymous-fixture",
+    })) records.push(record);
+    expect(records.some((record) => record.type === "warning" && record.code === "truncated_output_overflow_ambiguous")).toBe(true);
+    expect(records.some((record) => record.type === "event" && record.event.attributes.overflowRecovered === true)).toBe(false);
+  });
+  it("drops embedded Codex ciphertext and vendor username values", async () => {
+    const bytes = new TextEncoder().encode(`${JSON.stringify({ type: "session_meta", version: "codex-jsonl-v1", payload: { id: "privacy-codex" } })}\n${JSON.stringify({ type: "response_item", version: "codex-jsonl-v1", payload: { type: "function_call", name: "spawn_agent", call_id: "call-privacy", arguments: JSON.stringify({ message: "prefix gAAAAAembedded-token" }), username: "private-user" } })}\n`);
+    const records: AdapterRecord[] = [];
+    for await (const record of new CodexSessionAdapter().parse({ parts: [{ path: "privacy.jsonl", bytes }], sourceIdentity: "anonymous-fixture" })) records.push(record);
+    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(serialized).not.toContain("gAAAAAembedded-token");
+    expect(serialized).not.toContain("private-user");
+  });
   it.each([
     [new CanonicalJsonlAdapter(), "jsonl", "unsupported.jsonl"],
     [new OtlpHttpJsonAdapter(), "otlp", "unsupported.json"],

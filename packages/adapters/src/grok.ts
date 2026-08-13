@@ -97,8 +97,9 @@ export class GrokSessionAdapter implements TraceAdapter {
         if (part.path.endsWith("output.json")) {
           const object = jsonObject(part.bytes);
           const directory = part.path.split("/").slice(0, -1).join("/");
-          const child = childByDirectory.get(directory) ?? directory.split("/").at(-1);
+          const child = childByDirectory.get(directory);
           if (child && object) joins.add(child);
+          else if (object) yield { type: "warning", code: "output_identity_unresolved", message: "Grok output.json lacks a content-derived child identity" };
         }
       }
       for (const session of sessions.values()) {

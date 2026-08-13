@@ -138,7 +138,7 @@ export class OmpSessionAdapter implements TraceAdapter {
         if (part.lane === "Main" && spawnedLanes.size > 0 && Array.isArray(details?.progress)) {
           attributes.spawnedAgentIds = [...spawnedLanes].sort();
         }
-        if (jobIds.length > 0) {
+        if (part.lane === "Main" && jobIds.length > 0) {
           attributes.joinedAgentIds = [...new Set(jobIds)].sort();
         }
         const peer = [...peers.entries()].find(([, value]) => value.from === part.lane || value.to === part.lane);
