@@ -126,17 +126,20 @@ export class OmpSessionAdapter implements TraceAdapter {
         if (sanitized.confidential > 0) {
           yield { type: "warning", code: "sensitive_content_omitted", message: `line ${record.line} omitted ${sanitized.confidential} confidential field(s)`, sourceEventId: eventId };
         }
+        const details = objectRecord(object.details) ?? objectRecord(objectRecord(object.message)?.details);
+        const jobIds = Array.isArray(details?.jobs)
+          ? details.jobs.map((item) => str(objectRecord(item)?.id) ?? str(objectRecord(item)?.jobId)).filter((value): value is string => value !== null && childLanes.has(value))
+          : [];
         const attributes: Record<string, unknown> = { recordType: String(object.type ?? "unknown"), contentType: String(object.customType ?? object.type ?? "record") };
         if (spawnedLanes.has(part.lane)) {
           attributes.parentAgentId = "Main";
           attributes.topologyProvenance = "inferred";
         }
-        if (part.lane === "Main" && spawnedLanes.size > 0 && objectRecord(objectRecord(object.message)?.details)?.progress) {
+        if (part.lane === "Main" && spawnedLanes.size > 0 && Array.isArray(details?.progress)) {
           attributes.spawnedAgentIds = [...spawnedLanes].sort();
         }
-        if (joins.has(part.lane)) {
-          attributes.joinedBy = part.lane;
-          attributes.joinedAgentIds = [part.lane];
+        if (jobIds.length > 0) {
+          attributes.joinedAgentIds = [...new Set(jobIds)].sort();
         }
         const peer = [...peers.entries()].find(([, value]) => value.from === part.lane || value.to === part.lane);
         if (peer) {
@@ -171,6 +174,32 @@ export class OmpSessionAdapter implements TraceAdapter {
         };
         yield { type: "artifact", key: `event-${eventId}`, sourceEventId: eventId, bytes: new TextEncoder().encode(JSON.stringify(sanitizedObject)), mediaType: "application/json" };
       }
+    }
+
+    for (const lane of [...joins].filter((candidate) => childLanes.has(candidate)).sort()) {
+      yield {
+        type: "event",
+        event: normalizeEvent(
+          {
+            source: "omp",
+            formatVersion: "omp-jsonl-v1",
+            adapterVersion: this.manifest.adapterVersion,
+            sourceIdentity: input.sourceIdentity,
+            sessionId: `${rootId}@${this.manifest.adapterVersion}`,
+            line: 0,
+          },
+          {
+            sourceEventId: `agent-end-${lane}`,
+            kind: "agent_end",
+            name: displayName("OMP subagent finished", lane),
+            status: "ok",
+            agentId: lane,
+            attributes: { recordType: "agent_end", contentType: "agent_activity", joinedBy: "Main" },
+            payload: { agent: lane, parent: "Main" },
+            traceTitle: "OMP session",
+          },
+        ),
+      };
     }
   }
 }

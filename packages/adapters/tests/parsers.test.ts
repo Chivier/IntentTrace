@@ -223,19 +223,28 @@ describe("implemented trace adapters", () => {
       UnsupportedAdapterVersionError,
     );
   });
-  it("maps OMP parent and child lanes, joins, and peer messages", async () => {
+  it("maps OMP lanes, excludes synthetic spawns, and keeps parent spans empty", async () => {
     const parts = [
       { path: "root.jsonl", bytes: await fixture("omp", "topology/root.jsonl") },
       { path: "root/Child.jsonl", bytes: await fixture("omp", "topology/Child.jsonl") },
       { path: "root/Sibling.jsonl", bytes: await fixture("omp", "topology/Sibling.jsonl") },
+      { path: "root/Synthetic.jsonl", bytes: await fixture("omp", "topology/Synthetic.jsonl") },
     ];
     const records: AdapterRecord[] = [];
     for await (const record of new OmpSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
     const events = records.filter((record) => record.type === "event");
-    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["Main", "Child", "Sibling"]));
-    expect(events.some((record) => record.event.attributes.parentAgentId === "Main" && record.event.attributes.topologyProvenance === "inferred")).toBe(true);
-    expect(events.some((record) => record.event.attributes.joinedBy === "Child")).toBe(true);
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["Main", "Child", "Sibling", "Synthetic"]));
+    const spawned = events.filter((record) => record.event.attributes.parentAgentId === "Main");
+    expect(new Set(spawned.map((record) => record.event.agentId))).toEqual(new Set(["Child", "Sibling"]));
+    expect(spawned.every((record) => record.event.attributes.topologyProvenance === "inferred")).toBe(true);
+    expect(spawned.every((record) => record.event.parentSpanId === undefined)).toBe(true);
+    expect(events.some((record) => record.event.agentId === "Synthetic" && record.event.attributes.parentAgentId !== undefined)).toBe(false);
+    expect(events.some((record) => record.event.agentId === "Main" && record.event.kind === "tool_result" && Array.isArray(record.event.attributes.joinedAgentIds) && (record.event.attributes.joinedAgentIds as string[]).includes("Child"))).toBe(true);
+    expect(events.some((record) => record.event.agentId === "Child" && record.event.kind === "agent_end" && record.event.attributes.joinedBy === "Main")).toBe(true);
     expect(events.some((record) => record.event.attributes.senderAgentId === "Sibling" && record.event.attributes.recipientAgentId === "Child")).toBe(true);
+    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(serialized).not.toContain("must-not-persist");
+    expect(serialized).not.toMatch(/\/home\//u);
   });
 
   it("accepts a top-level JSON array as the same session as its JSONL form", async () => {
@@ -247,20 +256,36 @@ describe("implemented trace adapters", () => {
     expect(arrayEvents).toHaveLength(lineEvents.length);
     expect(arrayEvents[0]?.event.traceId).toBe(lineEvents[0]?.event.traceId);
   });
-  it("maps Grok vendor updates, resumed lanes, and structured joins", async () => {
+  it("maps Grok real session ids, resumed chains, joins, and ignores spawn tool calls", async () => {
     const parts = [
       { path: "parent/updates.jsonl", bytes: await fixture("grok", "topology/parent/updates.jsonl") },
       { path: "parent/subagents/child/meta.json", bytes: await fixture("grok", "topology/parent/subagents/child/meta.json") },
       { path: "parent/subagents/child/output.json", bytes: await fixture("grok", "topology/parent/subagents/child/output.json") },
+      { path: "parent/subagents/only/meta.json", bytes: await fixture("grok", "topology/only/meta.json") },
+      { path: "parent/subagents/only/output.json", bytes: await fixture("grok", "topology/only/output.json") },
       { path: "child/updates.jsonl", bytes: await fixture("grok", "topology/child/updates.jsonl") },
+      { path: "only/updates.jsonl", bytes: await fixture("grok", "topology/only/updates.jsonl") },
+      { path: "resume/updates.jsonl", bytes: await fixture("grok", "topology/resume/updates.jsonl") },
+      { path: "parent/updates.jsonl.lock", bytes: new Uint8Array() },
     ];
     const records: AdapterRecord[] = [];
     for await (const record of new GrokSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
     const events = records.filter((record) => record.type === "event");
-    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["grok-root", "grok-child"]));
-    expect(events.some((record) => record.event.attributes.parentAgentId === "grok-root")).toBe(true);
-    expect(events.some((record) => record.event.attributes.joinedBy === "grok-child")).toBe(true);
-    expect(events.some((record) => record.event.parentSpanId === "prompt-child-1")).toBe(true);
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["grok-root", "grok-child", "grok-only"]));
+    const childStart = events.find((record) => record.event.source.sourceEventId === "agent-start-grok-child");
+    expect(childStart?.event.attributes.parentAgentId).toBe("grok-root");
+    expect(childStart?.event.parentSpanId).toBe("prompt-child-1");
+    const onlyStart = events.find((record) => record.event.source.sourceEventId === "agent-start-grok-only");
+    expect(onlyStart?.event.attributes.parentAgentId).toBe("grok-root");
+    expect(onlyStart?.event.parentSpanId).toBeUndefined();
+    expect(events.some((record) => record.event.source.sourceEventId === "agent-start-grok-resume")).toBe(false);
+    expect(events.some((record) => record.event.source.sourceEventId === "join-grok-only" && record.event.kind === "tool_result" && record.event.agentId === "grok-root")).toBe(true);
+    expect(events.some((record) => record.event.source.sourceEventId === "agent-end-grok-only" && record.event.kind === "agent_end" && record.event.attributes.joinedBy === "grok-root")).toBe(true);
+    expect(events.some((record) => record.event.attributes.recordType === "tool_call" && record.event.attributes.spawnedAgentIds !== undefined)).toBe(false);
+    expect(records.some((record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted")).toBe(true);
+    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(serialized).not.toContain("must-not-persist");
+    expect(serialized).not.toMatch(/\/home\//u);
   });
 
   it("accepts a single pretty-printed JSON object as one record", async () => {

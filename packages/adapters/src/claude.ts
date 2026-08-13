@@ -210,6 +210,21 @@ export class ClaudeSessionAdapter implements TraceAdapter {
         },
         payload: { agentId: part.lane, toolUseId, parentAgentId },
       });
+      const joinedByResult = parts.some((candidate) => candidate.path.endsWith(".jsonl") && !candidate.isChild)
+        ? true
+        : false;
+      if (joinedByResult) {
+        yield emit(part, 1, {
+          sourceEventId: `agent-end-${part.lane}`,
+          kind: "agent_end",
+          name: displayName("Subagent finished", part.lane),
+          status: "ok",
+          agentId: part.lane,
+          spanId: `${toolUseId}-child`,
+          attributes: { recordType: "agent_end", contentType: "agent_activity", joinedBy: parentAgentId },
+          payload: { agentId: part.lane, toolUseId, parentAgentId },
+        });
+      }
     }
 
     const allRecords = parts

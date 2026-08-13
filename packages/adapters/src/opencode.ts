@@ -84,8 +84,26 @@ export class OpenCodeSessionAdapter implements TraceAdapter {
         };
         const parts = db.prepare("SELECT id,message_id,session_id,time_created,data FROM part ORDER BY time_created ASC,id ASC").all() as unknown as PartRow[];
 
+        const spawnByChild = new Map<string, { parent: string; callId: string | null; joined: boolean; joinTime: number }>();
+        for (const part of parts) {
+          const data = parseJson(part.data);
+          if (data.type !== "tool" || data.tool !== "task") continue;
+          const state = objectRecord(data.state) ?? {};
+          const metadata = objectRecord(state.metadata) ?? {};
+          const envelope = taskEnvelope(String(state.output ?? ""));
+          const child = str(metadata.sessionId) ?? envelope.child;
+          if (!child) continue;
+          spawnByChild.set(child, {
+            parent: str(metadata.parentSessionId) ?? part.session_id,
+            callId: str(data.callID),
+            joined: envelope.child !== null && envelope.state !== "running",
+            joinTime: part.time_created,
+          });
+        }
+
         for (const session of sessions) {
           const root = rootOf(session.id);
+          const spawn = spawnByChild.get(session.id);
           const payload = { id: session.id, parent_id: session.parent_id, agent: session.agent };
           const event = normalizeEvent(
             {
@@ -102,6 +120,7 @@ export class OpenCodeSessionAdapter implements TraceAdapter {
               kind: "agent_start",
               name: displayName("OpenCode session", session.agent ?? session.id),
               agentId: session.id,
+              ...(session.parent_id && spawn?.callId ? { parentSpanId: spawn.callId } : {}),
               attributes: {
                 recordType: "session",
                 contentType: "session",
@@ -114,8 +133,32 @@ export class OpenCodeSessionAdapter implements TraceAdapter {
           );
           yield { type: "event", event };
           yield { type: "artifact", key: `event-${event.source.sourceEventId}`, sourceEventId: event.source.sourceEventId, bytes: new TextEncoder().encode(JSON.stringify(payload)), mediaType: "application/json" };
+          if (spawn?.joined) {
+            yield {
+              type: "event",
+              event: normalizeEvent(
+                {
+                  source: "opencode",
+                  formatVersion: "opencode-sqlite-v1",
+                  adapterVersion: this.manifest.adapterVersion,
+                  sourceIdentity: input.sourceIdentity,
+                  sessionId: `${root}@${this.manifest.adapterVersion}`,
+                  line: spawn.joinTime,
+                },
+                {
+                  sourceEventId: `agent-end-${session.id}`,
+                  occurredAt: new Date(spawn.joinTime).toISOString(),
+                  kind: "agent_end",
+                  name: displayName("OpenCode subagent finished", session.id),
+                  agentId: session.id,
+                  attributes: { recordType: "session_end", contentType: "agent_activity", joinedBy: spawn.parent },
+                  payload: { id: session.id, parent_id: spawn.parent },
+                  traceTitle: "OpenCode session",
+                },
+              ),
+            };
+          }
         }
-
         for (const part of parts) {
           const data = parseJson(part.data);
           const state = objectRecord(data.state) ?? {};
@@ -138,15 +181,14 @@ export class OpenCodeSessionAdapter implements TraceAdapter {
           }
           const envelope = task ? taskEnvelope(output) : null;
           const child = task ? str(metadata.sessionId) ?? envelope?.child ?? null : null;
+          const joined = Boolean(envelope?.child) && envelope?.state !== "running";
           const attributes: Record<string, unknown> = { recordType: "part", contentType: String(data.type ?? "unknown"), partType: String(data.type ?? "unknown") };
           if (child) {
-            attributes.parentAgentId = str(metadata.parentSessionId) ?? part.session_id;
             attributes.spawnedAgentIds = [child];
             attributes.topologyProvenance = "stated";
           }
-          if (envelope?.child) {
+          if (joined && envelope?.child) {
             attributes.joinedAgentIds = [envelope.child];
-            attributes.joinedBy = envelope.child;
           }
           if (recovered) {
             attributes.overflowRecovered = true;
@@ -173,12 +215,11 @@ export class OpenCodeSessionAdapter implements TraceAdapter {
             {
               sourceEventId: eventId,
               occurredAt: new Date(part.time_created).toISOString(),
-              kind: task ? (status === "error" ? "tool_result" : "tool_call") : eventKind(data),
+              kind: task ? (joined || status === "error" ? "tool_result" : "tool_call") : eventKind(data),
               name: task ? displayName("OpenCode task", objectRecord(state.input)?.description ?? data.tool) : displayName("OpenCode part", data.type),
               status: task && status === "error" ? "error" : "ok",
               agentId: part.session_id,
               spanId: task ? str(data.callID) ?? undefined : undefined,
-              parentSpanId: task && child ? str(data.callID) ?? undefined : undefined,
               attributes,
               payload: sanitizedPayload,
               traceTitle: "OpenCode session",

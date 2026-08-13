@@ -186,7 +186,7 @@ export class CodexSessionAdapter implements TraceAdapter {
 
     const emittedPayloads = new Set<string>();
     const emittedMessages = new Set<string>();
-    for (const part of traceParts) {
+    for (const part of [...traceParts].sort((left, right) => Number(Boolean(left.forkedFrom)) - Number(Boolean(right.forkedFrom)))) {
       const spawn = activityByChild.get(part.lane);
       const declaredParent = part.parent;
       for (const record of part.records) {

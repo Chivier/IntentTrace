@@ -65,6 +65,8 @@ export class GrokSessionAdapter implements TraceAdapter {
     const resumeLinks = new Map<string, string>();
     const spawnByChild = new Map<string, GrokSpawn>();
     const joins = new Set<string>();
+    const childByDirectory = new Map<string, string>();
+    const finishedInStream = new Set<string>();
     try {
       for (const part of normalized.parts) {
         if (part.path.endsWith(".lock")) continue;
@@ -83,13 +85,19 @@ export class GrokSessionAdapter implements TraceAdapter {
           const child = str(object?.child_session_id) ?? str(object?.subagent_id);
           const parent = str(object?.parent_session_id);
           const resumed = str(object?.resumed_from);
-          if (child && parent) parentBySession.set(child, parent);
+          const directory = part.path.split("/").slice(0, -1).join("/");
+          if (child) childByDirectory.set(directory, child);
+          if (child && parent) {
+            parentBySession.set(child, parent);
+            if (!spawnByChild.has(child)) spawnByChild.set(child, { parent, child, promptId: null, timestamp: undefined });
+          }
           if (child && resumed) resumeLinks.set(child, resumed);
           continue;
         }
         if (part.path.endsWith("output.json")) {
           const object = jsonObject(part.bytes);
-          const child = part.path.split("/").at(-2);
+          const directory = part.path.split("/").slice(0, -1).join("/");
+          const child = childByDirectory.get(directory) ?? directory.split("/").at(-1);
           if (child && object) joins.add(child);
         }
       }
@@ -115,7 +123,10 @@ export class GrokSessionAdapter implements TraceAdapter {
           }
           if (update.sessionUpdate === "subagent_finished") {
             const child = str(update.child_session_id) ?? str(update.subagent_id);
-            if (child) joins.add(child);
+            if (child) {
+              joins.add(child);
+              finishedInStream.add(child);
+            }
           }
         }
       }
@@ -165,6 +176,48 @@ export class GrokSessionAdapter implements TraceAdapter {
       };
     }
 
+    for (const child of [...joins].sort()) {
+      const lane = laneOf(child);
+      const parent = parentBySession.get(child);
+      const trace = traceOf(child) || traceRoot;
+      const context = {
+        source: "grok" as const,
+        formatVersion: "grok-session-v1",
+        adapterVersion: this.manifest.adapterVersion,
+        sourceIdentity: input.sourceIdentity,
+        sessionId: `${trace}@${this.manifest.adapterVersion}`,
+        line: 0,
+      };
+      if (parent && !finishedInStream.has(child)) {
+        yield {
+          type: "event",
+          event: normalizeEvent(context, {
+            sourceEventId: `join-${child}`,
+            kind: "tool_result",
+            name: displayName("Subagent output collected", child),
+            status: "ok",
+            agentId: laneOf(parent),
+            attributes: { recordType: "subagent_output", contentType: "agent_activity", joinedAgentIds: [lane], joinedBy: lane, topologyProvenance: "stated" },
+            payload: { child_session_id: child },
+            traceTitle: "Grok session",
+          }),
+        };
+      }
+      yield {
+        type: "event",
+        event: normalizeEvent(context, {
+          sourceEventId: `agent-end-${child}`,
+          kind: "agent_end",
+          name: displayName("Subagent finished", child),
+          status: "ok",
+          agentId: lane,
+          attributes: { recordType: "subagent_finished", contentType: "agent_activity", joinedBy: parent ? laneOf(parent) : lane },
+          payload: { child_session_id: child },
+          traceTitle: "Grok session",
+        }),
+      };
+    }
+
     for (const session of [...sessions.values()].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))) {
       const lane = laneOf(session.id);
       const trace = traceOf(session.id) || traceRoot;
@@ -199,10 +252,6 @@ export class GrokSessionAdapter implements TraceAdapter {
         if (finishedChild) {
           attributes.joinedBy = laneOf(finishedChild);
           attributes.joinedAgentIds = [laneOf(finishedChild)];
-        }
-        if (joins.has(session.id)) {
-          attributes.joinedBy = lane;
-          attributes.joinedAgentIds = [lane];
         }
         yield {
           type: "event",
