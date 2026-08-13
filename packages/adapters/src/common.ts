@@ -242,12 +242,8 @@ const confidentialKeys = new Set([
   "systemPrompt",
   "system_prompt",
   "prompt_body",
-  "cwd",
-  "child_cwd",
-  "grok_home",
-  "directory",
-  "homeDir",
 ]);
+const pathKeys = new Set(["cwd", "child_cwd", "grok_home", "directory", "homeDir", "resolvedPath"]);
 const reasoningBlockTypes = new Set(["thinking", "redacted_thinking", "agent_thought_chunk"]);
 const confidentialBlockTypes = new Set(["encrypted_content"]);
 const hostPathPattern = /(?:\/home\/[^\s"'\\/]+|\/Users\/[^\s"'\\/]+)/gu;
@@ -311,6 +307,11 @@ export function sanitizeVendorValue(value: unknown): VendorSanitizeResult {
       continue;
     }
     if (confidentialKeys.has(key)) {
+      confidential += 1;
+      continue;
+    }
+    if (pathKeys.has(key) && typeof item === "string" && item.includes("/")) {
+      output[key] = item.split("/").filter(Boolean).at(-1) ?? "";
       confidential += 1;
       continue;
     }

@@ -4,6 +4,7 @@ import type { RawEventKind } from "@intenttrace/schema";
 import {
   decodeAdapterBytes,
   displayName,
+  displayPreview,
   normalizeEvent,
   objectRecord,
   readSessionRecords,
@@ -183,7 +184,20 @@ export class CodexSessionAdapter implements TraceAdapter {
         }
       }
     }
-
+    const firstRequestPayload = objectRecord(
+      traceParts
+        .flatMap((part) => part.records)
+        .map((record) => objectRecord(record.value))
+        .find((object) => {
+          const payload = objectRecord(object?.payload);
+          return (
+            (object?.type === "event_msg" && payload?.type === "user_message") ||
+            (object?.type === "response_item" && payload?.type === "message" && payload?.role === "user")
+          );
+        })?.payload,
+    );
+    const tracePreview = displayPreview(firstRequestPayload?.message ?? firstRequestPayload?.content, 120);
+    const traceTitle = tracePreview ? `Codex · ${tracePreview}` : "Codex session";
     const emittedPayloads = new Set<string>();
     const emittedMessages = new Set<string>();
     for (const part of [...traceParts].sort((left, right) => Number(Boolean(left.forkedFrom)) - Number(Boolean(right.forkedFrom)))) {
@@ -281,7 +295,7 @@ export class CodexSessionAdapter implements TraceAdapter {
               parentSpanId,
               attributes,
               payload: sanitizedObject,
-              traceTitle: "Codex session",
+              traceTitle,
             },
           ),
         };
@@ -313,7 +327,7 @@ export class CodexSessionAdapter implements TraceAdapter {
                 agentId: author,
                 attributes: { recordType: "agent_end", contentType: "agent_activity", joinedBy: recipient ?? root },
                 payload: { agent: author, recipient },
-                traceTitle: "Codex session",
+                traceTitle,
               },
             ),
           };
