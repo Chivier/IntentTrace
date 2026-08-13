@@ -18,16 +18,21 @@ describe("adapter registry contract", () => {
       "otlp",
       "codex",
       "claude",
+      "opencode",
+      "omp",
+      "grok",
     ]);
     expect(adapterManifests.every((manifest) => manifest.status === "implemented")).toBe(true);
   });
-
   it("publishes exact implemented and canonical-only topology declarations", () => {
     expect(adapterManifests.map(({ source, topology }) => ({ source, topology }))).toEqual([
       { source: "jsonl", topology: lookupTopologyCapability("jsonl", "1.0.0") },
       { source: "otlp", topology: lookupTopologyCapability("otlp", "1.0.0") },
-      { source: "codex", topology: lookupTopologyCapability("codex", "2.0.0") },
-      { source: "claude", topology: lookupTopologyCapability("claude", "2.0.0") },
+      { source: "codex", topology: lookupTopologyCapability("codex", "3.0.0") },
+      { source: "claude", topology: lookupTopologyCapability("claude", "3.0.0") },
+      { source: "opencode", topology: lookupTopologyCapability("opencode", "1.0.0") },
+      { source: "omp", topology: lookupTopologyCapability("omp", "1.0.0") },
+      { source: "grok", topology: lookupTopologyCapability("grok", "1.0.0") },
     ]);
     expect(lookupTopologyCapability("pi", "anything")).toEqual({
       spawn: "unsupported",
