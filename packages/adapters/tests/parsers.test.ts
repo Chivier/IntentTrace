@@ -11,8 +11,9 @@ import {
   detectSourceKind,
   computeSessionCandidateId,
   discoverSessionCandidates,
-  MalformedAdapterInputError,
+  OpenCodeSessionAdapter,
   OtlpHttpJsonAdapter,
+  MalformedAdapterInputError,
   prepareSessionParts,
   sessionBundleContentSha256,
   UnsupportedAdapterVersionError,
@@ -167,6 +168,20 @@ describe("implemented trace adapters", () => {
     expect(serialized).not.toContain("must-not-persist");
   });
 
+  it("maps OpenCode SQLite topology and both join envelopes", async () => {
+    const parts = [
+      { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
+      { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
+      { path: "tool-output/tool-truncated", bytes: await fixture("opencode", "topology/tool-truncated") },
+    ];
+    const records: AdapterRecord[] = [];
+    for await (const record of new OpenCodeSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    const events = records.filter((record) => record.type === "event");
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["ses-root", "ses-child", "ses-legacy"]));
+    expect(events.some((record) => record.event.attributes.parentAgentId === "ses-root" && record.event.parentSpanId === "call-task-1")).toBe(true);
+    expect(events.some((record) => { const joined = record.event.attributes.joinedAgentIds; return Array.isArray(joined) && (joined.includes("ses-child") || joined.includes("ses-legacy")); })).toBe(true);
+    expect(records.some((record) => record.type === "warning" && record.code === "truncated_output_overflow_used")).toBe(true);
+  });
   it.each([
     [new CanonicalJsonlAdapter(), "jsonl", "unsupported.jsonl"],
     [new OtlpHttpJsonAdapter(), "otlp", "unsupported.json"],
