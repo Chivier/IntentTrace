@@ -3,6 +3,7 @@ import type { RawEventKind } from "@intenttrace/schema";
 import {
   decodeAdapterBytes,
   displayName,
+  displayPreview,
   normalizeEvent,
   objectRecord,
   readSessionRecords,
@@ -156,7 +157,12 @@ export class ClaudeSessionAdapter implements TraceAdapter {
     );
 
     const asyncJoins = new Set<string>();
-    const traceTitle = "Claude session";
+    const firstRequest = parts
+      .flatMap((part) => part.records)
+      .map((record) => objectRecord(record.value))
+      .find((object) => object?.type === "user" && objectRecord(object.message)?.role === "user");
+    const tracePreview = displayPreview(objectRecord(firstRequest?.message)?.content, 120);
+    const traceTitle = tracePreview ? `Claude · ${tracePreview}` : "Claude session";
     const emit = (
       part: ClaudePart,
       line: number,
