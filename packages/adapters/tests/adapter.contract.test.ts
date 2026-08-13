@@ -69,7 +69,7 @@ describe("adapter registry contract", () => {
     expect(
       aggregateTopologyCapabilities([
         { sourceKind: "jsonl", adapterVersion: "1.0.0" },
-        { sourceKind: "codex", adapterVersion: "2.0.0" },
+        { sourceKind: "codex", adapterVersion: "3.0.0" },
       ]),
     ).toEqual({
       spawn: "inferred",
@@ -78,9 +78,9 @@ describe("adapter registry contract", () => {
       input: "bundle",
       laneKey: "mixed",
       limits: [
-        "codex@2.0.0: Collaboration message bodies are encrypted and unavailable.",
-        "codex@2.0.0: Full-history forks duplicate ancestor records and require payload-hash deduplication.",
-        "codex@2.0.0: Paginated history may omit persisted sub_agent_activity, so affected spawn facts are inferred or absent.",
+        "codex@3.0.0: Collaboration message bodies are encrypted and unavailable.",
+        "codex@3.0.0: Full-history forks duplicate ancestor records and require payload-hash deduplication.",
+        "codex@3.0.0: Paginated history may omit persisted sub_agent_activity, so affected spawn facts are inferred or absent.",
         "jsonl@1.0.0: Topology requires explicit canonical fields; passthrough never infers a missing relationship.",
       ],
     });
