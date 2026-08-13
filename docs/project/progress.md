@@ -1,14 +1,14 @@
 ---
 status: current
 owner: program
-last_reviewed: 2026-08-12
+last_reviewed: 2026-08-13
 normative: true
 milestone: Gate 5
 ---
 
 # 实施进度
 
-证据更新至 2026-08-12；workspace 为本地 IntentTrace checkout（公开文档不记录个人绝对路径）；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.1`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
+证据更新至 2026-08-13；workspace 为本地 IntentTrace checkout（公开文档不记录个人绝对路径）；Linux x86_64 host Node `24.14.0`，锁定构建容器 Node `24.18.1`、pnpm `11.18.0`。以下严格区分 authored/automated/environment/external。
 
 ## Planned
 
@@ -39,6 +39,7 @@ milestone: Gate 5
 - 2026-08-10 文档合并与 README 重写：`docs/` 规范文档从 69 个合并为 20 个（每个目录一份主文档，14 条 ADR 合并进 `docs/decisions.md`），内容无损；README 改为英文 `README.md` 加中文镜像 `README.zh-CN.md`，两者章节、链接与数字集合逐行对齐。`scripts/check-docs.mjs` 由固定文件清单改为结构断言，并新增两项门禁：两个 README 的链接校验，以及全 docs 树加 README 的 `#fragment` 锚点校验（用 `github-slugger` 2.0.0 计算真实 slug）。
 - 2026-08-10 文档英文化：面向外部读者的 12 份文档（architecture、decisions、contracts、contracts/api、database、development、operations、operations/runbooks、security、testing、reference、docs/README）原地译为英文，每份仅一个副本，不做双语树以免漂移；项目自身工作记录 `docs/project/*` 与 `docs/design/*` 保持中文，并在文档索引中标注。译后 heading 变更导致 anchor 变更，已同步 README 双份共 34 处链接、两份研究笔记 7 处 fragment 与 ADR 交叉引用；`scripts/check-docs.mjs` 的 ADR heading 断言改为同时接受半角与全角冒号。
 - Web 设计对齐（2026-08-05）：全视口应用外壳（58px 顶栏 + 240px trace 侧栏 + 主区 + 338px 检查器）、Tailwind v4 `@theme` 设计令牌（原型完整调色板）、自托管 Inter（OFL 许可随字体入库）、自定义 React Flow 节点卡片（7 kind 图标/徽章、confidence 只显示 high/med/low、6 状态 pill、issue/result 着色）、按 `SemanticEdgeKind` 着色的虚线边与图例、Intent tree/Raw spans/Failures only 过滤 chips 与 L1/L2/Fit、真实时间轴 Agent Gantt（刻度、泳道条、`occurredAt` 定位、密度聚簇、playhead 与 ingest 游标一致过滤）、语义状态横幅 + 6 统计块（全部真实数据，无 spend 显示诚实空态）、六区块 Evidence 检查器（Semantic summary/Provenance/Evidence/Execution/Artifacts/Revision）与 Edit summary（PATCH title/status，409 显式提示）、新 `GET /traces/{traceId}/revisions` 契约（schema→route→OpenAPI→contract test）驱动的 Live/Final 切换、SSE 增量引擎（11 种事件全处理：250ms 批量 delta 拉取、`semantic_chunk.pending` 确定性 ghost 节点、`resync.required` 显式重载、summary.failed raw-only 横幅、正在补发状态）、ELK DOWN 方向 + elk-api 真实 web worker（修复 Turbopack 下 elkjs 内部 fake worker 不可用、陈旧闭包与 index-grid fallback 抖动）、raw 表窗口化渲染与 ARIA 修复、键盘 1–4/Esc 区域导航。泳道随后按设计图补齐（见下条），不再是回退方案。
+- Topology implementation（2026-08-13）：canonical topology attributes 与 capability registry 已落地；deterministic reducer 接管 `primaryParentId` 与 structural edges，移除 provider topology authority。semantic edges 持久化审计 `evidenceEventIds`/`provenance`，legacy null rows 在 graph 中省略；`topology:rebuild` 维护路径按 trace lock 串行化。framed session-bundle transport、candidate protocol v2 与 source-aware logical grouping 已落地；Codex/Claude 升至 `3.0.0`，新增 OpenCode/OMP/Grok `1.0.0` adapters，Pi 仍为 declaration-only。demo 已按新 recorder 重生成 691 events / 9 lanes；summary chunk sampling 按 lane boundary 取样，并以 watermark 顺序生成 runnable jobs。
 
 ## Automated verified
 
@@ -68,6 +69,7 @@ milestone: Gate 5
 
 - Topological demo recorder（2026-08-13，automated）：`packages/test-fixtures/scripts/regenerate-imo-demo.ts` 只接受显式 session root，预检同名 root transcript 与 `ImoBruteForce`、`ImoConstructions`、`ImoImpossibility`、`ImoVerifier`、`ImoWriteup`、`WebUiSurface`、`IngestAndFixtures`、`DocsConventions` 八个 child JSONL，缺一项即在写文件前列出相对名并退出；没有 synthetic fallback。对已验证外部 session 重放得到 691 canonical events / 9 lanes / 8 child `agent_start` / 8 spawned IDs / 8 joined IDs；所有 `artifactRefs=[]`，source instance 使用 `-topology-v2`，每条输出经过 `RawTraceEventInputSchema`，并在写入前拒绝残留 host path、thinking/signature/reasoning/systemPrompt 字段。`packages/test-fixtures/src/{fixture,demo-topology}.contract.test.ts` 锁定上述实测计数、parent/span coverage、spawn/start 和 join/end 集合相等、source event 唯一、最终 marker 与 privacy。
 - Topological demo acceptance（2026-08-13，automated）：`packages/intent-reducer/tests/demo-fixture.acceptance.test.ts` 从提交的 691-event 录制构建 raw facts 与真实 lane endpoints，确定性 reducer 派生 8 条 `decomposes_to` 与 8 条 `hands_off_to`，并断言存在多出边 dispatch 与多入边 convergence、每条 edge evidence 非空且 provenance 为 `stated`；`apps/api/src/trace-routes.test.ts` 另锁定 `/graph` 的 fan-out/fan-in/evidence/provenance 与 `/snapshot.topology.observed={lanes:9,lanesWithParent:8,spawnEdges:8,peerEdges:0}`。测试不为缺 endpoint 的 lane 添加或伪造 node；少一条 endpoint 会使 exact-count assertion 失败。
+- Topology required gates（2026-08-13，本地 automated）：`pnpm format:check` pass；`pnpm lint` pass；typecheck `26/26`；unit `26 files passed + 1 skipped`、`242 passed + 7 skipped`；contract `8 files / 53 tests`；e2e `5 passed`；build `16/16`；`docs:check` `27 normative files`；`schema:check` no drift（JSON Schema、OpenAPI、Drizzle）。
 
 ## Environment verified
 
@@ -91,6 +93,8 @@ milestone: Gate 5
 - 2026-08-05 设计对齐版本经 `docker compose up -d --build` 重建（动态入口随每次重建变化，须重跑 `pnpm docker:url`）；真实 Chromium 1440×900 验证两条既有 trace：单 agent 的 2,584-event Codex trace 渲染 53 个语义节点卡片、窗口化 raw 表仅 36 行 DOM、首个节点卡片约 1.5s 可见、按设计不渲染泳道标记；六 agent 的 2,049-event fixture trace 渲染 43 个卡片与 6 条泳道（orchestrator/research/backend/frontend/summarizer/test 标题与参考线）、360 个有界 Gantt 段，点击 Gantt 段联动选中 raw 行并在检查器渲染该事件的 sanitized payload，`↺` 后 watermark 归零、raw 计数变为 0。SSE pill 显示真实 Connected；检查器六区块与 Edit summary/Pin 均由真实数据驱动（43 provider calls，costUsd 为空时成本块显示 "—" 与 "no summary spend"）。仅本机观测，不作为 SLA。
 - v2 的 75 个 summary jobs 全部 committed；最终 Codex/Claude revision 均为 non-stale final，watermark 2,584/1,015，节点 53/22、generic title 0、claim evidence links 54/23、所有节点均有 artifact。真实 Chromium 在 1440×900 加载全部 2,584/1,015 raw rows并选择 user event，分别渲染 10,398/659 字符的有效 JSON payload，图节点 53/22；单次交互约 542/284ms，仅为本机观测，不作为 SLA。未配置 provider key，未发起付费模型调用。
 - 浏览器会话导入（2026-08-09）：`pnpm docker:up` 在本轮**不可用**——`infra/Dockerfile` 在容器内跑 root `pnpm build`，而 `@intenttrace/desktop` 的 build 是 Tauri bundle preflight，它断言的 `apps/desktop/src-tauri/resources/intenttrace-stack.tar.gz` 由 gitignored 的 `desktop:prepare` 产出且被 `.dockerignore` 显式排除，因此镜像构建必然以 `bundle resource is missing` 失败。这是与本轮改动无关的既有缺口（本轮未触碰 `apps/desktop/` 或 `infra/`），记录在此不作修复。改以等价的宿主栈取证：pinned `postgres:18.4-bookworm`（与 compose 同 digest）与 `redis:8-alpine` 各起一个仅绑定 `127.0.0.1` 的独立容器（`15432`/`16379`，全新 volume），`pnpm db:migrate` 后在宿主运行生产构建的 API（`127.0.0.1:3001`）与 web（`127.0.0.1:3100`）。真实 Chromium 1440×900 在 `/import` 选择 `codex/valid.jsonl` 与 `claude/valid-array.json`：预览关闭时两行分别显示 `codex`/`claude` chip 与 generic title `Codex session`/`Claude session`，开启 `Show prompt previews` 后 claude 行变为 `Claude · Synthetic request` 并显示 `Synthetic request`；导入后 summary 为 `2 imported · 0 duplicates · 0 failed`，两行分别 `+4 / dup 0`、`+3 / dup 0`。重新选择同样两个文件，两行立即带 `already imported` 徽章；再次导入得到 `2 imported · 7 duplicates · 0 failed`（`+0 / dup 4` 与 `+0 / dup 3`）、`traceId` 与首次一致，证明内容哈希 completion marker 幂等。`View trace →` 进入 workbench 渲染 `4 immutable facts` 与 4 行 raw 表。加入 `codex/unsupported.jsonl` 后该行显示 `unsupported_version: Unsupported codex format version: codex-jsonl-v99`、复选框禁用且不计入 `Import 3 sessions`。`/traces` 空态（拦截 API 返回空列表）渲染 `Import from this browser` 主行动与折叠的 `Headless / bulk import (CLI)`，展开后三条命令逐字保留并带 `Copy commands`；820px 视口下 events/duration 列的 computed `display` 为 `none`，1440px 下 grid 为 `674px 88px 96px 92px`。此次取证发现并修复了一个真实缺陷：`listTracesByIds` 的 `t.id = any(${sql.array(ids)})` 让 `uuid` 与 `text[]` 比较，PostgreSQL 报 `operator does not exist: uuid = text` 并使候选检查返回 500，已加 `::uuid[]` 显式转换——mock-repository 单测无法发现该问题。仅本机观测，不作为 SLA。
+
+- Topology live acceptance（2026-08-13，environment）：动态 origin 为 `http://127.0.0.1:32777`（每次重建/启动可能变化，必须以当次 `pnpm docker:url` 为准）；demo 首次导入 `691 inserted / 0 duplicates`，第二次 `0 inserted / 691 duplicates`；40 个 summary jobs 全部 committed，且每个 `attempt_count=1`。`/snapshot` 观测 `lanes=9`、`lanesWithParent=8`、`spawnEdges=8`、`peerEdges=0`；watermark `691` 的 graph 有 40 nodes、19 active edges（`decomposes_to` 8、`hands_off_to` 8、`blocks` 3），max fan-out `6`、max fan-in `5`，每条 edge 均有非空 evidence（大小 1–2）且声明 provenance。topology rebuild 首次与第二次均 no-op，同时保留历史 revisions。sampling fix 前基线为 `lanes=9`、`lanesWithParent=8`、`spawnEdges=6` 且仅有 15 summary jobs；修复 lane-boundary sampling 后达到上述 8 条 spawn edges。该环境证据不证明 provider qualification、不构成 performance SLA，也不证明 macOS DMG 构建、签名、公证或安装演练。
 
 ## External verified
 
