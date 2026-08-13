@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { payloadHash } from "@intenttrace/ingest";
-import type { ReducerGraphState } from "@intenttrace/intent-reducer";
+import type { ReducerGraphState, ReducerRawFact } from "@intenttrace/intent-reducer";
 import {
   RawTraceEventInputSchema,
   type IngestResult,
@@ -225,6 +225,7 @@ export interface SummaryJobContext {
   allowedArtifactIds: string[];
   allowedAgentIds: string[];
   eventSketch: string[];
+  reducerFacts: ReducerRawFact[];
   graph: ReducerGraphState;
 }
 
@@ -930,24 +931,43 @@ export class IntentTraceRepository {
     `;
     const chunkAfter = String(priorWatermarks[0]?.watermark ?? 0);
     const [eventRows, agentRows, snapshot] = await Promise.all([
-      this.sql<
-        Array<{
-          id: string;
-          kind: string;
-          name: string;
-          agent_id: string | null;
-          status: string;
-          payload_ref: string | null;
-          artifact_refs: string[];
-          attributes: Record<string, unknown>;
-        }>
-      >`
-        select id, kind, name, agent_id, status, payload_ref, artifact_refs, attributes
-        from raw_events
-        where trace_id = ${job.trace_id}
-          and ingest_seq > ${chunkAfter}
-          and ingest_seq <= ${String(job.event_watermark)}
-        order by ingest_seq
+      this.sql<RawEventRow[]>`
+        with current_chunk as (
+          select id from raw_events
+          where trace_id = ${job.trace_id}
+            and ingest_seq > ${chunkAfter}
+            and ingest_seq <= ${String(job.event_watermark)}
+        ), claim_evidence as (
+          select distinct ce.event_id as id
+          from revision_node_members rnm
+          join node_claims nc on nc.node_version_id = rnm.node_version_id
+          join claim_evidence ce on ce.claim_id = nc.id
+          where rnm.revision_id = ${job.base_revision_id}
+        ), topology_prefix as (
+          select id from raw_events
+          where trace_id = ${job.trace_id}
+            and ingest_seq <= ${String(job.event_watermark)}
+            and (
+              kind in ('agent_start', 'agent_end', 'agent_handoff', 'tool_result', 'file_write')
+              or attributes ?| array[
+                'parentAgentId', 'spawnedAgentIds', 'joinedAgentIds', 'joinedBy',
+                'senderAgentId', 'recipientAgentId', 'messageId', 'onBehalfOf',
+                'assignedBy', 'topologyProvenance'
+              ]
+            )
+        )
+        select re.*
+        from raw_events re
+        join (
+          select id from current_chunk
+          union
+          select id from claim_evidence
+          union
+          select id from topology_prefix
+        ) selected on selected.id = re.id
+        where re.trace_id = ${job.trace_id}
+          and re.ingest_seq <= ${String(job.event_watermark)}
+        order by re.ingest_seq, re.id
       `,
       this.sql<Array<{ source_agent_id: string }>>`
         select source_agent_id from agents where trace_id = ${job.trace_id} order by created_at, id
@@ -998,6 +1018,58 @@ export class IntentTraceRepository {
           ],
         }),
       ),
+      reducerFacts: eventRows.map((row): ReducerRawFact => {
+        const attributes = row.attributes ?? {};
+        const stringAttribute = (key: string): string | undefined =>
+          typeof attributes[key] === "string" ? attributes[key] : undefined;
+        const stringArrayAttribute = (key: string): string[] | undefined => {
+          const value = attributes[key];
+          return Array.isArray(value) && value.every((item) => typeof item === "string")
+            ? value
+            : undefined;
+        };
+        const parentAgentId = stringAttribute("parentAgentId");
+        const spawnedAgentIds = stringArrayAttribute("spawnedAgentIds");
+        const joinedAgentIds = stringArrayAttribute("joinedAgentIds");
+        const joinedBy = stringAttribute("joinedBy");
+        const senderAgentId = stringAttribute("senderAgentId");
+        const recipientAgentId = stringAttribute("recipientAgentId");
+        const messageId = stringAttribute("messageId");
+        const onBehalfOf = stringAttribute("onBehalfOf");
+        const assignedBy = stringAttribute("assignedBy");
+        const topologyProvenance = stringAttribute("topologyProvenance");
+        return {
+          eventId: row.id,
+          sourceKind: row.source_kind,
+          adapterVersion: row.adapter_version,
+          sourceEventId: row.source_event_id,
+          ingestSeq: String(row.ingest_seq),
+          kind: row.kind,
+          status: row.status,
+          agentId: row.agent_id,
+          spanId: row.span_id,
+          parentSpanId: row.parent_span_id,
+          causationEventId: row.causation_event_id,
+          artifactRefs: [
+            ...new Set([
+              ...(row.payload_ref ? [row.payload_ref] : []),
+              ...(row.artifact_refs ?? []),
+            ]),
+          ],
+          ...(parentAgentId ? { parentAgentId } : {}),
+          ...(spawnedAgentIds ? { spawnedAgentIds } : {}),
+          ...(joinedAgentIds ? { joinedAgentIds } : {}),
+          ...(joinedBy ? { joinedBy } : {}),
+          ...(senderAgentId ? { senderAgentId } : {}),
+          ...(recipientAgentId ? { recipientAgentId } : {}),
+          ...(messageId ? { messageId } : {}),
+          ...(onBehalfOf ? { onBehalfOf } : {}),
+          ...(assignedBy ? { assignedBy } : {}),
+          ...(topologyProvenance === "stated" || topologyProvenance === "inferred"
+            ? { topologyProvenance }
+            : {}),
+        };
+      }),
       graph: {
         nodes: snapshot.nodes.map((node) => ({
           logicalNodeId: node.logicalNodeId,

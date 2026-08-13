@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 
+import { lookupTopologyCapability } from "@intenttrace/adapters";
 import type { IntentTraceRepository } from "@intenttrace/db";
 import { StaleSummaryJobError } from "@intenttrace/db";
-import { applyProviderPatch } from "@intenttrace/intent-reducer";
+import { applyProviderPatch, topologyCapabilityKey } from "@intenttrace/intent-reducer";
 import {
   ProviderUnavailableError,
   calculateProviderCost,
@@ -72,18 +73,34 @@ export async function runSummaryJob(
       allowedNodeIds: context.graph.nodes.map((node) => node.logicalNodeId),
       locale: "zh-CN",
     });
-    const reduced = applyProviderPatch(patch, context.graph, {
-      expectedBaseRevisionId: context.baseRevisionId,
-      expectedJobNonce: context.jobNonce,
-      allowedEventIds: new Set(context.allowedEventIds),
-      allowedArtifactIds: new Set(context.allowedArtifactIds),
-      allowedAgentIds: new Set(context.allowedAgentIds),
-      allowedNodeIds: new Set(context.graph.nodes.map((node) => node.logicalNodeId)),
-      allowedEdgeIds: new Set(context.graph.edges.map((edge) => edge.logicalEdgeId)),
-      pinnedNodeIds: new Set(
-        context.graph.nodes.filter((node) => node.pinnedByHuman).map((node) => node.logicalNodeId),
-      ),
-    });
+    const capabilities = new Map(
+      context.reducerFacts.map((fact) => [
+        topologyCapabilityKey(fact.sourceKind, fact.adapterVersion),
+        lookupTopologyCapability(fact.sourceKind, fact.adapterVersion),
+      ]),
+    );
+    const reduced = applyProviderPatch(
+      patch,
+      context.graph,
+      {
+        expectedBaseRevisionId: context.baseRevisionId,
+        expectedJobNonce: context.jobNonce,
+        allowedEventIds: new Set(context.allowedEventIds),
+        allowedArtifactIds: new Set(context.allowedArtifactIds),
+        allowedAgentIds: new Set(context.allowedAgentIds),
+        allowedNodeIds: new Set(context.graph.nodes.map((node) => node.logicalNodeId)),
+        allowedEdgeIds: new Set(context.graph.edges.map((edge) => edge.logicalEdgeId)),
+        pinnedNodeIds: new Set(
+          context.graph.nodes.filter((node) => node.pinnedByHuman).map((node) => node.logicalNodeId),
+        ),
+      },
+      {
+        traceId: context.traceId,
+        eventWatermark: context.eventWatermark,
+        facts: context.reducerFacts,
+        capabilities,
+      },
+    );
     if (!reduced.ok) {
       await deps.repository.failSummaryJob(
         context.id,

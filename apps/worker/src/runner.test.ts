@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { SummaryCommitInput, SummaryJobContext } from "@intenttrace/db";
+import type { ReducerRawFact } from "@intenttrace/intent-reducer";
 import {
   FoundationMockSummaryProvider,
   ProviderUnavailableError,
@@ -49,6 +50,7 @@ function context(overrides: Partial<SummaryJobContext> = {}): SummaryJobContext 
     allowedArtifactIds: [],
     allowedAgentIds: [],
     eventSketch: [],
+    reducerFacts: [],
     graph: { nodes: [], edges: [] },
     ...overrides,
   };
@@ -175,6 +177,108 @@ describe("runSummaryJob", () => {
     expect(input).not.toHaveProperty("inputTokens");
     expect(input).not.toHaveProperty("outputTokens");
     expect(input).not.toHaveProperty("costUsd");
+  });
+
+  it("derives topology from repository facts outside the provider input", async () => {
+    const parentEvent = "019fbbb3-4324-7d43-8f9c-cd489a92cf01";
+    const childEvent = "019fbbb3-4324-7d43-8f9c-cd489a92cf02";
+    const parentNode = "019fbbb3-4324-7d43-8f9c-cd489a92ca01";
+    const childNode = "019fbbb3-4324-7d43-8f9c-cd489a92ca02";
+    const facts: ReducerRawFact[] = [
+      {
+        eventId: parentEvent,
+        sourceKind: "jsonl",
+        adapterVersion: "1.0.0",
+        sourceEventId: "dispatch",
+        ingestSeq: "1",
+        kind: "agent_handoff",
+        status: "ok",
+        agentId: "root",
+        spanId: "call-1",
+        parentSpanId: null,
+        causationEventId: null,
+        artifactRefs: [],
+        spawnedAgentIds: ["child"],
+      },
+      {
+        eventId: childEvent,
+        sourceKind: "jsonl",
+        adapterVersion: "1.0.0",
+        sourceEventId: "child-start",
+        ingestSeq: "2",
+        kind: "agent_start",
+        status: "ok",
+        agentId: "child",
+        spanId: null,
+        parentSpanId: "call-1",
+        causationEventId: null,
+        artifactRefs: [],
+        parentAgentId: "root",
+      },
+    ];
+    const graph = {
+      nodes: [
+        {
+          logicalNodeId: parentNode,
+          versionId: "019fbbb3-4324-7d43-8f9c-cd489a92cb01",
+          kind: "work" as const,
+          status: "active" as const,
+          title: "Dispatch",
+          claims: [{ kind: "action" as const, text: "Dispatch", provenance: "stated" as const, confidence: "high" as const, evidenceEventIds: [parentEvent] }],
+          primaryParentId: null,
+          primaryAgentId: null,
+          participantAgentIds: [],
+          artifactIds: [],
+          pinnedByHuman: false,
+          startedAt: null,
+          endedAt: null,
+          layout: null,
+        },
+        {
+          logicalNodeId: childNode,
+          versionId: "019fbbb3-4324-7d43-8f9c-cd489a92cb02",
+          kind: "work" as const,
+          status: "active" as const,
+          title: "Child",
+          claims: [{ kind: "action" as const, text: "Child", provenance: "stated" as const, confidence: "high" as const, evidenceEventIds: [childEvent] }],
+          primaryParentId: null,
+          primaryAgentId: null,
+          participantAgentIds: [],
+          artifactIds: [],
+          pinnedByHuman: false,
+          startedAt: null,
+          endedAt: null,
+          layout: null,
+        },
+      ],
+      edges: [],
+    };
+    const commits: SummaryCommitInput[] = [];
+    const providerInput = vi.fn(async () => acceptedPatch);
+    const result = await runSummaryJob(
+      deps({
+        repository: {
+          claimSummaryJob: async () => context({ eventWatermark: "2", reducerFacts: facts, graph }),
+          commitSummaryJob: async (_jobId, input) => {
+            commits.push(input);
+            return "rev-topology";
+          },
+        },
+        provider: { summarizeChunk: providerInput },
+      }),
+      "job-1",
+    );
+    expect(result).toEqual({ status: "committed", revisionId: "rev-topology" });
+    expect(providerInput).toHaveBeenCalledWith(expect.not.objectContaining({ reducerFacts: expect.anything() }));
+    expect(commits[0]?.state.edges).toMatchObject([
+      {
+        sourceNodeId: parentNode,
+        targetNodeId: childNode,
+        kind: "decomposes_to",
+        evidenceEventIds: [parentEvent, childEvent].sort(),
+        provenance: "stated",
+      },
+    ]);
   });
 
   it("prices a metered provider call from the usage it reports", async () => {

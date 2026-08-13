@@ -151,6 +151,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@intenttrace/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
       '@intenttrace/config':
         specifier: workspace:*
         version: link:../../packages/config
