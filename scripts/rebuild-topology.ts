@@ -11,8 +11,14 @@ function usage(): never {
 const args = process.argv.slice(2).filter((argument) => argument !== "--");
 const traceIndex = args.indexOf("--trace");
 const all = args.includes("--all");
-if ((traceIndex >= 0) === all) usage();
-if (args.some((argument) => argument !== "--all" && argument !== "--trace" && argument !== args[traceIndex + 1])) usage();
+if (traceIndex >= 0 === all) usage();
+if (
+  args.some(
+    (argument) =>
+      argument !== "--all" && argument !== "--trace" && argument !== args[traceIndex + 1],
+  )
+)
+  usage();
 
 const config = loadRuntimeConfig();
 const sql = postgres(config.DATABASE_URL, { max: 1 });

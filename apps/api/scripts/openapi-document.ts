@@ -1,4 +1,3 @@
-
 import {
   SessionImportBatchOutcomeSchema,
   SessionUploadCandidateListSchema,
@@ -31,7 +30,9 @@ if (candidateOperation) {
     ...candidateOperation.responses,
     200: {
       description: "Candidate inspection",
-      content: { "application/json": { schema: SessionUploadCandidateListSchema.toJSONSchema() as object } },
+      content: {
+        "application/json": { schema: SessionUploadCandidateListSchema.toJSONSchema() as object },
+      },
     },
   };
 }
@@ -45,7 +46,9 @@ if (sessionOperation) {
     ...sessionOperation.responses,
     200: {
       description: "Batch import outcome",
-      content: { "application/json": { schema: SessionImportBatchOutcomeSchema.toJSONSchema() as object } },
+      content: {
+        "application/json": { schema: SessionImportBatchOutcomeSchema.toJSONSchema() as object },
+      },
     },
   };
 }

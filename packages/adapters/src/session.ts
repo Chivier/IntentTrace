@@ -137,9 +137,7 @@ export async function prepareSessionParts(
       if (duplicateArtifactKeys.has(key)) throw new Error(`Duplicate artifact key: ${key}`);
       if (!artifacts.has(key)) throw new Error(`Missing referenced artifact key: ${key}`);
     }
-    const referencedArtifacts = [...referencedKeys]
-      .sort()
-      .map((key) => artifacts.get(key)!);
+    const referencedArtifacts = [...referencedKeys].sort().map((key) => artifacts.get(key)!);
     const traceHash = createHash("sha256")
       .update("intenttrace-logical-trace-v1")
       .update("\0")

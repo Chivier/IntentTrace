@@ -63,7 +63,9 @@ function makeSnapshot(): TraceSnapshot {
         peerMessages: "passthrough",
         input: "single-file",
         laneKey: "agentId",
-        limits: ["Topology requires explicit canonical fields; passthrough never infers a missing relationship."],
+        limits: [
+          "Topology requires explicit canonical fields; passthrough never infers a missing relationship.",
+        ],
       },
       observed: { lanes: 0, lanesWithParent: 0, spawnEdges: 0, peerEdges: 0 },
     },

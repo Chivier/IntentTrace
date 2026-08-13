@@ -126,10 +126,22 @@ describe("adapter registry contract", () => {
         sourceIdentity: "fixture",
       },
     ],
-    ["absolute path", { parts: [{ path: "/a.jsonl", bytes: new Uint8Array() }], sourceIdentity: "fixture" }],
-    ["parent segment", { parts: [{ path: "a/../b.jsonl", bytes: new Uint8Array() }], sourceIdentity: "fixture" }],
-    ["NUL", { parts: [{ path: "a\0b.jsonl", bytes: new Uint8Array() }], sourceIdentity: "fixture" }],
-    ["backslash", { parts: [{ path: "a\\b.jsonl", bytes: new Uint8Array() }], sourceIdentity: "fixture" }],
+    [
+      "absolute path",
+      { parts: [{ path: "/a.jsonl", bytes: new Uint8Array() }], sourceIdentity: "fixture" },
+    ],
+    [
+      "parent segment",
+      { parts: [{ path: "a/../b.jsonl", bytes: new Uint8Array() }], sourceIdentity: "fixture" },
+    ],
+    [
+      "NUL",
+      { parts: [{ path: "a\0b.jsonl", bytes: new Uint8Array() }], sourceIdentity: "fixture" },
+    ],
+    [
+      "backslash",
+      { parts: [{ path: "a\\b.jsonl", bytes: new Uint8Array() }], sourceIdentity: "fixture" },
+    ],
   ] as const)("rejects %s at the shared session boundary", (_name, input) => {
     expect(() => normalizeAdapterInput(input as AdapterInput)).toThrow();
   });
@@ -154,8 +166,8 @@ describe("adapter registry contract", () => {
     };
     await expect(adapter.sniff(input)).rejects.toThrow();
     await expect(async () => {
-      for await (const _record of adapter.parse(input)) {
-        // consume
+      for await (const record of adapter.parse(input)) {
+        expect(record).toBeDefined();
       }
     }).rejects.toThrow();
   });

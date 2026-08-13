@@ -29,11 +29,9 @@ describe("generated OpenAPI", () => {
       "/version",
     ]);
     const candidates = generatedDocument.paths["/api/v1/imports/candidates"]?.post?.requestBody as
-      | { content: Record<string, unknown> }
-      | undefined;
+      { content: Record<string, unknown> } | undefined;
     const sessions = generatedDocument.paths["/api/v1/imports/sessions"]?.post?.requestBody as
-      | { content: Record<string, unknown> }
-      | undefined;
+      { content: Record<string, unknown> } | undefined;
     expect(Object.keys(candidates?.content ?? {})).toEqual([
       "application/json",
       "application/vnd.intenttrace.session-bundle",

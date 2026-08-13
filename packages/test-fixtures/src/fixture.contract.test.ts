@@ -122,16 +122,19 @@ describe("topology fixture policy", () => {
       const files = readdirSync(root, { recursive: true, encoding: "utf8" })
         .map((file) => new URL(String(file), root))
         .filter((file) => statSync(file).isFile() && /\.(?:jsonl|json)$/u.test(file.pathname));
-      for (const file of files)
-        for (const line of readFileSync(file, "utf8")
-          .split("\n")
-          .filter((entry) => entry.trim().length > 0)) {
+      for (const file of files) {
+        const text = readFileSync(file, "utf8");
+        const records = file.pathname.endsWith(".json")
+          ? [text]
+          : text.split("\n").filter((entry) => entry.trim().length > 0);
+        for (const line of records) {
           try {
             walk(JSON.parse(line), `${source}:${file.pathname.split("/").at(-1)}`);
           } catch {
             violations.push(`${source}: unparseable fixture line`);
           }
         }
+      }
     }
     expect(violations).toEqual([]);
     const directWalk = (

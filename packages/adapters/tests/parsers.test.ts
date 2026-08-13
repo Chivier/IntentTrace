@@ -77,26 +77,41 @@ describe("implemented trace adapters", () => {
         { path: "paginated.jsonl", bytes: await fixture("codex", "topology/paginated.jsonl") },
       ],
       sourceIdentity: "anonymous-fixture",
-    })) records.push(record);
+    }))
+      records.push(record);
     const events = records.filter((record) => record.type === "event");
     expect(new Set(events.map((record) => record.event.traceId))).toHaveLength(1);
     expect(new Set(events.map((record) => record.event.agentId))).toEqual(
       new Set(["codex-root", "codex-child", "codex-fork", "codex-paginated"]),
     );
     const childStart = events.find(
-      (record) => record.event.agentId === "codex-child" && record.event.attributes.parentAgentId === "codex-root",
+      (record) =>
+        record.event.agentId === "codex-child" &&
+        record.event.attributes.parentAgentId === "codex-root",
     );
     expect(childStart?.event.kind).toBe("agent_start");
     expect(childStart?.event.parentSpanId).toBe("call-spawn-1");
     expect(childStart?.event.attributes.topologyProvenance).toBe("stated");
-    const paginatedStart = events.find((record) => record.event.agentId === "codex-paginated" && record.event.kind === "agent_start");
+    const paginatedStart = events.find(
+      (record) => record.event.agentId === "codex-paginated" && record.event.kind === "agent_start",
+    );
     expect(paginatedStart?.event.attributes.parentAgentId).toBe("codex-root");
     expect(paginatedStart?.event.attributes.topologyProvenance).toBe("inferred");
     expect(paginatedStart?.event.parentSpanId).toBeUndefined();
-    expect(events.filter((record) => record.event.source.sourceEventId === "spawn-item")).toHaveLength(1);
+    expect(
+      events.filter((record) => record.event.source.sourceEventId === "spawn-item"),
+    ).toHaveLength(1);
     expect(events.some((record) => record.event.attributes.joinedBy === "codex-child")).toBe(true);
-    expect(events.filter((record) => record.event.attributes.senderAgentId === "codex-child")).toHaveLength(1);
-    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(
+      events.filter((record) => record.event.attributes.senderAgentId === "codex-child"),
+    ).toHaveLength(1);
+    const serialized = records
+      .map((record) =>
+        record.type === "artifact"
+          ? new TextDecoder().decode(record.bytes)
+          : JSON.stringify(record),
+      )
+      .join("\n");
     expect(serialized).not.toMatch(/gAAAA/u);
     expect(serialized).not.toMatch(/\/home\//u);
   });
@@ -138,30 +153,75 @@ describe("implemented trace adapters", () => {
   it("maps Claude sidecar spawn endpoints, joins, paired peers, and workflow lanes", async () => {
     const parts = [
       { path: "root.jsonl", bytes: await fixture("claude", "topology/root.jsonl") },
-      { path: "async-duplicate.jsonl", bytes: await fixture("claude", "topology/async-duplicate.jsonl") },
-      { path: "subagents/agent-child.jsonl", bytes: await fixture("claude", "topology/subagents/agent-child.jsonl") },
-      { path: "subagents/agent-child.meta.json", bytes: await fixture("claude", "topology/subagents/agent-child.meta.json") },
-      { path: "subagents/agent-workflow-agent.jsonl", bytes: await fixture("claude", "topology/subagents/agent-workflow-agent.jsonl") },
-      { path: "subagents/agent-workflow-agent.meta.json", bytes: await fixture("claude", "topology/subagents/agent-workflow-agent.meta.json") },
+      {
+        path: "async-duplicate.jsonl",
+        bytes: await fixture("claude", "topology/async-duplicate.jsonl"),
+      },
+      {
+        path: "subagents/agent-child.jsonl",
+        bytes: await fixture("claude", "topology/subagents/agent-child.jsonl"),
+      },
+      {
+        path: "subagents/agent-child.meta.json",
+        bytes: await fixture("claude", "topology/subagents/agent-child.meta.json"),
+      },
+      {
+        path: "subagents/agent-workflow-agent.jsonl",
+        bytes: await fixture("claude", "topology/subagents/agent-workflow-agent.jsonl"),
+      },
+      {
+        path: "subagents/agent-workflow-agent.meta.json",
+        bytes: await fixture("claude", "topology/subagents/agent-workflow-agent.meta.json"),
+      },
     ];
     const records: AdapterRecord[] = [];
-    for await (const record of new ClaudeSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    for await (const record of new ClaudeSessionAdapter().parse({
+      parts,
+      sourceIdentity: "anonymous-fixture",
+    }))
+      records.push(record);
     const events = records.filter((record) => record.type === "event");
-    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["claude-root", "child-agent", "workflow-agent"]));
-    const childStart = events.find((record) => record.event.kind === "agent_start" && record.event.agentId === "child-agent");
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(
+      new Set(["claude-root", "child-agent", "workflow-agent"]),
+    );
+    const childStart = events.find(
+      (record) => record.event.kind === "agent_start" && record.event.agentId === "child-agent",
+    );
     expect(childStart?.event.source.sourceEventId).toBe("agent-start-child-agent");
     expect(childStart?.event.attributes.parentAgentId).toBe("claude-root");
     expect(childStart?.event.parentSpanId).toBe("toolu-child-1");
     expect(childStart?.event.attributes.topologyProvenance).toBe("stated");
-    expect(events.some((record) => record.event.agentId === "workflow-agent" && record.event.attributes.parentAgentId !== undefined)).toBe(false);
+    expect(
+      events.some(
+        (record) =>
+          record.event.agentId === "workflow-agent" &&
+          record.event.attributes.parentAgentId !== undefined,
+      ),
+    ).toBe(false);
     const dispatch = events.find((record) => record.event.source.sourceEventId === "root-tool");
     expect(dispatch?.event.spanId).toBe("toolu-child-1");
-    expect(events.filter((record) => record.event.attributes.joinedBy === "child-agent")).toHaveLength(2);
-    expect(records.filter((record) => record.type === "warning" && record.code === "duplicate_async_join_omitted")).toHaveLength(1);
+    expect(
+      events.filter((record) => record.event.attributes.joinedBy === "child-agent"),
+    ).toHaveLength(2);
+    expect(
+      records.filter(
+        (record) => record.type === "warning" && record.code === "duplicate_async_join_omitted",
+      ),
+    ).toHaveLength(1);
     const peers = events.filter((record) => record.event.attributes.senderAgentId !== undefined);
     expect(peers).toHaveLength(1);
-    expect(peers[0]?.event.attributes).toMatchObject({ senderAgentId: "claude-root", recipientAgentId: "child-agent", topologyProvenance: "inferred" });
-    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(peers[0]?.event.attributes).toMatchObject({
+      senderAgentId: "claude-root",
+      recipientAgentId: "child-agent",
+      topologyProvenance: "inferred",
+    });
+    const serialized = records
+      .map((record) =>
+        record.type === "artifact"
+          ? new TextDecoder().decode(record.bytes)
+          : JSON.stringify(record),
+      )
+      .join("\n");
     expect(serialized).not.toContain("must-not-persist");
   });
 
@@ -197,19 +257,56 @@ describe("implemented trace adapters", () => {
     const parts = [
       { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
       { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
-      { path: "tool-output/tool-truncated", bytes: await fixture("opencode", "topology/tool-truncated") },
+      {
+        path: "tool-output/tool-truncated",
+        bytes: await fixture("opencode", "topology/tool-truncated"),
+      },
     ];
     const records: AdapterRecord[] = [];
-    for await (const record of new OpenCodeSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    for await (const record of new OpenCodeSessionAdapter().parse({
+      parts,
+      sourceIdentity: "anonymous-fixture",
+    }))
+      records.push(record);
     const events = records.filter((record) => record.type === "event");
-    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["ses-root", "ses-child", "ses-legacy"]));
-    expect(events.some((record) => record.event.attributes.parentAgentId === "ses-root" && record.event.parentSpanId === "call-task-1")).toBe(true);
-    expect(events.some((record) => { const joined = record.event.attributes.joinedAgentIds; return Array.isArray(joined) && joined.includes("ses-child"); })).toBe(true);
-    expect(events.some((record) => { const joined = record.event.attributes.joinedAgentIds; return Array.isArray(joined) && joined.includes("ses-legacy"); })).toBe(true);
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(
+      new Set(["ses-root", "ses-child", "ses-legacy"]),
+    );
+    expect(
+      events.some(
+        (record) =>
+          record.event.attributes.parentAgentId === "ses-root" &&
+          record.event.parentSpanId === "call-task-1",
+      ),
+    ).toBe(true);
+    expect(
+      events.some((record) => {
+        const joined = record.event.attributes.joinedAgentIds;
+        return Array.isArray(joined) && joined.includes("ses-child");
+      }),
+    ).toBe(true);
+    expect(
+      events.some((record) => {
+        const joined = record.event.attributes.joinedAgentIds;
+        return Array.isArray(joined) && joined.includes("ses-legacy");
+      }),
+    ).toBe(true);
     const recovered = events.find((record) => record.event.attributes.overflowRecovered === true);
-    expect(recovered?.event.attributes.recoveredResultPreview).toContain("recovered overflow answer");
-    expect(records.some((record) => record.type === "warning" && record.code === "truncated_output_overflow_used")).toBe(true);
-    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(recovered?.event.attributes.recoveredResultPreview).toContain(
+      "recovered overflow answer",
+    );
+    expect(
+      records.some(
+        (record) => record.type === "warning" && record.code === "truncated_output_overflow_used",
+      ),
+    ).toBe(true);
+    const serialized = records
+      .map((record) =>
+        record.type === "artifact"
+          ? new TextDecoder().decode(record.bytes)
+          : JSON.stringify(record),
+      )
+      .join("\n");
     expect(serialized).not.toContain("must-not-persist");
     expect(serialized).not.toMatch(/\/home\//u);
   });
@@ -219,19 +316,47 @@ describe("implemented trace adapters", () => {
       parts: [
         { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
         { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
-        { path: "tool-output/tool-truncated", bytes: await fixture("opencode", "topology/tool-truncated") },
-        { path: "tool-output/alternate/tool-truncated", bytes: new TextEncoder().encode("ambiguous") },
+        {
+          path: "tool-output/tool-truncated",
+          bytes: await fixture("opencode", "topology/tool-truncated"),
+        },
+        {
+          path: "tool-output/alternate/tool-truncated",
+          bytes: new TextEncoder().encode("ambiguous"),
+        },
       ],
       sourceIdentity: "anonymous-fixture",
-    })) records.push(record);
-    expect(records.some((record) => record.type === "warning" && record.code === "truncated_output_overflow_ambiguous")).toBe(true);
-    expect(records.some((record) => record.type === "event" && record.event.attributes.overflowRecovered === true)).toBe(false);
+    }))
+      records.push(record);
+    expect(
+      records.some(
+        (record) =>
+          record.type === "warning" && record.code === "truncated_output_overflow_ambiguous",
+      ),
+    ).toBe(true);
+    expect(
+      records.some(
+        (record) => record.type === "event" && record.event.attributes.overflowRecovered === true,
+      ),
+    ).toBe(false);
   });
   it("drops embedded Codex ciphertext and vendor username values", async () => {
-    const bytes = new TextEncoder().encode(`${JSON.stringify({ type: "session_meta", version: "codex-jsonl-v1", payload: { id: "privacy-codex" } })}\n${JSON.stringify({ type: "response_item", version: "codex-jsonl-v1", payload: { type: "function_call", name: "spawn_agent", call_id: "call-privacy", arguments: JSON.stringify({ message: "prefix gAAAAAembedded-token" }), username: "private-user" } })}\n`);
+    const bytes = new TextEncoder().encode(
+      `${JSON.stringify({ type: "session_meta", version: "codex-jsonl-v1", payload: { id: "privacy-codex" } })}\n${JSON.stringify({ type: "response_item", version: "codex-jsonl-v1", payload: { type: "function_call", name: "spawn_agent", call_id: "call-privacy", arguments: JSON.stringify({ message: "prefix gAAAAAembedded-token" }), username: "private-user" } })}\n`,
+    );
     const records: AdapterRecord[] = [];
-    for await (const record of new CodexSessionAdapter().parse({ parts: [{ path: "privacy.jsonl", bytes }], sourceIdentity: "anonymous-fixture" })) records.push(record);
-    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    for await (const record of new CodexSessionAdapter().parse({
+      parts: [{ path: "privacy.jsonl", bytes }],
+      sourceIdentity: "anonymous-fixture",
+    }))
+      records.push(record);
+    const serialized = records
+      .map((record) =>
+        record.type === "artifact"
+          ? new TextDecoder().decode(record.bytes)
+          : JSON.stringify(record),
+      )
+      .join("\n");
     expect(serialized).not.toContain("gAAAAAembedded-token");
     expect(serialized).not.toContain("private-user");
   });
@@ -253,10 +378,14 @@ describe("implemented trace adapters", () => {
       parts: [
         { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
         { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
-        { path: "tool-output/tool-truncated", bytes: await fixture("opencode", "topology/tool-truncated") },
+        {
+          path: "tool-output/tool-truncated",
+          bytes: await fixture("opencode", "topology/tool-truncated"),
+        },
       ],
       sourceIdentity: "anonymous-fixture",
-    })) records.push(record);
+    }))
+      records.push(record);
     expect(records.some((record) => record.type === "event")).toBe(true);
     expect((await readdir(fixtureDirectory)).sort()).toEqual(before);
   });
@@ -268,18 +397,61 @@ describe("implemented trace adapters", () => {
       { path: "root/Synthetic.jsonl", bytes: await fixture("omp", "topology/Synthetic.jsonl") },
     ];
     const records: AdapterRecord[] = [];
-    for await (const record of new OmpSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    for await (const record of new OmpSessionAdapter().parse({
+      parts,
+      sourceIdentity: "anonymous-fixture",
+    }))
+      records.push(record);
     const events = records.filter((record) => record.type === "event");
-    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["Main", "Child", "Sibling", "Synthetic"]));
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(
+      new Set(["Main", "Child", "Sibling", "Synthetic"]),
+    );
     const spawned = events.filter((record) => record.event.attributes.parentAgentId === "Main");
-    expect(new Set(spawned.map((record) => record.event.agentId))).toEqual(new Set(["Child", "Sibling"]));
-    expect(spawned.every((record) => record.event.attributes.topologyProvenance === "inferred")).toBe(true);
+    expect(new Set(spawned.map((record) => record.event.agentId))).toEqual(
+      new Set(["Child", "Sibling"]),
+    );
+    expect(
+      spawned.every((record) => record.event.attributes.topologyProvenance === "inferred"),
+    ).toBe(true);
     expect(spawned.every((record) => record.event.parentSpanId === undefined)).toBe(true);
-    expect(events.some((record) => record.event.agentId === "Synthetic" && record.event.attributes.parentAgentId !== undefined)).toBe(false);
-    expect(events.some((record) => record.event.agentId === "Main" && record.event.kind === "tool_result" && Array.isArray(record.event.attributes.joinedAgentIds) && (record.event.attributes.joinedAgentIds as string[]).includes("Child"))).toBe(true);
-    expect(events.some((record) => record.event.agentId === "Child" && record.event.kind === "agent_end" && record.event.attributes.joinedBy === "Main")).toBe(true);
-    expect(events.some((record) => record.event.attributes.senderAgentId === "Sibling" && record.event.attributes.recipientAgentId === "Child")).toBe(true);
-    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(
+      events.some(
+        (record) =>
+          record.event.agentId === "Synthetic" &&
+          record.event.attributes.parentAgentId !== undefined,
+      ),
+    ).toBe(false);
+    expect(
+      events.some(
+        (record) =>
+          record.event.agentId === "Main" &&
+          record.event.kind === "tool_result" &&
+          Array.isArray(record.event.attributes.joinedAgentIds) &&
+          (record.event.attributes.joinedAgentIds as string[]).includes("Child"),
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (record) =>
+          record.event.agentId === "Child" &&
+          record.event.kind === "agent_end" &&
+          record.event.attributes.joinedBy === "Main",
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (record) =>
+          record.event.attributes.senderAgentId === "Sibling" &&
+          record.event.attributes.recipientAgentId === "Child",
+      ),
+    ).toBe(true);
+    const serialized = records
+      .map((record) =>
+        record.type === "artifact"
+          ? new TextDecoder().decode(record.bytes)
+          : JSON.stringify(record),
+      )
+      .join("\n");
     expect(serialized).not.toContain("must-not-persist");
     expect(serialized).not.toMatch(/\/home\//u);
   });
@@ -295,32 +467,92 @@ describe("implemented trace adapters", () => {
   });
   it("maps Grok real session ids, resumed chains, joins, and ignores spawn tool calls", async () => {
     const parts = [
-      { path: "parent/updates.jsonl", bytes: await fixture("grok", "topology/parent/updates.jsonl") },
-      { path: "parent/subagents/child/meta.json", bytes: await fixture("grok", "topology/parent/subagents/child/meta.json") },
-      { path: "parent/subagents/child/output.json", bytes: await fixture("grok", "topology/parent/subagents/child/output.json") },
-      { path: "parent/subagents/only/meta.json", bytes: await fixture("grok", "topology/only/meta.json") },
-      { path: "parent/subagents/only/output.json", bytes: await fixture("grok", "topology/only/output.json") },
+      {
+        path: "parent/updates.jsonl",
+        bytes: await fixture("grok", "topology/parent/updates.jsonl"),
+      },
+      {
+        path: "parent/subagents/child/meta.json",
+        bytes: await fixture("grok", "topology/parent/subagents/child/meta.json"),
+      },
+      {
+        path: "parent/subagents/child/output.json",
+        bytes: await fixture("grok", "topology/parent/subagents/child/output.json"),
+      },
+      {
+        path: "parent/subagents/only/meta.json",
+        bytes: await fixture("grok", "topology/only/meta.json"),
+      },
+      {
+        path: "parent/subagents/only/output.json",
+        bytes: await fixture("grok", "topology/only/output.json"),
+      },
       { path: "child/updates.jsonl", bytes: await fixture("grok", "topology/child/updates.jsonl") },
       { path: "only/updates.jsonl", bytes: await fixture("grok", "topology/only/updates.jsonl") },
-      { path: "resume/updates.jsonl", bytes: await fixture("grok", "topology/resume/updates.jsonl") },
+      {
+        path: "resume/updates.jsonl",
+        bytes: await fixture("grok", "topology/resume/updates.jsonl"),
+      },
       { path: "parent/updates.jsonl.lock", bytes: new Uint8Array() },
     ];
     const records: AdapterRecord[] = [];
-    for await (const record of new GrokSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    for await (const record of new GrokSessionAdapter().parse({
+      parts,
+      sourceIdentity: "anonymous-fixture",
+    }))
+      records.push(record);
     const events = records.filter((record) => record.type === "event");
-    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["grok-root", "grok-child", "grok-only"]));
-    const childStart = events.find((record) => record.event.source.sourceEventId === "agent-start-grok-child");
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(
+      new Set(["grok-root", "grok-child", "grok-only"]),
+    );
+    const childStart = events.find(
+      (record) => record.event.source.sourceEventId === "agent-start-grok-child",
+    );
     expect(childStart?.event.attributes.parentAgentId).toBe("grok-root");
     expect(childStart?.event.parentSpanId).toBe("prompt-child-1");
-    const onlyStart = events.find((record) => record.event.source.sourceEventId === "agent-start-grok-only");
+    const onlyStart = events.find(
+      (record) => record.event.source.sourceEventId === "agent-start-grok-only",
+    );
     expect(onlyStart?.event.attributes.parentAgentId).toBe("grok-root");
     expect(onlyStart?.event.parentSpanId).toBeUndefined();
-    expect(events.some((record) => record.event.source.sourceEventId === "agent-start-grok-resume")).toBe(false);
-    expect(events.some((record) => record.event.source.sourceEventId === "join-grok-only" && record.event.kind === "tool_result" && record.event.agentId === "grok-root")).toBe(true);
-    expect(events.some((record) => record.event.source.sourceEventId === "agent-end-grok-only" && record.event.kind === "agent_end" && record.event.attributes.joinedBy === "grok-root")).toBe(true);
-    expect(events.some((record) => record.event.attributes.recordType === "tool_call" && record.event.attributes.spawnedAgentIds !== undefined)).toBe(false);
-    expect(records.some((record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted")).toBe(true);
-    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(
+      events.some((record) => record.event.source.sourceEventId === "agent-start-grok-resume"),
+    ).toBe(false);
+    expect(
+      events.some(
+        (record) =>
+          record.event.source.sourceEventId === "join-grok-only" &&
+          record.event.kind === "tool_result" &&
+          record.event.agentId === "grok-root",
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (record) =>
+          record.event.source.sourceEventId === "agent-end-grok-only" &&
+          record.event.kind === "agent_end" &&
+          record.event.attributes.joinedBy === "grok-root",
+      ),
+    ).toBe(true);
+    expect(
+      events.some(
+        (record) =>
+          record.event.attributes.recordType === "tool_call" &&
+          record.event.attributes.spawnedAgentIds !== undefined,
+      ),
+    ).toBe(false);
+    expect(
+      records.some(
+        (record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted",
+      ),
+    ).toBe(true);
+    const serialized = records
+      .map((record) =>
+        record.type === "artifact"
+          ? new TextDecoder().decode(record.bytes)
+          : JSON.stringify(record),
+      )
+      .join("\n");
     expect(serialized).not.toContain("must-not-persist");
     expect(serialized).not.toMatch(/\/home\//u);
   });
@@ -332,7 +564,10 @@ describe("implemented trace adapters", () => {
     ["omp", "Child"],
     ["grok", "grok-child"],
   ] as const)("emits reducer-derivable spawn and join facts for %s", async (source, childLane) => {
-    const bundles: Record<string, () => Promise<{ adapter: TraceAdapter; parts: { path: string; bytes: Uint8Array }[] }>> = {
+    const bundles: Record<
+      string,
+      () => Promise<{ adapter: TraceAdapter; parts: { path: string; bytes: Uint8Array }[] }>
+    > = {
       codex: async () => ({
         adapter: new CodexSessionAdapter(),
         parts: [
@@ -344,8 +579,14 @@ describe("implemented trace adapters", () => {
         adapter: new ClaudeSessionAdapter(),
         parts: [
           { path: "root.jsonl", bytes: await fixture("claude", "topology/root.jsonl") },
-          { path: "subagents/agent-child.jsonl", bytes: await fixture("claude", "topology/subagents/agent-child.jsonl") },
-          { path: "subagents/agent-child.meta.json", bytes: await fixture("claude", "topology/subagents/agent-child.meta.json") },
+          {
+            path: "subagents/agent-child.jsonl",
+            bytes: await fixture("claude", "topology/subagents/agent-child.jsonl"),
+          },
+          {
+            path: "subagents/agent-child.meta.json",
+            bytes: await fixture("claude", "topology/subagents/agent-child.meta.json"),
+          },
         ],
       }),
       opencode: async () => ({
@@ -353,7 +594,10 @@ describe("implemented trace adapters", () => {
         parts: [
           { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
           { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
-          { path: "tool-output/tool-truncated", bytes: await fixture("opencode", "topology/tool-truncated") },
+          {
+            path: "tool-output/tool-truncated",
+            bytes: await fixture("opencode", "topology/tool-truncated"),
+          },
         ],
       }),
       omp: async () => ({
@@ -367,20 +611,38 @@ describe("implemented trace adapters", () => {
       grok: async () => ({
         adapter: new GrokSessionAdapter(),
         parts: [
-          { path: "parent/updates.jsonl", bytes: await fixture("grok", "topology/parent/updates.jsonl") },
-          { path: "parent/subagents/child/meta.json", bytes: await fixture("grok", "topology/parent/subagents/child/meta.json") },
-          { path: "parent/subagents/child/output.json", bytes: await fixture("grok", "topology/parent/subagents/child/output.json") },
-          { path: "child/updates.jsonl", bytes: await fixture("grok", "topology/child/updates.jsonl") },
+          {
+            path: "parent/updates.jsonl",
+            bytes: await fixture("grok", "topology/parent/updates.jsonl"),
+          },
+          {
+            path: "parent/subagents/child/meta.json",
+            bytes: await fixture("grok", "topology/parent/subagents/child/meta.json"),
+          },
+          {
+            path: "parent/subagents/child/output.json",
+            bytes: await fixture("grok", "topology/parent/subagents/child/output.json"),
+          },
+          {
+            path: "child/updates.jsonl",
+            bytes: await fixture("grok", "topology/child/updates.jsonl"),
+          },
         ],
       }),
     };
     const { adapter, parts } = await bundles[source]!();
     const records: AdapterRecord[] = [];
-    for await (const record of adapter.parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
-    const events = records.filter((record) => record.type === "event").map((record) => record.event);
+    for await (const record of adapter.parse({ parts, sourceIdentity: "anonymous-fixture" }))
+      records.push(record);
+    const events = records
+      .filter((record) => record.type === "event")
+      .map((record) => record.event);
 
     const childStart = events.find(
-      (event) => event.kind === "agent_start" && event.agentId === childLane && typeof event.attributes.parentAgentId === "string",
+      (event) =>
+        event.kind === "agent_start" &&
+        event.agentId === childLane &&
+        typeof event.attributes.parentAgentId === "string",
     );
     expect(childStart, "child agent_start with parentAgentId").toBeDefined();
     const parentLane = String(childStart!.attributes.parentAgentId);
@@ -388,9 +650,13 @@ describe("implemented trace adapters", () => {
       (event) =>
         event.agentId === parentLane &&
         ((childStart!.parentSpanId !== undefined && event.spanId === childStart!.parentSpanId) ||
-          (Array.isArray(event.attributes.spawnedAgentIds) && (event.attributes.spawnedAgentIds as string[]).includes(childLane))),
+          (Array.isArray(event.attributes.spawnedAgentIds) &&
+            (event.attributes.spawnedAgentIds as string[]).includes(childLane))),
     );
-    expect(spawnPartner, "parent fact matching child parentSpanId or spawnedAgentIds").toBeDefined();
+    expect(
+      spawnPartner,
+      "parent fact matching child parentSpanId or spawnedAgentIds",
+    ).toBeDefined();
 
     const joinResult = events.find(
       (event) =>
@@ -399,7 +665,9 @@ describe("implemented trace adapters", () => {
         (event.attributes.joinedAgentIds as string[]).includes(childLane),
     );
     expect(joinResult, "parent tool_result carrying joinedAgentIds").toBeDefined();
-    const childEnd = events.find((event) => event.kind === "agent_end" && event.agentId === childLane);
+    const childEnd = events.find(
+      (event) => event.kind === "agent_end" && event.agentId === childLane,
+    );
     expect(childEnd, "child agent_end").toBeDefined();
   });
 
@@ -479,7 +747,9 @@ describe("session bundle preparation", () => {
       ]),
     );
     expect(hash).toMatch(/^[a-f0-9]{64}$/u);
-    expect(sessionBundleContentSha256([{ path: "a/b.jsonl", bytes: new Uint8Array([2]) }])).not.toBe(hash);
+    expect(
+      sessionBundleContentSha256([{ path: "a/b.jsonl", bytes: new Uint8Array([2]) }]),
+    ).not.toBe(hash);
   });
 
   it("returns one prepared bundle per logical trace", async () => {
@@ -502,17 +772,33 @@ describe("session bundle preparation", () => {
       "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     ]);
     expect(prepared.every((bundle) => bundle.artifacts.length === 0)).toBe(true);
-    expect(prepared.every((bundle) => bundle.completionMarker.kind === "trace_complete")).toBe(true);
+    expect(prepared.every((bundle) => bundle.completionMarker.kind === "trace_complete")).toBe(
+      true,
+    );
     expect(new Set(prepared.map((bundle) => bundle.contentSha256)).size).toBe(2);
   });
 
   it("keeps referenced artifact keys unresolved and only retains referenced bytes", async () => {
     class ArtifactAdapter extends CanonicalJsonlAdapter {
       override async *parse(): AsyncIterable<AdapterRecord> {
-        const event = JSON.parse(canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a").toString()) as never;
+        const event = JSON.parse(
+          canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a").toString(),
+        ) as never;
         yield { type: "event", event, artifactKeys: ["used"] };
-        yield { type: "artifact", key: "unused", sourceEventId: "a", bytes: Buffer.from("unused"), mediaType: "text/plain" };
-        yield { type: "artifact", key: "used", sourceEventId: "a", bytes: Buffer.from("used"), mediaType: "text/plain" };
+        yield {
+          type: "artifact",
+          key: "unused",
+          sourceEventId: "a",
+          bytes: Buffer.from("unused"),
+          mediaType: "text/plain",
+        };
+        yield {
+          type: "artifact",
+          key: "used",
+          sourceEventId: "a",
+          bytes: Buffer.from("used"),
+          mediaType: "text/plain",
+        };
       }
     }
     const prepared = await prepareSessionParts(
@@ -526,28 +812,41 @@ describe("session bundle preparation", () => {
     expect(prepared[0]?.artifacts.map((artifact) => artifact.key)).toEqual(["used"]);
   });
 
-  it.each(["missing", "duplicate"] as const)("rejects %s referenced artifact keys during preflight", async (mode) => {
-    class BrokenArtifactAdapter extends CanonicalJsonlAdapter {
-      override async *parse(): AsyncIterable<AdapterRecord> {
-        const event = JSON.parse(canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a").toString()) as never;
-        yield { type: "event", event, artifactKeys: ["required"] };
-        if (mode === "duplicate") {
-          for (let index = 0; index < 2; index += 1) {
-            yield { type: "artifact", key: "required", sourceEventId: "a", bytes: Buffer.from("x"), mediaType: "text/plain" };
+  it.each(["missing", "duplicate"] as const)(
+    "rejects %s referenced artifact keys during preflight",
+    async (mode) => {
+      class BrokenArtifactAdapter extends CanonicalJsonlAdapter {
+        override async *parse(): AsyncIterable<AdapterRecord> {
+          const event = JSON.parse(
+            canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a").toString(),
+          ) as never;
+          yield { type: "event", event, artifactKeys: ["required"] };
+          if (mode === "duplicate") {
+            for (let index = 0; index < 2; index += 1) {
+              yield {
+                type: "artifact",
+                key: "required",
+                sourceEventId: "a",
+                bytes: Buffer.from("x"),
+                mediaType: "text/plain",
+              };
+            }
           }
         }
       }
-    }
-    await expect(
-      prepareSessionParts(
-        "jsonl",
-        [{ path: ".", bytes: canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a") }],
-        "bundle-fixture",
-        { id: "a".repeat(24), byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
-        new BrokenArtifactAdapter(),
-      ),
-    ).rejects.toThrow(mode === "missing" ? "Missing referenced artifact key" : "Duplicate artifact key");
-  });
+      await expect(
+        prepareSessionParts(
+          "jsonl",
+          [{ path: ".", bytes: canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a") }],
+          "bundle-fixture",
+          { id: "a".repeat(24), byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+          new BrokenArtifactAdapter(),
+        ),
+      ).rejects.toThrow(
+        mode === "missing" ? "Missing referenced artifact key" : "Duplicate artifact key",
+      );
+    },
+  );
 });
 
 describe("session candidate discovery", () => {
@@ -571,8 +870,14 @@ describe("session candidate discovery", () => {
 
   it("groups Claude roots with matching subagents and metadata", async () => {
     const candidates = await discoverSessionCandidates("claude", [
-      part("root.jsonl", '{"type":"user","sessionId":"root","message":{"role":"user","content":"x"}}\n'),
-      part("subagents/agent-child.jsonl", '{"type":"assistant","sessionId":"root","agentId":"child","message":{"role":"assistant","content":"x"}}\n'),
+      part(
+        "root.jsonl",
+        '{"type":"user","sessionId":"root","message":{"role":"user","content":"x"}}\n',
+      ),
+      part(
+        "subagents/agent-child.jsonl",
+        '{"type":"assistant","sessionId":"root","agentId":"child","message":{"role":"assistant","content":"x"}}\n',
+      ),
       part("subagents/agent-child.meta.json", '{"sessionId":"root"}'),
     ]);
     expect(candidates[0]?.partRefs).toEqual([

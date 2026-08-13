@@ -155,7 +155,13 @@ export function ImportWorkspace() {
     setRows((previous) =>
       previous.map((row) =>
         queued.has(row.clientRef)
-          ? { ...row, status: "queued", failureCode: null, failureMessage: null, failureStage: null }
+          ? {
+              ...row,
+              status: "queued",
+              failureCode: null,
+              failureMessage: null,
+              failureStage: null,
+            }
           : row,
       ),
     );
@@ -183,7 +189,9 @@ export function ImportWorkspace() {
         const group = groups[cursor++]!;
         const refs = new Set(group.rowRefs);
         setRows((previous) =>
-          previous.map((entry) => (refs.has(entry.clientRef) ? { ...entry, status: "uploading" } : entry)),
+          previous.map((entry) =>
+            refs.has(entry.clientRef) ? { ...entry, status: "uploading" } : entry,
+          ),
         );
         try {
           const outcome = await uploadSessionBundle(group);
@@ -212,7 +220,13 @@ export function ImportWorkspace() {
           setRows((previous) =>
             previous.map((entry) =>
               refs.has(entry.clientRef)
-                ? { ...entry, status: "failed", failureCode: code, failureMessage: message, failureStage: "upload" }
+                ? {
+                    ...entry,
+                    status: "failed",
+                    failureCode: code,
+                    failureMessage: message,
+                    failureStage: "upload",
+                  }
                 : entry,
             ),
           );

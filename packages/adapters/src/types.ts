@@ -1,8 +1,4 @@
-import type {
-  RawTraceEventInput,
-  TopologyCapability,
-  TraceSourceKind,
-} from "@intenttrace/schema";
+import type { RawTraceEventInput, TopologyCapability, TraceSourceKind } from "@intenttrace/schema";
 
 export const topologyAttributeKeys = [
   "parentAgentId",

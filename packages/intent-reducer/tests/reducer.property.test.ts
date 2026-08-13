@@ -250,8 +250,7 @@ describe("deterministic reducer properties", () => {
       initial.state,
       topologyContext(
         fanFacts.filter(
-          (item) =>
-            item.eventId !== eventIds.childStartB && item.eventId !== eventIds.childEndB,
+          (item) => item.eventId !== eventIds.childStartB && item.eventId !== eventIds.childEndB,
         ),
       ),
     );
@@ -277,7 +276,11 @@ describe("deterministic reducer properties", () => {
     const childEvidence = "019fbbb3-4324-7d43-8f9c-cd489a92d020";
     const childNode = node(childFirstA, childEvidence);
     const state: ReducerGraphState = {
-      nodes: [node(requestNode, eventIds.request, "request"), node(dispatchNode, eventIds.dispatch), childNode],
+      nodes: [
+        node(requestNode, eventIds.request, "request"),
+        node(dispatchNode, eventIds.dispatch),
+        childNode,
+      ],
       edges: [],
     };
     const facts = [
@@ -293,16 +296,24 @@ describe("deterministic reducer properties", () => {
       fact(childEvidence, 4, "assistant_message", "child-a"),
     ];
     const result = deriveTopology(state, topologyContext(facts));
-    expect(result.state.nodes.find((item) => item.logicalNodeId === childFirstA)?.primaryParentId).toBe(dispatchNode);
+    expect(
+      result.state.nodes.find((item) => item.logicalNodeId === childFirstA)?.primaryParentId,
+    ).toBe(dispatchNode);
   });
 
   it("rejects colliding spawn facts from a different parent lane and source", () => {
-    const collision = fact("019fbbb3-4324-7d43-8f9c-cd489a92d021", 1, "agent_handoff", "other-parent", {
-      sourceKind: "otlp",
-      adapterVersion: "1.0.0",
-      spanId: "dispatch-call",
-      spawnedAgentIds: ["child-a"],
-    });
+    const collision = fact(
+      "019fbbb3-4324-7d43-8f9c-cd489a92d021",
+      1,
+      "agent_handoff",
+      "other-parent",
+      {
+        sourceKind: "otlp",
+        adapterVersion: "1.0.0",
+        spanId: "dispatch-call",
+        spawnedAgentIds: ["child-a"],
+      },
+    );
     const context = topologyContext([collision, ...fanFacts]);
     context.capabilities = new Map([
       ["jsonl\0test", capability],
@@ -336,8 +347,16 @@ describe("deterministic reducer properties", () => {
     expect(result.state.nodes.map((item) => item.artifactIds)).toEqual([[artifact], [artifact]]);
     expect(result.state.edges).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ kind: "produces", sourceNodeId: dispatchNode, targetNodeId: childFirstA }),
-        expect.objectContaining({ kind: "depends_on", sourceNodeId: childFirstA, targetNodeId: dispatchNode }),
+        expect.objectContaining({
+          kind: "produces",
+          sourceNodeId: dispatchNode,
+          targetNodeId: childFirstA,
+        }),
+        expect.objectContaining({
+          kind: "depends_on",
+          sourceNodeId: childFirstA,
+          targetNodeId: dispatchNode,
+        }),
       ]),
     );
     expect(result.state.edges.every((edge) => edge.evidenceEventIds.length > 0)).toBe(true);

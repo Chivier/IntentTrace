@@ -165,8 +165,7 @@ function canonicalClaim(claim: ProviderClaim): CanonicalClaim {
 }
 
 export type PatchValidationResult =
-  | { ok: true; patch: ProviderIntentGraphPatch }
-  | { ok: false; issues: PatchValidationIssue[] };
+  { ok: true; patch: ProviderIntentGraphPatch } | { ok: false; issues: PatchValidationIssue[] };
 
 function collectEvidence(
   operation: ProviderIntentGraphPatch["operations"][number],
@@ -203,7 +202,10 @@ export function validateProviderPatch(
   const patch = parsed.data;
   const issues: PatchValidationIssue[] = [];
   if (patch.baseRevisionId !== context.expectedBaseRevisionId) {
-    issues.push({ code: "stale_revision", detail: "patch base revision does not match current revision" });
+    issues.push({
+      code: "stale_revision",
+      detail: "patch base revision does not match current revision",
+    });
   }
   if (patch.jobNonce !== context.expectedJobNonce) {
     issues.push({ code: "nonce_mismatch", detail: "patch nonce does not match summary job" });
@@ -213,7 +215,11 @@ export function validateProviderPatch(
   for (const [index, operation] of patch.operations.entries()) {
     if (operation.op !== "add_node") continue;
     if (temporaryNodes.has(operation.ref)) {
-      issues.push({ code: "duplicate_temporary_ref", operationIndex: index, detail: operation.ref });
+      issues.push({
+        code: "duplicate_temporary_ref",
+        operationIndex: index,
+        detail: operation.ref,
+      });
     }
     temporaryNodes.add(operation.ref);
   }
@@ -268,7 +274,10 @@ function orderedFacts(context: ReducerTopologyContext): ReducerRawFact[] {
     });
 }
 
-function buildAnchors(nodes: readonly ReducerNode[], facts: readonly ReducerRawFact[]): NodeAnchor[] {
+function buildAnchors(
+  nodes: readonly ReducerNode[],
+  facts: readonly ReducerRawFact[],
+): NodeAnchor[] {
   const factById = new Map(facts.map((fact) => [fact.eventId, fact]));
   return nodes.flatMap((node) => {
     const evidence = new Set(node.claims.flatMap((claim) => claim.evidenceEventIds));
@@ -281,21 +290,29 @@ function buildAnchors(nodes: readonly ReducerNode[], facts: readonly ReducerRawF
       });
     if (resolved.length === 0) return [];
     const lanes = resolved.flatMap((fact) => (fact.agentId ? [fact.agentId] : []));
-    return [{
-      node,
-      facts: resolved,
-      evidence,
-      startSeq: BigInt(resolved[0]!.ingestSeq),
-      endSeq: BigInt(resolved.at(-1)!.ingestSeq),
-      lane: lanes[0] ?? null,
-    }];
+    return [
+      {
+        node,
+        facts: resolved,
+        evidence,
+        startSeq: BigInt(resolved[0]!.ingestSeq),
+        endSeq: BigInt(resolved.at(-1)!.ingestSeq),
+        lane: lanes[0] ?? null,
+      },
+    ];
   });
 }
 
 function exactAnchor(anchors: readonly NodeAnchor[], fact: ReducerRawFact): NodeAnchor | undefined {
   return anchors
     .filter((anchor) => anchor.evidence.has(fact.eventId))
-    .sort((left, right) => left.startSeq === right.startSeq ? compareNodeId(left, right) : left.startSeq < right.startSeq ? -1 : 1)[0];
+    .sort((left, right) =>
+      left.startSeq === right.startSeq
+        ? compareNodeId(left, right)
+        : left.startSeq < right.startSeq
+          ? -1
+          : 1,
+    )[0];
 }
 
 function outboundEndpoint(
@@ -309,7 +326,13 @@ function outboundEndpoint(
   const eventSeq = BigInt(fact.ingestSeq);
   return anchors
     .filter((anchor) => anchor.lane === lane && anchor.startSeq <= eventSeq)
-    .sort((left, right) => left.startSeq === right.startSeq ? compareNodeId(left, right) : left.startSeq > right.startSeq ? -1 : 1)[0];
+    .sort((left, right) =>
+      left.startSeq === right.startSeq
+        ? compareNodeId(left, right)
+        : left.startSeq > right.startSeq
+          ? -1
+          : 1,
+    )[0];
 }
 
 function inboundEndpoint(
@@ -323,19 +346,37 @@ function inboundEndpoint(
   const eventSeq = BigInt(fact.ingestSeq);
   return anchors
     .filter((anchor) => anchor.lane === lane && anchor.endSeq >= eventSeq)
-    .sort((left, right) => left.endSeq === right.endSeq ? compareNodeId(left, right) : left.endSeq < right.endSeq ? -1 : 1)[0];
+    .sort((left, right) =>
+      left.endSeq === right.endSeq
+        ? compareNodeId(left, right)
+        : left.endSeq < right.endSeq
+          ? -1
+          : 1,
+    )[0];
 }
 
 function laneFirst(anchors: readonly NodeAnchor[], lane: string): NodeAnchor | undefined {
   return anchors
     .filter((anchor) => anchor.lane === lane)
-    .sort((left, right) => left.startSeq === right.startSeq ? compareNodeId(left, right) : left.startSeq < right.startSeq ? -1 : 1)[0];
+    .sort((left, right) =>
+      left.startSeq === right.startSeq
+        ? compareNodeId(left, right)
+        : left.startSeq < right.startSeq
+          ? -1
+          : 1,
+    )[0];
 }
 
 function laneLast(anchors: readonly NodeAnchor[], lane: string): NodeAnchor | undefined {
   return anchors
     .filter((anchor) => anchor.lane === lane)
-    .sort((left, right) => left.endSeq === right.endSeq ? compareNodeId(left, right) : left.endSeq > right.endSeq ? -1 : 1)[0];
+    .sort((left, right) =>
+      left.endSeq === right.endSeq
+        ? compareNodeId(left, right)
+        : left.endSeq > right.endSeq
+          ? -1
+          : 1,
+    )[0];
 }
 
 function capabilityFor(
@@ -375,7 +416,9 @@ function addDesiredEdge(edges: Map<string, DesiredEdge>, edge: DesiredEdge): voi
     edges.set(key, edge);
     return;
   }
-  previous.evidenceEventIds = [...new Set([...previous.evidenceEventIds, ...edge.evidenceEventIds])].sort();
+  previous.evidenceEventIds = [
+    ...new Set([...previous.evidenceEventIds, ...edge.evidenceEventIds]),
+  ].sort();
   if (edge.provenance === "inferred") previous.provenance = "inferred";
 }
 
@@ -383,28 +426,54 @@ function nodeDerivedFields(
   anchor: NodeAnchor,
   registeredArtifactIds: ReadonlySet<string>,
 ): Pick<ReducerNode, "status" | "primaryAgentId" | "participantAgentIds" | "artifactIds"> {
-  const participantAgentIds = [...new Set(anchor.facts.flatMap((fact) => fact.agentId ? [fact.agentId] : []))].sort();
+  const participantAgentIds = [
+    ...new Set(anchor.facts.flatMap((fact) => (fact.agentId ? [fact.agentId] : []))),
+  ].sort();
   const artifactIds = [
     ...new Set(
-      anchor.facts.flatMap((fact) => fact.artifactRefs.filter((id) => registeredArtifactIds.has(id))),
+      anchor.facts.flatMap((fact) =>
+        fact.artifactRefs.filter((id) => registeredArtifactIds.has(id)),
+      ),
     ),
   ].sort();
   const hasError = anchor.facts.some((fact) => fact.status === "error");
-  const hasCompletion = anchor.facts.some((fact) => fact.kind === "trace_complete" || fact.kind === "agent_end");
+  const hasCompletion = anchor.facts.some(
+    (fact) => fact.kind === "trace_complete" || fact.kind === "agent_end",
+  );
   return {
-    status: anchor.node.kind === "issue" && hasError ? "blocked" : anchor.node.kind === "result" && hasCompletion ? "completed" : "active",
+    status:
+      anchor.node.kind === "issue" && hasError
+        ? "blocked"
+        : anchor.node.kind === "result" && hasCompletion
+          ? "completed"
+          : "active",
     primaryAgentId: anchor.facts.find((fact) => fact.agentId)?.agentId ?? null,
     participantAgentIds,
     artifactIds,
   };
 }
 
-function parentFor(anchor: NodeAnchor, anchors: readonly NodeAnchor[], facts: readonly ReducerRawFact[]): string | null {
+function parentFor(
+  anchor: NodeAnchor,
+  anchors: readonly NodeAnchor[],
+  facts: readonly ReducerRawFact[],
+): string | null {
   if (anchor.node.pinnedByHuman) return anchor.node.primaryParentId;
   if (anchor.lane) {
     const prior = anchors
-      .filter((candidate) => candidate !== anchor && candidate.lane === anchor.lane && candidate.endSeq < anchor.startSeq)
-      .sort((left, right) => left.endSeq === right.endSeq ? compareNodeId(left, right) : left.endSeq > right.endSeq ? -1 : 1)[0];
+      .filter(
+        (candidate) =>
+          candidate !== anchor &&
+          candidate.lane === anchor.lane &&
+          candidate.endSeq < anchor.startSeq,
+      )
+      .sort((left, right) =>
+        left.endSeq === right.endSeq
+          ? compareNodeId(left, right)
+          : left.endSeq > right.endSeq
+            ? -1
+            : 1,
+      )[0];
     if (prior) return prior.node.logicalNodeId;
   }
   const childStart = anchor.lane
@@ -430,13 +499,27 @@ function parentFor(anchor: NodeAnchor, anchors: readonly NodeAnchor[], facts: re
       if (exact) return exact.node.logicalNodeId;
     }
     const parent = anchors
-      .filter((candidate) => candidate.lane === parentAgentId && candidate.endSeq <= anchor.startSeq)
-      .sort((left, right) => left.endSeq === right.endSeq ? compareNodeId(left, right) : left.endSeq > right.endSeq ? -1 : 1)[0];
+      .filter(
+        (candidate) => candidate.lane === parentAgentId && candidate.endSeq <= anchor.startSeq,
+      )
+      .sort((left, right) =>
+        left.endSeq === right.endSeq
+          ? compareNodeId(left, right)
+          : left.endSeq > right.endSeq
+            ? -1
+            : 1,
+      )[0];
     if (parent) return parent.node.logicalNodeId;
   }
   const request = anchors
     .filter((candidate) => candidate.node.kind === "request")
-    .sort((left, right) => left.startSeq === right.startSeq ? compareNodeId(left, right) : left.startSeq < right.startSeq ? -1 : 1)[0];
+    .sort((left, right) =>
+      left.startSeq === right.startSeq
+        ? compareNodeId(left, right)
+        : left.startSeq < right.startSeq
+          ? -1
+          : 1,
+    )[0];
   return request?.node.logicalNodeId ?? null;
 }
 
@@ -464,9 +547,11 @@ export function deriveTopology(
       anchor.node.status === derived.status &&
       anchor.node.primaryAgentId === derived.primaryAgentId &&
       anchor.node.primaryParentId === primaryParentId &&
-      canonicalJson(anchor.node.participantAgentIds) === canonicalJson(derived.participantAgentIds) &&
+      canonicalJson(anchor.node.participantAgentIds) ===
+        canonicalJson(derived.participantAgentIds) &&
       canonicalJson(anchor.node.artifactIds) === canonicalJson(derived.artifactIds)
-    ) continue;
+    )
+      continue;
     Object.assign(anchor.node, persisted, {
       versionId: deterministicUuid(
         "semantic-node-derived-version",
@@ -481,7 +566,9 @@ export function deriveTopology(
 
   // Spawn edges.
   const seenChildLanes = new Set<string>();
-  for (const childStart of facts.filter((fact) => fact.kind === "agent_start" && fact.agentId && fact.parentAgentId)) {
+  for (const childStart of facts.filter(
+    (fact) => fact.kind === "agent_start" && fact.agentId && fact.parentAgentId,
+  )) {
     const childLane = childStart.agentId!;
     if (seenChildLanes.has(childLane)) continue;
     seenChildLanes.add(childLane);
@@ -512,11 +599,19 @@ export function deriveTopology(
 
   // Join edges.
   const pairedEnds = new Set<string>();
-  for (const result of facts.filter((fact) => fact.kind === "tool_result" && fact.joinedAgentIds?.length)) {
+  for (const result of facts.filter(
+    (fact) => fact.kind === "tool_result" && fact.joinedAgentIds?.length,
+  )) {
     for (const childLane of result.joinedAgentIds ?? []) {
       const childEnd = [...facts]
-        .filter((fact) => fact.kind === "agent_end" && fact.agentId === childLane && BigInt(fact.ingestSeq) <= BigInt(result.ingestSeq) && !pairedEnds.has(fact.eventId))
-        .sort((left, right) => BigInt(left.ingestSeq) > BigInt(right.ingestSeq) ? -1 : 1)[0];
+        .filter(
+          (fact) =>
+            fact.kind === "agent_end" &&
+            fact.agentId === childLane &&
+            BigInt(fact.ingestSeq) <= BigInt(result.ingestSeq) &&
+            !pairedEnds.has(fact.eventId),
+        )
+        .sort((left, right) => (BigInt(left.ingestSeq) > BigInt(right.ingestSeq) ? -1 : 1))[0];
       if (!childEnd) continue;
       pairedEnds.add(childEnd.eventId);
       const provenance = structuralProvenance("join", context, [childEnd, result]);
@@ -535,8 +630,13 @@ export function deriveTopology(
 
   // Peer-message edges.
   const seenMessages = new Set<string>();
-  for (const message of facts.filter((fact) => fact.senderAgentId && fact.recipientAgentId && fact.senderAgentId !== fact.recipientAgentId)) {
-    const identity = message.messageId ?? `${message.sourceKind}\0${message.adapterVersion}\0${message.sourceEventId}`;
+  for (const message of facts.filter(
+    (fact) =>
+      fact.senderAgentId && fact.recipientAgentId && fact.senderAgentId !== fact.recipientAgentId,
+  )) {
+    const identity =
+      message.messageId ??
+      `${message.sourceKind}\0${message.adapterVersion}\0${message.sourceEventId}`;
     if (seenMessages.has(identity)) continue;
     seenMessages.add(identity);
     const provenance = structuralProvenance("peerMessages", context, [message]);
@@ -553,11 +653,28 @@ export function deriveTopology(
   }
 
   // Produces and depends_on require an explicit producer fact and registered artifact membership.
-  for (const write of facts.filter((fact) => fact.kind === "file_write" && fact.onBehalfOf && fact.artifactRefs.some((id) => context.registeredArtifactIds.has(id)))) {
+  for (const write of facts.filter(
+    (fact) =>
+      fact.kind === "file_write" &&
+      fact.onBehalfOf &&
+      fact.artifactRefs.some((id) => context.registeredArtifactIds.has(id)),
+  )) {
     const producer = outboundEndpoint(anchors, write.agentId, write);
     const beneficiary = anchors
-      .filter((anchor) => anchor.lane === write.onBehalfOf && anchor.node.artifactIds.some((id) => write.artifactRefs.includes(id) && context.registeredArtifactIds.has(id)))
-      .sort((left, right) => left.startSeq === right.startSeq ? compareNodeId(left, right) : left.startSeq < right.startSeq ? -1 : 1)[0];
+      .filter(
+        (anchor) =>
+          anchor.lane === write.onBehalfOf &&
+          anchor.node.artifactIds.some(
+            (id) => write.artifactRefs.includes(id) && context.registeredArtifactIds.has(id),
+          ),
+      )
+      .sort((left, right) =>
+        left.startSeq === right.startSeq
+          ? compareNodeId(left, right)
+          : left.startSeq < right.startSeq
+            ? -1
+            : 1,
+      )[0];
     if (!producer || !beneficiary) continue;
     const provenance = write.topologyProvenance === "inferred" ? "inferred" : "stated";
     addDesiredEdge(desired, {
@@ -573,8 +690,7 @@ export function deriveTopology(
     if (producedArtifacts.length === 0) continue;
     for (const consumer of anchors.filter(
       (anchor) =>
-        anchor !== producer &&
-        anchor.node.artifactIds.some((id) => producedArtifacts.includes(id)),
+        anchor !== producer && anchor.node.artifactIds.some((id) => producedArtifacts.includes(id)),
     )) {
       addDesiredEdge(desired, {
         kind: "depends_on",
@@ -587,12 +703,20 @@ export function deriveTopology(
   }
 
   // Blocks edges.
-  for (const failure of facts.filter((fact) => fact.kind === "tool_result" && fact.status === "error")) {
+  for (const failure of facts.filter(
+    (fact) => fact.kind === "tool_result" && fact.status === "error",
+  )) {
     const issue = exactAnchor(anchors, failure);
     if (!issue || issue.node.kind !== "issue" || !issue.lane) continue;
     const next = anchors
       .filter((anchor) => anchor.lane === issue.lane && anchor.startSeq > issue.endSeq)
-      .sort((left, right) => left.startSeq === right.startSeq ? compareNodeId(left, right) : left.startSeq < right.startSeq ? -1 : 1)[0];
+      .sort((left, right) =>
+        left.startSeq === right.startSeq
+          ? compareNodeId(left, right)
+          : left.startSeq < right.startSeq
+            ? -1
+            : 1,
+      )[0];
     if (!next) continue;
     addDesiredEdge(desired, {
       kind: "blocks",
@@ -603,10 +727,11 @@ export function deriveTopology(
     });
   }
 
-  const desiredEdges = [...desired.values()].sort((left, right) =>
-    left.kind.localeCompare(right.kind) ||
-    left.sourceNodeId.localeCompare(right.sourceNodeId) ||
-    left.targetNodeId.localeCompare(right.targetNodeId),
+  const desiredEdges = [...desired.values()].sort(
+    (left, right) =>
+      left.kind.localeCompare(right.kind) ||
+      left.sourceNodeId.localeCompare(right.sourceNodeId) ||
+      left.targetNodeId.localeCompare(right.targetNodeId),
   );
   const currentByLogicalId = new Map(current.edges.map((edge) => [edge.logicalEdgeId, edge]));
   const desiredLogicalIds = new Set<string>();
@@ -657,11 +782,12 @@ export function deriveTopology(
     edges.push(retired);
     changedEdgeIds.add(previous.logicalEdgeId);
   }
-  edges.sort((left, right) =>
-    left.kind.localeCompare(right.kind) ||
-    left.sourceNodeId.localeCompare(right.sourceNodeId) ||
-    left.targetNodeId.localeCompare(right.targetNodeId) ||
-    left.logicalEdgeId.localeCompare(right.logicalEdgeId),
+  edges.sort(
+    (left, right) =>
+      left.kind.localeCompare(right.kind) ||
+      left.sourceNodeId.localeCompare(right.sourceNodeId) ||
+      left.targetNodeId.localeCompare(right.targetNodeId) ||
+      left.logicalEdgeId.localeCompare(right.logicalEdgeId),
   );
   return {
     state: { nodes, edges },
@@ -682,12 +808,18 @@ export function applyProviderPatch(
   const patch = validation.patch;
   const nodes = current.nodes.map((node) => ({
     ...node,
-    claims: node.claims.map((claim) => ({ ...claim, evidenceEventIds: [...claim.evidenceEventIds] })),
+    claims: node.claims.map((claim) => ({
+      ...claim,
+      evidenceEventIds: [...claim.evidenceEventIds],
+    })),
     participantAgentIds: [...node.participantAgentIds],
     artifactIds: [...node.artifactIds],
     layout: node.layout ? { ...node.layout } : null,
   }));
-  const edges = current.edges.map((edge) => ({ ...edge, evidenceEventIds: [...edge.evidenceEventIds] }));
+  const edges = current.edges.map((edge) => ({
+    ...edge,
+    evidenceEventIds: [...edge.evidenceEventIds],
+  }));
   const changedNodeIds = new Set<string>();
   const diagnostics = [...patch.diagnostics];
 

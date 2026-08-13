@@ -91,7 +91,9 @@ export async function runSummaryJob(
         allowedNodeIds: new Set(context.graph.nodes.map((node) => node.logicalNodeId)),
         allowedEdgeIds: new Set(context.graph.edges.map((edge) => edge.logicalEdgeId)),
         pinnedNodeIds: new Set(
-          context.graph.nodes.filter((node) => node.pinnedByHuman).map((node) => node.logicalNodeId),
+          context.graph.nodes
+            .filter((node) => node.pinnedByHuman)
+            .map((node) => node.logicalNodeId),
         ),
       },
       {

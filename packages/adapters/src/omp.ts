@@ -1,8 +1,25 @@
 import type { RawEventKind } from "@intenttrace/schema";
 
-import { decodeAdapterBytes, displayName, normalizeEvent, objectRecord, readSessionRecords, sanitizeVendorValue, visibleText, type SessionRecord } from "./common.js";
+import {
+  decodeAdapterBytes,
+  displayName,
+  normalizeEvent,
+  objectRecord,
+  readSessionRecords,
+  sanitizeVendorValue,
+  visibleText,
+  type SessionRecord,
+} from "./common.js";
 import { lookupTopologyCapability } from "./topology.js";
-import { MalformedAdapterInputError, normalizeAdapterInput, singleAdapterPart, type AdapterInput, type AdapterManifest, type AdapterRecord, type TraceAdapter } from "./types.js";
+import {
+  MalformedAdapterInputError,
+  normalizeAdapterInput,
+  singleAdapterPart,
+  type AdapterInput,
+  type AdapterManifest,
+  type AdapterRecord,
+  type TraceAdapter,
+} from "./types.js";
 
 function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -29,7 +46,9 @@ function ompText(object: Record<string, unknown>): string {
           .map((item) => objectRecord(item))
           .filter((item): item is Record<string, unknown> => item !== null)
           .filter((item) => item.type === "text" || item.type === "toolCall")
-          .map((item) => (item.type === "toolCall" ? String(item.name ?? "tool") : String(item.text ?? "")))
+          .map((item) =>
+            item.type === "toolCall" ? String(item.name ?? "tool") : String(item.text ?? ""),
+          )
           .join(" ")
       : visibleText(message.content);
     return content || String(message.toolName ?? message.role ?? "");
@@ -55,7 +74,11 @@ export class OmpSessionAdapter implements TraceAdapter {
 
   async sniff(input: AdapterInput): Promise<boolean> {
     try {
-      return objectRecord(readSessionRecords(decodeAdapterBytes(singleAdapterPart(input).bytes))[1]?.value)?.type === "session";
+      return (
+        objectRecord(
+          readSessionRecords(decodeAdapterBytes(singleAdapterPart(input).bytes))[1]?.value,
+        )?.type === "session"
+      );
     } catch {
       return false;
     }
@@ -74,7 +97,13 @@ export class OmpSessionAdapter implements TraceAdapter {
         if (part.path === root.path) rootId = str(header?.id) ?? root.path;
         parts.push({
           path: part.path,
-          lane: part.path === root.path ? "Main" : part.path.split("/").at(-1)!.replace(/\.jsonl$/iu, ""),
+          lane:
+            part.path === root.path
+              ? "Main"
+              : part.path
+                  .split("/")
+                  .at(-1)!
+                  .replace(/\.jsonl$/iu, ""),
           records: records.slice(1),
         });
       }
@@ -82,7 +111,9 @@ export class OmpSessionAdapter implements TraceAdapter {
       throw new MalformedAdapterInputError("omp", String(error));
     }
 
-    const childLanes = new Set(parts.filter((part) => part.lane !== "Main").map((part) => part.lane));
+    const childLanes = new Set(
+      parts.filter((part) => part.lane !== "Main").map((part) => part.lane),
+    );
     const spawnedLanes = new Set<string>();
     const joins = new Set<string>();
     const peers = new Map<string, { from: string; to: string }>();
@@ -121,16 +152,32 @@ export class OmpSessionAdapter implements TraceAdapter {
         const sanitized = sanitizeVendorValue(object);
         const sanitizedObject = objectRecord(sanitized.value) ?? { type: object.type };
         if (sanitized.reasoning > 0) {
-          yield { type: "warning", code: "sensitive_reasoning_omitted", message: `line ${record.line} omitted ${sanitized.reasoning} reasoning block(s)`, sourceEventId: eventId };
+          yield {
+            type: "warning",
+            code: "sensitive_reasoning_omitted",
+            message: `line ${record.line} omitted ${sanitized.reasoning} reasoning block(s)`,
+            sourceEventId: eventId,
+          };
         }
         if (sanitized.confidential > 0) {
-          yield { type: "warning", code: "sensitive_content_omitted", message: `line ${record.line} omitted ${sanitized.confidential} confidential field(s)`, sourceEventId: eventId };
+          yield {
+            type: "warning",
+            code: "sensitive_content_omitted",
+            message: `line ${record.line} omitted ${sanitized.confidential} confidential field(s)`,
+            sourceEventId: eventId,
+          };
         }
-        const details = objectRecord(object.details) ?? objectRecord(objectRecord(object.message)?.details);
+        const details =
+          objectRecord(object.details) ?? objectRecord(objectRecord(object.message)?.details);
         const jobIds = Array.isArray(details?.jobs)
-          ? details.jobs.map((item) => str(objectRecord(item)?.id) ?? str(objectRecord(item)?.jobId)).filter((value): value is string => value !== null && childLanes.has(value))
+          ? details.jobs
+              .map((item) => str(objectRecord(item)?.id) ?? str(objectRecord(item)?.jobId))
+              .filter((value): value is string => value !== null && childLanes.has(value))
           : [];
-        const attributes: Record<string, unknown> = { recordType: String(object.type ?? "unknown"), contentType: String(object.customType ?? object.type ?? "record") };
+        const attributes: Record<string, unknown> = {
+          recordType: String(object.type ?? "unknown"),
+          contentType: String(object.customType ?? object.type ?? "record"),
+        };
         if (spawnedLanes.has(part.lane)) {
           attributes.parentAgentId = "Main";
           attributes.topologyProvenance = "inferred";
@@ -141,7 +188,9 @@ export class OmpSessionAdapter implements TraceAdapter {
         if (part.lane === "Main" && jobIds.length > 0) {
           attributes.joinedAgentIds = [...new Set(jobIds)].sort();
         }
-        const peer = [...peers.entries()].find(([, value]) => value.from === part.lane || value.to === part.lane);
+        const peer = [...peers.entries()].find(
+          ([, value]) => value.from === part.lane || value.to === part.lane,
+        );
         if (peer) {
           attributes.senderAgentId = peer[1].from;
           attributes.recipientAgentId = peer[1].to;
@@ -172,7 +221,13 @@ export class OmpSessionAdapter implements TraceAdapter {
             },
           ),
         };
-        yield { type: "artifact", key: `event-${eventId}`, sourceEventId: eventId, bytes: new TextEncoder().encode(JSON.stringify(sanitizedObject)), mediaType: "application/json" };
+        yield {
+          type: "artifact",
+          key: `event-${eventId}`,
+          sourceEventId: eventId,
+          bytes: new TextEncoder().encode(JSON.stringify(sanitizedObject)),
+          mediaType: "application/json",
+        };
       }
     }
 
@@ -194,7 +249,11 @@ export class OmpSessionAdapter implements TraceAdapter {
             name: displayName("OMP subagent finished", lane),
             status: "ok",
             agentId: lane,
-            attributes: { recordType: "agent_end", contentType: "agent_activity", joinedBy: "Main" },
+            attributes: {
+              recordType: "agent_end",
+              contentType: "agent_activity",
+              joinedBy: "Main",
+            },
             payload: { agent: lane, parent: "Main" },
             traceTitle: "OMP session",
           },

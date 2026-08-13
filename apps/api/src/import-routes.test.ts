@@ -1,6 +1,5 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createHash } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -96,7 +95,11 @@ async function claudeFixture(): Promise<Buffer> {
   return readFile(resolve(fixtureRoot, "claude/valid.jsonl"));
 }
 
-function frame(parts: Array<{ clientRef: string; path: string; bytes: Buffer }>, source: string, candidateIds: string[]): Buffer {
+function frame(
+  parts: Array<{ clientRef: string; path: string; bytes: Buffer }>,
+  source: string,
+  candidateIds: string[],
+): Buffer {
   let offset = 0;
   const manifest = {
     protocolVersion: 1,
@@ -119,12 +122,6 @@ function frame(parts: Array<{ clientRef: string; path: string; bytes: Buffer }>,
   header.write("ITB1", 0, "ascii");
   header.writeUInt32BE(manifestBytes.byteLength, 4);
   return Buffer.concat([header, manifestBytes, ...parts.map((part) => part.bytes)]);
-}
-
-function candidateId(source: string, rootIdentity: string, paths: readonly string[]): string {
-  const hash = createHash("sha256").update("intenttrace-session-candidate-v2").update("\0").update(source).update("\0").update(rootIdentity);
-  for (const path of [...paths].sort()) hash.update("\0").update(path);
-  return hash.digest("hex").slice(0, 24);
 }
 
 function rawFrame(manifest: Record<string, unknown>, payload: Buffer): Buffer {
@@ -255,8 +252,10 @@ describe("browser session import routes", () => {
     const url = "/api/v1/imports/sessions";
     const headers = { "content-type": "application/vnd.intenttrace.session-bundle" };
     const payload = frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "auto", [selectedId]);
-    const original = (await first.inject({ method: "POST", url, headers, payload })).json().results[0];
-    const repeat = (await second.inject({ method: "POST", url, headers, payload })).json().results[0];
+    const original = (await first.inject({ method: "POST", url, headers, payload })).json()
+      .results[0];
+    const repeat = (await second.inject({ method: "POST", url, headers, payload })).json()
+      .results[0];
     expect(repeat.inserted).toBe(0);
     expect(repeat.duplicates).toBe(4);
     expect(repeat.traceId).toBe(original.traceId);
@@ -271,7 +270,11 @@ describe("browser session import routes", () => {
       method: "POST",
       url: "/api/v1/imports/sessions",
       headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
-      payload: frame([{ clientRef: "c1", path: "broken.jsonl", bytes: Buffer.from("{ not json") }], "auto", ["a".repeat(24)]),
+      payload: frame(
+        [{ clientRef: "c1", path: "broken.jsonl", bytes: Buffer.from("{ not json") }],
+        "auto",
+        ["a".repeat(24)],
+      ),
     });
     expect(response.statusCode).toBe(422);
     expect(response.json().code).toBe("unknown_source_format");
@@ -322,7 +325,9 @@ describe("browser session import routes", () => {
     const bytes = await codexFixture();
     const valid = frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "codex", []);
     const manifestLength = valid.readUInt32BE(4);
-    const manifest = JSON.parse(valid.subarray(8, 8 + manifestLength).toString()) as { parts: Array<{ offset: number }> };
+    const manifest = JSON.parse(valid.subarray(8, 8 + manifestLength).toString()) as {
+      parts: Array<{ offset: number }>;
+    };
     manifest.parts[0]!.offset = 1;
     const changedManifest = Buffer.from(JSON.stringify(manifest));
     const header = Buffer.alloc(8);
@@ -342,22 +347,54 @@ describe("browser session import routes", () => {
     [
       "duplicate clientRef",
       [
-        { clientRef: "same", path: "a.jsonl", offset: 0, byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
-        { clientRef: "same", path: "b.jsonl", offset: 1, byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+        {
+          clientRef: "same",
+          path: "a.jsonl",
+          offset: 0,
+          byteLength: 1,
+          modifiedAt: "2026-08-01T00:00:00.000Z",
+        },
+        {
+          clientRef: "same",
+          path: "b.jsonl",
+          offset: 1,
+          byteLength: 1,
+          modifiedAt: "2026-08-01T00:00:00.000Z",
+        },
       ],
       Buffer.from("ab"),
     ],
     [
       "manifest order differs from offsets",
       [
-        { clientRef: "b", path: "b.jsonl", offset: 1, byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
-        { clientRef: "a", path: "a.jsonl", offset: 0, byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+        {
+          clientRef: "b",
+          path: "b.jsonl",
+          offset: 1,
+          byteLength: 1,
+          modifiedAt: "2026-08-01T00:00:00.000Z",
+        },
+        {
+          clientRef: "a",
+          path: "a.jsonl",
+          offset: 0,
+          byteLength: 1,
+          modifiedAt: "2026-08-01T00:00:00.000Z",
+        },
       ],
       Buffer.from("ab"),
     ],
     [
       "zero-length part",
-      [{ clientRef: "a", path: "a.jsonl", offset: 0, byteLength: 0, modifiedAt: "2026-08-01T00:00:00.000Z" }],
+      [
+        {
+          clientRef: "a",
+          path: "a.jsonl",
+          offset: 0,
+          byteLength: 0,
+          modifiedAt: "2026-08-01T00:00:00.000Z",
+        },
+      ],
       Buffer.alloc(0),
     ],
   ] as const)("rejects %s in framed manifests", async (_name, parts, payload) => {
@@ -466,7 +503,9 @@ describe("browser session import routes", () => {
   it("bounds explicit-source candidate roots without dropping companions", async () => {
     const app = buildApp({ services: services([]) });
     apps.push(app);
-    const root = Buffer.from('{"type":"user","sessionId":"root","message":{"role":"user","content":"x"}}\n');
+    const root = Buffer.from(
+      '{"type":"user","sessionId":"root","message":{"role":"user","content":"x"}}\n',
+    );
     const parts = [
       { clientRef: "root", path: "root.jsonl", bytes: root },
       ...Array.from({ length: 51 }, (_, index) => ({
@@ -516,14 +555,37 @@ describe("browser session import routes", () => {
         protocolVersion: 2,
         includePreviews: false,
         parts: [
-          { clientRef: "codex", path: "codex.jsonl", byteLength: codex.byteLength, modifiedAt: "2026-08-01T00:00:00.000Z", headBase64: codex.toString("base64"), complete: true },
-          { clientRef: "claude", path: "claude.jsonl", byteLength: claude.byteLength, modifiedAt: "2026-08-01T00:00:00.000Z", headBase64: claude.toString("base64"), complete: true },
-          { clientRef: "claude-meta", path: "subagents/agent.meta.json", byteLength: 22, modifiedAt: "2026-08-01T00:00:00.000Z", headBase64: Buffer.from('{"sessionId":"session-1"}').toString("base64"), complete: true },
+          {
+            clientRef: "codex",
+            path: "codex.jsonl",
+            byteLength: codex.byteLength,
+            modifiedAt: "2026-08-01T00:00:00.000Z",
+            headBase64: codex.toString("base64"),
+            complete: true,
+          },
+          {
+            clientRef: "claude",
+            path: "claude.jsonl",
+            byteLength: claude.byteLength,
+            modifiedAt: "2026-08-01T00:00:00.000Z",
+            headBase64: claude.toString("base64"),
+            complete: true,
+          },
+          {
+            clientRef: "claude-meta",
+            path: "subagents/agent.meta.json",
+            byteLength: 22,
+            modifiedAt: "2026-08-01T00:00:00.000Z",
+            headBase64: Buffer.from('{"sessionId":"session-1"}').toString("base64"),
+            complete: true,
+          },
         ],
       },
     });
     expect(response.statusCode).toBe(200);
     const candidates = response.json().candidates as Array<{ source: string; partRefs: string[] }>;
-    expect(candidates.find((candidate) => candidate.source === "codex")?.partRefs).toEqual(["codex"]);
+    expect(candidates.find((candidate) => candidate.source === "codex")?.partRefs).toEqual([
+      "codex",
+    ]);
   });
 });

@@ -83,12 +83,8 @@
           "name": "agents_trace_id_traces_id_fk",
           "tableFrom": "agents",
           "tableTo": "traces",
-          "columnsFrom": [
-            "trace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trace_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -183,12 +179,8 @@
           "name": "artifacts_trace_id_traces_id_fk",
           "tableFrom": "artifacts",
           "tableTo": "traces",
-          "columnsFrom": [
-            "trace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -231,12 +223,8 @@
           "name": "claim_evidence_claim_id_node_claims_id_fk",
           "tableFrom": "claim_evidence",
           "tableTo": "node_claims",
-          "columnsFrom": [
-            "claim_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["claim_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -244,12 +232,8 @@
           "name": "claim_evidence_event_id_raw_events_id_fk",
           "tableFrom": "claim_evidence",
           "tableTo": "raw_events",
-          "columnsFrom": [
-            "event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["event_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -257,10 +241,7 @@
       "compositePrimaryKeys": {
         "claim_evidence_claim_id_event_id_pk": {
           "name": "claim_evidence_claim_id_event_id_pk",
-          "columns": [
-            "claim_id",
-            "event_id"
-          ]
+          "columns": ["claim_id", "event_id"]
         }
       },
       "uniqueConstraints": {},
@@ -429,10 +410,7 @@
       "compositePrimaryKeys": {
         "idempotency_records_scope_key_pk": {
           "name": "idempotency_records_scope_key_pk",
-          "columns": [
-            "scope",
-            "key"
-          ]
+          "columns": ["scope", "key"]
         }
       },
       "uniqueConstraints": {},
@@ -516,12 +494,8 @@
           "name": "node_claims_node_version_id_semantic_node_versions_id_fk",
           "tableFrom": "node_claims",
           "tableTo": "semantic_node_versions",
-          "columnsFrom": [
-            "node_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["node_version_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -592,12 +566,8 @@
           "name": "node_feedback_node_version_id_semantic_node_versions_id_fk",
           "tableFrom": "node_feedback",
           "tableTo": "semantic_node_versions",
-          "columnsFrom": [
-            "node_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["node_version_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -680,12 +650,8 @@
           "name": "projects_workspace_id_workspaces_id_fk",
           "tableFrom": "projects",
           "tableTo": "workspaces",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -782,12 +748,8 @@
           "name": "provider_calls_summary_job_id_summary_jobs_id_fk",
           "tableFrom": "provider_calls",
           "tableTo": "summary_jobs",
-          "columnsFrom": [
-            "summary_job_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["summary_job_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1060,12 +1022,8 @@
           "name": "raw_events_trace_id_traces_id_fk",
           "tableFrom": "raw_events",
           "tableTo": "traces",
-          "columnsFrom": [
-            "trace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1122,12 +1080,8 @@
           "name": "revision_edge_members_revision_id_semantic_revisions_id_fk",
           "tableFrom": "revision_edge_members",
           "tableTo": "semantic_revisions",
-          "columnsFrom": [
-            "revision_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["revision_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1135,12 +1089,8 @@
           "name": "revision_edge_members_edge_version_id_semantic_edge_versions_id_fk",
           "tableFrom": "revision_edge_members",
           "tableTo": "semantic_edge_versions",
-          "columnsFrom": [
-            "edge_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["edge_version_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1148,10 +1098,7 @@
       "compositePrimaryKeys": {
         "revision_edge_members_revision_id_logical_edge_id_pk": {
           "name": "revision_edge_members_revision_id_logical_edge_id_pk",
-          "columns": [
-            "revision_id",
-            "logical_edge_id"
-          ]
+          "columns": ["revision_id", "logical_edge_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1188,12 +1135,8 @@
           "name": "revision_node_members_revision_id_semantic_revisions_id_fk",
           "tableFrom": "revision_node_members",
           "tableTo": "semantic_revisions",
-          "columnsFrom": [
-            "revision_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["revision_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1201,12 +1144,8 @@
           "name": "revision_node_members_node_version_id_semantic_node_versions_id_fk",
           "tableFrom": "revision_node_members",
           "tableTo": "semantic_node_versions",
-          "columnsFrom": [
-            "node_version_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["node_version_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1214,10 +1153,7 @@
       "compositePrimaryKeys": {
         "revision_node_members_revision_id_logical_node_id_pk": {
           "name": "revision_node_members_revision_id_logical_node_id_pk",
-          "columns": [
-            "revision_id",
-            "logical_node_id"
-          ]
+          "columns": ["revision_id", "logical_node_id"]
         }
       },
       "uniqueConstraints": {},
@@ -1321,12 +1257,8 @@
           "name": "semantic_edge_versions_trace_id_traces_id_fk",
           "tableFrom": "semantic_edge_versions",
           "tableTo": "traces",
-          "columnsFrom": [
-            "trace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1470,12 +1402,8 @@
           "name": "semantic_node_versions_trace_id_traces_id_fk",
           "tableFrom": "semantic_node_versions",
           "tableTo": "traces",
-          "columnsFrom": [
-            "trace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1604,12 +1532,8 @@
           "name": "semantic_revisions_trace_id_traces_id_fk",
           "tableFrom": "semantic_revisions",
           "tableTo": "traces",
-          "columnsFrom": [
-            "trace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1705,12 +1629,8 @@
           "name": "stream_events_trace_id_traces_id_fk",
           "tableFrom": "stream_events",
           "tableTo": "traces",
-          "columnsFrom": [
-            "trace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1878,12 +1798,8 @@
           "name": "summary_jobs_trace_id_traces_id_fk",
           "tableFrom": "summary_jobs",
           "tableTo": "traces",
-          "columnsFrom": [
-            "trace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["trace_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -1893,9 +1809,7 @@
         "summary_jobs_job_nonce_unique": {
           "name": "summary_jobs_job_nonce_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "job_nonce"
-          ]
+          "columns": ["job_nonce"]
         }
       },
       "policies": {},
@@ -2002,12 +1916,8 @@
           "name": "traces_project_id_projects_id_fk",
           "tableFrom": "traces",
           "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["project_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -2072,9 +1982,7 @@
         "workspaces_slug_unique": {
           "name": "workspaces_slug_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "slug"
-          ]
+          "columns": ["slug"]
         }
       },
       "policies": {},
@@ -2086,33 +1994,17 @@
     "public.semantic_branch_kind": {
       "name": "semantic_branch_kind",
       "schema": "public",
-      "values": [
-        "live",
-        "final",
-        "human",
-        "alternate_model"
-      ]
+      "values": ["live", "final", "human", "alternate_model"]
     },
     "public.summary_job_status": {
       "name": "summary_job_status",
       "schema": "public",
-      "values": [
-        "pending",
-        "running",
-        "committed",
-        "failed",
-        "cancelled"
-      ]
+      "values": ["pending", "running", "committed", "failed", "cancelled"]
     },
     "public.trace_status": {
       "name": "trace_status",
       "schema": "public",
-      "values": [
-        "active",
-        "completed",
-        "stale",
-        "failed"
-      ]
+      "values": ["active", "completed", "stale", "failed"]
     }
   },
   "schemas": {},

@@ -35,12 +35,7 @@ export const ImportSourceKindSchema = z.enum([
 ]);
 export type ImportSourceKind = z.infer<typeof ImportSourceKindSchema>;
 
-export const TopologyFidelitySchema = z.enum([
-  "stated",
-  "inferred",
-  "passthrough",
-  "unsupported",
-]);
+export const TopologyFidelitySchema = z.enum(["stated", "inferred", "passthrough", "unsupported"]);
 export type TopologyFidelity = z.infer<typeof TopologyFidelitySchema>;
 
 export const TopologyCapabilitySchema = z
@@ -192,12 +187,22 @@ export const SessionUploadPartInputSchema = z
   .strict()
   .superRefine((part, context) => {
     if (part.headBase64 === undefined) return;
-    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(part.headBase64)) {
-      context.addIssue({ code: "custom", message: "headBase64 must be valid base64", path: ["headBase64"] });
+    if (
+      !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(part.headBase64)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "headBase64 must be valid base64",
+        path: ["headBase64"],
+      });
       return;
     }
     if (Buffer.from(part.headBase64, "base64").byteLength > 64 * 1024) {
-      context.addIssue({ code: "custom", message: "decoded head exceeds 64 KiB", path: ["headBase64"] });
+      context.addIssue({
+        code: "custom",
+        message: "decoded head exceeds 64 KiB",
+        path: ["headBase64"],
+      });
     }
   });
 
@@ -213,18 +218,24 @@ export const SessionUploadCandidateRequestSchema = z
     const refs = new Set<string>();
     for (const [index, part] of request.parts.entries()) {
       if (refs.has(part.clientRef)) {
-        context.addIssue({ code: "custom", message: "duplicate clientRef", path: ["parts", index, "clientRef"] });
+        context.addIssue({
+          code: "custom",
+          message: "duplicate clientRef",
+          path: ["parts", index, "clientRef"],
+        });
       }
       refs.add(part.clientRef);
-      if (part.headBase64 !== undefined) decodedBytes += Buffer.from(part.headBase64, "base64").byteLength;
+      if (part.headBase64 !== undefined)
+        decodedBytes += Buffer.from(part.headBase64, "base64").byteLength;
     }
     if (decodedBytes > 4 * 1024 * 1024) {
       context.addIssue({ code: "custom", message: "decoded heads exceed 4 MiB", path: ["parts"] });
     }
-    const ordinaryTextRoots = request.parts.filter((part) =>
-      /\.(?:jsonl|ndjson|json)$/iu.test(part.path) &&
-      !part.path.includes("/subagents/") &&
-      !part.path.endsWith(".meta.json"),
+    const ordinaryTextRoots = request.parts.filter(
+      (part) =>
+        /\.(?:jsonl|ndjson|json)$/iu.test(part.path) &&
+        !part.path.includes("/subagents/") &&
+        !part.path.endsWith(".meta.json"),
     ).length;
     if (ordinaryTextRoots > 50) {
       context.addIssue({ code: "custom", message: "candidate roots exceed 50", path: ["parts"] });

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { constants, type Dirent } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
-import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
+import { extname, isAbsolute, join, relative, sep } from "node:path";
 
 import type { ImportSourceKind } from "@intenttrace/schema";
 import { discoverSessionCandidates } from "@intenttrace/adapters";
@@ -38,12 +38,6 @@ export interface SessionFileDiscovery {
   unreadableDirectories: number;
   rejectedFiles: number;
   missingSessionIds: string[];
-}
-
-function normalizationIdentity(filePath: string): string {
-  return basename(filePath)
-    .replace(/[^A-Za-z0-9_.:-]/gu, "-")
-    .slice(0, 128);
 }
 
 function portableRelativePath(root: ValidatedExplicitPath, filePath: string): string {
@@ -105,7 +99,10 @@ async function walkSessionFiles(
     const extension = extname(entry.name).toLowerCase();
     const accepted =
       source === "opencode"
-        ? extension === ".db" || entry.name.endsWith("-wal") || entry.name.endsWith("-shm") || extension === ".json"
+        ? extension === ".db" ||
+          entry.name.endsWith("-wal") ||
+          entry.name.endsWith("-shm") ||
+          extension === ".json"
         : source === "grok"
           ? extension === ".json" || TEXT_SESSION_EXTENSIONS.has(extension)
           : source === "omp"
@@ -231,10 +228,16 @@ export async function discoverSessionFiles(input: {
     const publicId = sessionCatalogId(
       input.source,
       input.root.realPath,
-      parts.map((part) => part.relativePath).sort().join("\0"),
+      parts
+        .map((part) => part.relativePath)
+        .sort()
+        .join("\0"),
       byteLength,
       modifiedAtMs,
-      parts.map((part) => part.fileIdentity).sort().join("\0"),
+      parts
+        .map((part) => part.fileIdentity)
+        .sort()
+        .join("\0"),
     );
     return {
       id: publicId,

@@ -405,13 +405,15 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
         kind: "work" as const,
         status: "active" as const,
         title,
-        claims: [{
-          kind: "action" as const,
-          text: `${title} evidence`,
-          provenance: "stated" as const,
-          confidence: "high" as const,
-          evidenceEventIds: [inserted.event.id],
-        }],
+        claims: [
+          {
+            kind: "action" as const,
+            text: `${title} evidence`,
+            provenance: "stated" as const,
+            confidence: "high" as const,
+            evidenceEventIds: [inserted.event.id],
+          },
+        ],
         primaryParentId: null,
         primaryAgentId: null,
         participantAgentIds: [],
@@ -425,16 +427,18 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
         repository.commitSummaryJob(job!.id, {
           state: {
             nodes: [node(sourceNodeId, "Source work"), node(targetNodeId, "Target work")],
-            edges: [{
-              logicalEdgeId: randomUUID(),
-              versionId,
-              sourceNodeId,
-              targetNodeId,
-              kind: "depends_on",
-              retired: false,
-              evidenceEventIds,
-              provenance,
-            }],
+            edges: [
+              {
+                logicalEdgeId: randomUUID(),
+                versionId,
+                sourceNodeId,
+                targetNodeId,
+                kind: "depends_on",
+                retired: false,
+                evidenceEventIds,
+                provenance,
+              },
+            ],
           } as Parameters<IntentTraceRepository["commitSummaryJob"]>[1]["state"],
           changedNodeIds: [sourceNodeId, targetNodeId],
           changedEdgeIds: [],

@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { computeSessionCandidateId } from "@intenttrace/adapters";
 
-import { collectorCandidateId, formatCollectorFatalError, HELP_TEXT, runCollector } from "../src/cli.js";
+import {
+  collectorCandidateId,
+  formatCollectorFatalError,
+  HELP_TEXT,
+  runCollector,
+} from "../src/cli.js";
 import { discoverSessionFiles } from "../src/session-discovery.js";
 import { validateExplicitPath } from "../src/path-policy.js";
 
@@ -24,7 +29,11 @@ function mockFetch() {
     if (request instanceof Blob) {
       const bytes = new Uint8Array(await request.arrayBuffer());
       expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("ITB1");
-      const manifestLength = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4);
+      const manifestLength = new DataView(
+        bytes.buffer,
+        bytes.byteOffset,
+        bytes.byteLength,
+      ).getUint32(4);
       const manifest = JSON.parse(
         new TextDecoder().decode(bytes.subarray(8, 8 + manifestLength)),
       ) as { candidateIds: string[] };
@@ -97,7 +106,9 @@ describe("collector path boundary", () => {
           const body = init?.body as Blob;
           const bytes = new Uint8Array(await body.arrayBuffer());
           const manifestLength = new DataView(bytes.buffer).getUint32(4);
-          const manifest = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + manifestLength))) as { candidateIds: string[] };
+          const manifest = JSON.parse(
+            new TextDecoder().decode(bytes.subarray(8, 8 + manifestLength)),
+          ) as { candidateIds: string[] };
           return new Response(
             JSON.stringify({
               protocolVersion: 2,
@@ -130,7 +141,10 @@ describe("collector path boundary", () => {
   it("reports bundle follow rejection visibly", async () => {
     const directory = await mkdtemp(join(tmpdir(), "intenttrace-collector-"));
     temporaryDirectories.push(directory);
-    await writeFile(join(directory, "session.jsonl"), '{"type":"session_meta","payload":{"id":"session-1"}}\n');
+    await writeFile(
+      join(directory, "session.jsonl"),
+      '{"type":"session_meta","payload":{"id":"session-1"}}\n',
+    );
     await expect(
       runCollector(["follow", "--source", "codex", "--path", directory, "--once"], {
         fetch: mockFetch() as typeof fetch,
@@ -233,10 +247,7 @@ describe("collector path boundary", () => {
       '{"type":"session_meta","version":"codex-jsonl-v1","timestamp":"2026-08-01T00:00:00.000Z","payload":{"id":"session-1","agent_id":"orchestrator"}}\n',
     );
     const output: string[] = [];
-    const repositoryWarningFetch = async (
-      input: string | URL | Request,
-      init?: RequestInit,
-    ) => {
+    const repositoryWarningFetch = async (input: string | URL | Request, init?: RequestInit) => {
       const receiver = mockFetch();
       const response = await receiver(input, init);
       const body = (await response.json()) as {
@@ -634,10 +645,18 @@ describe("collector path boundary", () => {
     temporaryDirectories.push(directory);
     await mkdir(join(directory, "subagents"));
     await writeFile(join(directory, "root.jsonl"), '{"type":"user","sessionId":"root"}\n');
-    await writeFile(join(directory, "subagents", "agent-child.jsonl"), '{"type":"assistant","sessionId":"root","agentId":"child"}\n');
+    await writeFile(
+      join(directory, "subagents", "agent-child.jsonl"),
+      '{"type":"assistant","sessionId":"root","agentId":"child"}\n',
+    );
     await writeFile(join(directory, "subagents", "agent-child.meta.json"), '{"sessionId":"root"}');
     const root = await validateExplicitPath(directory);
-    const discovered = await discoverSessionFiles({ source: "claude", root, limit: 50, newestFirst: false });
+    const discovered = await discoverSessionFiles({
+      source: "claude",
+      root,
+      limit: 50,
+      newestFirst: false,
+    });
     expect(discovered.candidates).toHaveLength(1);
     expect(discovered.candidates[0]?.parts.map((part) => part.relativePath)).toEqual([
       "root.jsonl",
@@ -652,7 +671,12 @@ describe("collector path boundary", () => {
     await writeFile(join(directory, "opencode.db"), "db");
     await writeFile(join(directory, "opencode.db-wal"), "wal");
     const root = await validateExplicitPath(directory);
-    const discovered = await discoverSessionFiles({ source: "opencode", root, limit: 50, newestFirst: false });
+    const discovered = await discoverSessionFiles({
+      source: "opencode",
+      root,
+      limit: 50,
+      newestFirst: false,
+    });
     expect(discovered.candidates).toHaveLength(1);
     expect(discovered.candidates[0]?.parts.map((part) => part.relativePath)).toEqual([
       "opencode.db",
@@ -673,7 +697,14 @@ describe("collector path boundary", () => {
     };
     const prepared = {
       candidate,
-      parts: [{ path: "root.jsonl", bytes: new Uint8Array([1]), clientRef: "p1", modifiedAt: candidate.modifiedAt }],
+      parts: [
+        {
+          path: "root.jsonl",
+          bytes: new Uint8Array([1]),
+          clientRef: "p1",
+          modifiedAt: candidate.modifiedAt,
+        },
+      ],
       contentSha256: "c".repeat(64),
       events: [],
       warnings: [],

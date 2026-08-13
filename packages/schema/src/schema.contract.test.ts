@@ -163,7 +163,8 @@ describe("topology and evidence contracts", () => {
       },
     };
     expect(TraceSnapshotSchema.parse(snapshot).topology.observed.spawnEdges).toBe(0);
-    const { topology: _topology, ...withoutTopology } = snapshot;
+    const withoutTopology = { ...snapshot };
+    Reflect.deleteProperty(withoutTopology, "topology");
     expect(TraceSnapshotSchema.safeParse(withoutTopology).success).toBe(false);
   });
 
@@ -206,7 +207,8 @@ describe("topology and evidence contracts", () => {
     expect(SemanticEdgeVersionSchema.safeParse({ ...edge, evidenceEventIds: [] }).success).toBe(
       false,
     );
-    const { provenance: _provenance, ...withoutProvenance } = edge;
+    const withoutProvenance = { ...edge };
+    Reflect.deleteProperty(withoutProvenance, "provenance");
     expect(SemanticEdgeVersionSchema.safeParse(withoutProvenance).success).toBe(false);
   });
 
@@ -216,13 +218,9 @@ describe("topology and evidence contracts", () => {
         event: persistedEvent,
         duplicate: false,
         traceStale: false,
-        warnings: [
-          { code: "causation_source_event_unresolved", sourceEventId: "evt-parent" },
-        ],
+        warnings: [{ code: "causation_source_event_unresolved", sourceEventId: "evt-parent" }],
       }).warnings,
-    ).toEqual([
-      { code: "causation_source_event_unresolved", sourceEventId: "evt-parent" },
-    ]);
+    ).toEqual([{ code: "causation_source_event_unresolved", sourceEventId: "evt-parent" }]);
     expect(
       IngestResultSchema.safeParse({
         event: persistedEvent,

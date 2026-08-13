@@ -1,10 +1,7 @@
-import { createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
   aggregateTopologyCapabilities,
-  buildCompletionMarker,
-  classifySessionFailure,
   computeSessionCandidateId,
   detectSourceKind,
   discoverSessionCandidates,
@@ -38,7 +35,6 @@ import {
   TraceSummarySchema,
   UuidSchema,
   type ImportSourceKind,
-  type TraceSourceKind,
 } from "@intenttrace/schema";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -157,7 +153,11 @@ function bundleSourceIdentity(parts: readonly { path: string; bytes: Uint8Array 
   return `bundle-${sessionBundleContentSha256(parts).slice(0, 32)}`;
 }
 
-function sessionCandidateId(source: ImportSourceKind, rootIdentity: string, paths: readonly string[]): string {
+function sessionCandidateId(
+  source: ImportSourceKind,
+  rootIdentity: string,
+  paths: readonly string[],
+): string {
   return computeSessionCandidateId(source, rootIdentity, paths);
 }
 
@@ -174,7 +174,9 @@ interface ImportCandidate {
 
 function companionMayBelongToSource(path: string, source: ImportSourceKind): boolean {
   if (source === "claude") {
-    return path.includes("/subagents/") || path.startsWith("subagents/") || path.endsWith(".meta.json");
+    return (
+      path.includes("/subagents/") || path.startsWith("subagents/") || path.endsWith(".meta.json")
+    );
   }
   if (source === "opencode") return path.endsWith("-wal") || path.endsWith("-shm");
   if (source === "omp") return /\/(?:[^/]+)\.(?:jsonl|ndjson)$/iu.test(path);
@@ -183,7 +185,13 @@ function companionMayBelongToSource(path: string, source: ImportSourceKind): boo
 
 async function discoverCandidates(
   sourceHint: ImportSourceKind | "auto",
-  parts: readonly { clientRef: string; path: string; bytes: Uint8Array; modifiedAt: string; complete: boolean }[],
+  parts: readonly {
+    clientRef: string;
+    path: string;
+    bytes: Uint8Array;
+    modifiedAt: string;
+    complete: boolean;
+  }[],
 ): Promise<ImportCandidate[]> {
   const sourceByRootRef = new Map<string, ImportSourceKind>();
   if (sourceHint === "auto") {
@@ -235,7 +243,9 @@ async function discoverCandidates(
     remainingRoots -= discovered.length;
     for (const candidate of discovered) {
       if (candidates.length >= 50) break;
-      const selectedParts = sourceParts.filter((part) => candidate.partRefs.includes(part.clientRef));
+      const selectedParts = sourceParts.filter((part) =>
+        candidate.partRefs.includes(part.clientRef),
+      );
       if (candidate.failureCode) {
         candidates.push({
           clientRef: candidate.clientRef,
@@ -255,7 +265,10 @@ async function discoverCandidates(
         const bundles = await prepareSessionParts(source, adapterParts, sourceIdentity, {
           id: uploadSessionKey(source, sessionBundleContentSha256(adapterParts)),
           byteLength: selectedParts.reduce((total, part) => total + part.bytes.byteLength, 0),
-          modifiedAt: selectedParts.map((part) => part.modifiedAt).sort().at(-1)!,
+          modifiedAt: selectedParts
+            .map((part) => part.modifiedAt)
+            .sort()
+            .at(-1)!,
         });
         for (const [bundleIndex, prepared] of bundles.entries()) {
           if (candidates.length >= 50) break;
@@ -434,24 +447,42 @@ export async function registerTraceRoutes(
     },
     async (request, reply) => {
       let includePreviews = false;
-      let candidates: ImportCandidate[] = [];
+      let candidates: ImportCandidate[];
       if (Buffer.isBuffer(request.body)) {
         try {
           const frame = parseSessionBundleFrame(request.body);
           if (frame.candidateIds.length !== 0) {
-            return problem(reply, request, 400, "invalid_session_bundle", "Candidate inspection requires candidateIds=[]");
+            return problem(
+              reply,
+              request,
+              400,
+              "invalid_session_bundle",
+              "Candidate inspection requires candidateIds=[]",
+            );
           }
           candidates = await discoverCandidates(
             frame.source,
             frame.parts.map((part) => ({ ...part, complete: true })),
           );
         } catch {
-          return problem(reply, request, 400, "invalid_session_bundle", "Invalid session bundle frame");
+          return problem(
+            reply,
+            request,
+            400,
+            "invalid_session_bundle",
+            "Invalid session bundle frame",
+          );
         }
       } else {
         const parsedBody = SessionUploadCandidateRequestSchema.safeParse(request.body);
         if (!parsedBody.success) {
-          return problem(reply, request, 400, "validation_failed", "Invalid candidate metadata request");
+          return problem(
+            reply,
+            request,
+            400,
+            "validation_failed",
+            "Invalid candidate metadata request",
+          );
         }
         const body = parsedBody.data;
         includePreviews = body.includePreviews;
@@ -484,7 +515,10 @@ export async function registerTraceRoutes(
         ),
       ];
       const known = new Map(
-        (await services.repository.listTracesByIds(traceIds)).map((trace) => [trace.id, trace.eventCount]),
+        (await services.repository.listTracesByIds(traceIds)).map((trace) => [
+          trace.id,
+          trace.eventCount,
+        ]),
       );
       let alreadyImportedCount = 0;
       const responseCandidates = candidates.map((candidate) => {
@@ -532,23 +566,47 @@ export async function registerTraceRoutes(
     },
     async (request, reply) => {
       if (!Buffer.isBuffer(request.body)) {
-        return problem(reply, request, 415, "unsupported_media_type", `session upload requires ${SESSION_BUNDLE_MEDIA_TYPE}`);
+        return problem(
+          reply,
+          request,
+          415,
+          "unsupported_media_type",
+          `session upload requires ${SESSION_BUNDLE_MEDIA_TYPE}`,
+        );
       }
       let frame: ReturnType<typeof parseSessionBundleFrame>;
       try {
         frame = parseSessionBundleFrame(request.body);
       } catch {
-        return problem(reply, request, 400, "invalid_session_bundle", "Invalid session bundle frame");
+        return problem(
+          reply,
+          request,
+          400,
+          "invalid_session_bundle",
+          "Invalid session bundle frame",
+        );
       }
       if (frame.candidateIds.length === 0) {
-        return problem(reply, request, 400, "invalid_session_bundle", "Import requires at least one candidate ID");
+        return problem(
+          reply,
+          request,
+          400,
+          "invalid_session_bundle",
+          "Import requires at least one candidate ID",
+        );
       }
       const candidates = await discoverCandidates(
         frame.source,
         frame.parts.map((part) => ({ ...part, complete: true })),
       );
       if (candidates.length === 0 && frame.source === "auto") {
-        return problem(reply, request, 422, "unknown_source_format", "Unable to determine the session format");
+        return problem(
+          reply,
+          request,
+          422,
+          "unknown_source_format",
+          "Unable to determine the session format",
+        );
       }
       const byId = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
       if (
@@ -557,7 +615,13 @@ export async function registerTraceRoutes(
           return candidate === undefined || candidate.prepared === null;
         })
       ) {
-        return problem(reply, request, 409, "stale_session", "Session changed after inspection; inspect again");
+        return problem(
+          reply,
+          request,
+          409,
+          "stale_session",
+          "Session changed after inspection; inspect again",
+        );
       }
       try {
         const results = [];
@@ -579,7 +643,13 @@ export async function registerTraceRoutes(
         });
       } catch (error) {
         if (error instanceof IntegrityConflictError) {
-          return problem(reply, request, 409, error.code, `${error.message}; existing=${error.existingEventId}`);
+          return problem(
+            reply,
+            request,
+            409,
+            error.code,
+            `${error.message}; existing=${error.existingEventId}`,
+          );
         }
         throw error;
       }

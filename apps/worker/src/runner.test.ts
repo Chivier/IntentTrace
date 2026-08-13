@@ -225,7 +225,15 @@ describe("runSummaryJob", () => {
           kind: "work" as const,
           status: "active" as const,
           title: "Dispatch",
-          claims: [{ kind: "action" as const, text: "Dispatch", provenance: "stated" as const, confidence: "high" as const, evidenceEventIds: [parentEvent] }],
+          claims: [
+            {
+              kind: "action" as const,
+              text: "Dispatch",
+              provenance: "stated" as const,
+              confidence: "high" as const,
+              evidenceEventIds: [parentEvent],
+            },
+          ],
           primaryParentId: null,
           primaryAgentId: null,
           participantAgentIds: [],
@@ -241,7 +249,15 @@ describe("runSummaryJob", () => {
           kind: "work" as const,
           status: "active" as const,
           title: "Child",
-          claims: [{ kind: "action" as const, text: "Child", provenance: "stated" as const, confidence: "high" as const, evidenceEventIds: [childEvent] }],
+          claims: [
+            {
+              kind: "action" as const,
+              text: "Child",
+              provenance: "stated" as const,
+              confidence: "high" as const,
+              evidenceEventIds: [childEvent],
+            },
+          ],
           primaryParentId: null,
           primaryAgentId: null,
           participantAgentIds: [],
@@ -270,7 +286,9 @@ describe("runSummaryJob", () => {
       "job-1",
     );
     expect(result).toEqual({ status: "committed", revisionId: "rev-topology" });
-    expect(providerInput).toHaveBeenCalledWith(expect.not.objectContaining({ reducerFacts: expect.anything() }));
+    expect(providerInput).toHaveBeenCalledWith(
+      expect.not.objectContaining({ reducerFacts: expect.anything() }),
+    );
     expect(commits[0]?.state.edges).toMatchObject([
       {
         sourceNodeId: parentNode,

@@ -29,15 +29,26 @@ function updateLength(hash: ReturnType<typeof createHash>, length: number): void
 }
 
 /** Stable aggregate identity without concatenating complete session bytes. */
-export function sessionBundleContentSha256(parts: readonly { path: string; bytes: Uint8Array }[]): string {
+export function sessionBundleContentSha256(
+  parts: readonly { path: string; bytes: Uint8Array }[],
+): string {
   const normalized = [...parts]
     .map((part) => {
-      if (part.path.length === 0 || part.path.includes("\0") || part.path.includes("\\") || part.path.startsWith("/") || /^[A-Za-z]:/u.test(part.path)) {
+      if (
+        part.path.length === 0 ||
+        part.path.includes("\0") ||
+        part.path.includes("\\") ||
+        part.path.startsWith("/") ||
+        /^[A-Za-z]:/u.test(part.path)
+      ) {
         throw new Error("Invalid session part path");
       }
       const segments = part.path.split("/");
       if (segments.includes("..")) throw new Error("Invalid session part path");
-      return { path: segments.filter((segment) => segment !== "" && segment !== ".").join("/") || ".", bytes: part.bytes };
+      return {
+        path: segments.filter((segment) => segment !== "" && segment !== ".").join("/") || ".",
+        bytes: part.bytes,
+      };
     })
     .sort((left, right) => left.path.localeCompare(right.path));
   const paths = new Set<string>();
@@ -299,7 +310,12 @@ export function sanitizeVendorValue(value: unknown): VendorSanitizeResult {
   }
   const object = objectRecord(value);
   if (!object) return { value, reasoning: 0, confidential: 0 };
-  if (object.type === "thinking" || object.type === "redacted_thinking" || object.type === "reasoning" || object.type === "agent_thought_chunk") {
+  if (
+    object.type === "thinking" ||
+    object.type === "redacted_thinking" ||
+    object.type === "reasoning" ||
+    object.type === "agent_thought_chunk"
+  ) {
     return { value: { type: object.type }, reasoning: 1, confidential: 0 };
   }
   if (object.type === "encrypted_content") {

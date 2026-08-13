@@ -97,8 +97,20 @@ describe("browser bundle transport", () => {
     const a = file("a.jsonl", 1, 3);
     const b = file("b.jsonl", 2, 2);
     const rows = [
-      row({ clientRef: "c1", file: a, name: a.name, candidateId: "a".repeat(24), partRefs: ["c1", "c2"] }),
-      row({ clientRef: "c2", file: b, name: b.name, candidateId: "b".repeat(24), partRefs: ["c1", "c2"] }),
+      row({
+        clientRef: "c1",
+        file: a,
+        name: a.name,
+        candidateId: "a".repeat(24),
+        partRefs: ["c1", "c2"],
+      }),
+      row({
+        clientRef: "c2",
+        file: b,
+        name: b.name,
+        candidateId: "b".repeat(24),
+        partRefs: ["c1", "c2"],
+      }),
     ];
     const grouped = groupSelectedBundles(rows);
     expect(grouped.failures).toEqual([]);
@@ -134,7 +146,9 @@ describe("browser bundle transport", () => {
     Object.defineProperty(companion, "webkitRelativePath", { value: "subagents/agent.meta.json" });
     const ranked = rankCandidates([...roots, companion], "folder");
     expect(ranked.window).toContain(companion);
-    expect(ranked.window.filter((entry) => entry.name.endsWith(".jsonl"))).toHaveLength(CANDIDATE_WINDOW);
+    expect(ranked.window.filter((entry) => entry.name.endsWith(".jsonl"))).toHaveLength(
+      CANDIDATE_WINDOW,
+    );
     expect(ranked.skippedByLimit).toBe(1);
   });
 
@@ -147,7 +161,9 @@ describe("browser bundle transport", () => {
     const selectedChild = file("child.jsonl", 0);
     Object.defineProperty(selectedChild, "webkitRelativePath", { value: "root-0/child.jsonl" });
     const skippedChild = file("child.jsonl", 0);
-    Object.defineProperty(skippedChild, "webkitRelativePath", { value: `root-${CANDIDATE_WINDOW}/child.jsonl` });
+    Object.defineProperty(skippedChild, "webkitRelativePath", {
+      value: `root-${CANDIDATE_WINDOW}/child.jsonl`,
+    });
     const ranked = rankCandidates([...roots, selectedChild, skippedChild], "folder");
     expect(ranked.window).toContain(selectedChild);
     expect(ranked.window).not.toContain(skippedChild);
@@ -156,13 +172,19 @@ describe("browser bundle transport", () => {
   it("drops Claude and OpenCode companions for roots outside the window", () => {
     const roots = Array.from({ length: CANDIDATE_WINDOW + 1 }, (_, index) => {
       const root = file(`root-${index}.jsonl`, 100 - index);
-      Object.defineProperty(root, "webkitRelativePath", { value: `project-${index}/root-${index}.jsonl` });
+      Object.defineProperty(root, "webkitRelativePath", {
+        value: `project-${index}/root-${index}.jsonl`,
+      });
       return root;
     });
     const selectedMeta = file("agent.meta.json", 0);
-    Object.defineProperty(selectedMeta, "webkitRelativePath", { value: "project-0/subagents/agent.meta.json" });
+    Object.defineProperty(selectedMeta, "webkitRelativePath", {
+      value: "project-0/subagents/agent.meta.json",
+    });
     const skippedMeta = file("agent.meta.json", 0);
-    Object.defineProperty(skippedMeta, "webkitRelativePath", { value: `project-${CANDIDATE_WINDOW}/subagents/agent.meta.json` });
+    Object.defineProperty(skippedMeta, "webkitRelativePath", {
+      value: `project-${CANDIDATE_WINDOW}/subagents/agent.meta.json`,
+    });
     const selectedDb = file("opencode.db", 99);
     Object.defineProperty(selectedDb, "webkitRelativePath", { value: "selected/opencode.db" });
     const selectedWal = file("opencode.db-wal", 0);
@@ -181,40 +203,43 @@ describe("browser bundle transport", () => {
 
   it("creates distinct rows when one part yields several logical traces", () => {
     const source = row({ clientRef: "c1" });
-    const candidates = candidateRowsFromResponse([source], [
-      {
-        clientRef: "c1:logical-1",
-        candidateId: "a".repeat(24),
-        partRefs: ["c1"],
-        source: "jsonl",
-        title: "Trace A",
-        projectHint: null,
-        firstPromptPreview: null,
-        lastPromptPreview: null,
-        partialHead: false,
-        traceId: "11111111-1111-4111-8111-111111111111",
-        imported: false,
-        importedEventCount: null,
-        failureCode: null,
-        failureMessage: null,
-      },
-      {
-        clientRef: "c1:logical-2",
-        candidateId: "b".repeat(24),
-        partRefs: ["c1"],
-        source: "jsonl",
-        title: "Trace B",
-        projectHint: null,
-        firstPromptPreview: null,
-        lastPromptPreview: null,
-        partialHead: false,
-        traceId: "22222222-2222-4222-8222-222222222222",
-        imported: false,
-        importedEventCount: null,
-        failureCode: null,
-        failureMessage: null,
-      },
-    ]);
+    const candidates = candidateRowsFromResponse(
+      [source],
+      [
+        {
+          clientRef: "c1:logical-1",
+          candidateId: "a".repeat(24),
+          partRefs: ["c1"],
+          source: "jsonl",
+          title: "Trace A",
+          projectHint: null,
+          firstPromptPreview: null,
+          lastPromptPreview: null,
+          partialHead: false,
+          traceId: "11111111-1111-4111-8111-111111111111",
+          imported: false,
+          importedEventCount: null,
+          failureCode: null,
+          failureMessage: null,
+        },
+        {
+          clientRef: "c1:logical-2",
+          candidateId: "b".repeat(24),
+          partRefs: ["c1"],
+          source: "jsonl",
+          title: "Trace B",
+          projectHint: null,
+          firstPromptPreview: null,
+          lastPromptPreview: null,
+          partialHead: false,
+          traceId: "22222222-2222-4222-8222-222222222222",
+          imported: false,
+          importedEventCount: null,
+          failureCode: null,
+          failureMessage: null,
+        },
+      ],
+    );
     expect(candidates.map((entry) => entry.candidateId)).toEqual(["a".repeat(24), "b".repeat(24)]);
     expect(candidates.map((entry) => entry.clientRef)).toEqual(["c1:logical-1", "c1:logical-2"]);
   });
@@ -224,11 +249,17 @@ describe("browser bundle transport", () => {
       row({ clientRef: "c1", candidateId: "a".repeat(24), partRefs: ["c1", "missing"] }),
     ]);
     expect(groups.groups).toEqual([]);
-    expect(groups.failures).toEqual([{ rowRefs: ["c1"], message: "Missing selected part missing" }]);
+    expect(groups.failures).toEqual([
+      { rowRefs: ["c1"], message: "Missing selected part missing" },
+    ]);
   });
 
   it("builds groups from a separate part store", () => {
-    const root = row({ clientRef: "candidate", candidateId: "a".repeat(24), partRefs: ["p1", "p2"] });
+    const root = row({
+      clientRef: "candidate",
+      candidateId: "a".repeat(24),
+      partRefs: ["p1", "p2"],
+    });
     const p1 = row({ clientRef: "p1" });
     const p2 = row({ clientRef: "p2" });
     const grouped = groupSelectedBundles([root], [p1, p2]);

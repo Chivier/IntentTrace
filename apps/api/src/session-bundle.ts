@@ -59,7 +59,8 @@ export function parseSessionBundleFrame(bytes: Buffer): SessionBundleFrame {
   const manifest = ManifestSchema.parse(decoded);
   const refs = new Set<string>();
   for (const [index, part] of manifest.parts.entries()) {
-    if (refs.has(part.clientRef)) throw new Error(`Duplicate session bundle clientRef: ${part.clientRef}`);
+    if (refs.has(part.clientRef))
+      throw new Error(`Duplicate session bundle clientRef: ${part.clientRef}`);
     refs.add(part.clientRef);
     if (index > 0 && part.offset <= manifest.parts[index - 1]!.offset) {
       throw new Error("Session bundle parts must be declared in increasing offset order");

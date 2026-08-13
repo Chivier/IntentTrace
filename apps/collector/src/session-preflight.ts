@@ -1,7 +1,11 @@
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 
-import { prepareSessionParts, sessionBundleContentSha256, type PreparedSessionWarning } from "@intenttrace/adapters";
+import {
+  prepareSessionParts,
+  sessionBundleContentSha256,
+  type PreparedSessionWarning,
+} from "@intenttrace/adapters";
 import type { RawTraceEventInput, SessionCatalogEntry, TraceSourceKind } from "@intenttrace/schema";
 
 import type { SessionFileCandidate } from "./session-discovery.js";
@@ -56,23 +60,23 @@ export async function prepareSession(
       ) {
         throw new Error("Session changed after discovery; refresh the catalog");
       }
-      parts.push({ path: part.relativePath, bytes, clientRef: part.id, modifiedAt: part.modifiedAt });
+      parts.push({
+        path: part.relativePath,
+        bytes,
+        clientRef: part.id,
+        modifiedAt: part.modifiedAt,
+      });
     } finally {
       await handle.close();
     }
   }
   const aggregateContentSha256 = sessionBundleContentSha256(parts);
   const sourceIdentity = `bundle-${aggregateContentSha256.slice(0, 32)}`;
-  const prepared = await prepareSessionParts(
-    source,
-    parts,
-    sourceIdentity,
-    {
-      id: candidate.id,
-      byteLength: candidate.byteLength,
-      modifiedAt: candidate.modifiedAt,
-    },
-  );
+  const prepared = await prepareSessionParts(source, parts, sourceIdentity, {
+    id: candidate.id,
+    byteLength: candidate.byteLength,
+    modifiedAt: candidate.modifiedAt,
+  });
   return prepared.map((trace, logicalIndex) => ({
     candidate,
     parts,

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { stat, watch } from "node:fs/promises";
 import { basename, join } from "node:path";
 
@@ -191,7 +190,11 @@ export function collectorCandidateId(source: ImportSourceKind, prepared: Prepare
   );
 }
 
-function collectorFrame(prepared: PreparedSession, source: ImportSourceKind, candidateId: string): Blob {
+function collectorFrame(
+  prepared: PreparedSession,
+  source: ImportSourceKind,
+  candidateId: string,
+): Blob {
   const ordered = [...prepared.parts].sort((left, right) => left.path.localeCompare(right.path));
   let offset = 0;
   const manifest = {
@@ -215,9 +218,12 @@ function collectorFrame(prepared: PreparedSession, source: ImportSourceKind, can
   const headerBytes = new Uint8Array(header);
   headerBytes.set(new TextEncoder().encode("ITB1"));
   new DataView(header).setUint32(4, manifestBytes.byteLength);
-  return new Blob([headerBytes, manifestBytes, ...ordered.map((part) => new Uint8Array(part.bytes))], {
-    type: "application/vnd.intenttrace.session-bundle",
-  });
+  return new Blob(
+    [headerBytes, manifestBytes, ...ordered.map((part) => new Uint8Array(part.bytes))],
+    {
+      type: "application/vnd.intenttrace.session-bundle",
+    },
+  );
 }
 
 async function uploadPreparedSession(
@@ -580,7 +586,9 @@ async function followPath(
           .replace(/[^A-Za-z0-9_.:-]/gu, "-")
           .slice(0, 128),
       };
-      const prepared = (await prepareSession(source, candidate, DEFAULT_MAX_FILE_MIB * 1024 * 1024))[0]!;
+      const prepared = (
+        await prepareSession(source, candidate, DEFAULT_MAX_FILE_MIB * 1024 * 1024)
+      )[0]!;
       const result = await ingestPreparedSession(
         prepared,
         apiOrigin,

@@ -219,10 +219,7 @@ function mapReducerRawFact(row: RawEventRow): ReducerRawFact {
     parentSpanId: row.parent_span_id,
     causationEventId: row.causation_event_id,
     artifactRefs: [
-      ...new Set([
-        ...(row.payload_ref ? [row.payload_ref] : []),
-        ...(row.artifact_refs ?? []),
-      ]),
+      ...new Set([...(row.payload_ref ? [row.payload_ref] : []), ...(row.artifact_refs ?? [])]),
     ],
     ...(parentAgentId ? { parentAgentId } : {}),
     ...(spawnedAgentIds ? { spawnedAgentIds } : {}),
@@ -323,10 +320,7 @@ export interface SummaryCommitInput {
 }
 
 export interface RepositoryTopologyDependencies {
-  lookupTopologyCapability(
-    sourceKind: TraceSourceKind,
-    adapterVersion: string,
-  ): TopologyCapability;
+  lookupTopologyCapability(sourceKind: TraceSourceKind, adapterVersion: string): TopologyCapability;
 }
 
 export class IntentTraceRepository {
@@ -1435,7 +1429,9 @@ export class IntentTraceRepository {
         )
       `;
       for (const node of derived.state.nodes) {
-        const prior = state.nodes.find((candidate) => candidate.logicalNodeId === node.logicalNodeId);
+        const prior = state.nodes.find(
+          (candidate) => candidate.logicalNodeId === node.logicalNodeId,
+        );
         if (!prior || prior.versionId !== node.versionId) {
           await tx`
             insert into semantic_node_versions (
@@ -1468,7 +1464,9 @@ export class IntentTraceRepository {
         `;
       }
       for (const edge of derived.state.edges) {
-        const prior = state.edges.find((candidate) => candidate.logicalEdgeId === edge.logicalEdgeId);
+        const prior = state.edges.find(
+          (candidate) => candidate.logicalEdgeId === edge.logicalEdgeId,
+        );
         if (!prior || prior.versionId !== edge.versionId) {
           await tx`
             insert into semantic_edge_versions (

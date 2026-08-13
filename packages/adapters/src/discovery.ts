@@ -56,7 +56,11 @@ function completedCandidate(
   const ordered = [...parts].sort((left, right) => left.path.localeCompare(right.path));
   return {
     clientRef: ordered[0]!.clientRef,
-    candidateId: computeSessionCandidateId(source, rootIdentity, ordered.map((part) => part.path)),
+    candidateId: computeSessionCandidateId(
+      source,
+      rootIdentity,
+      ordered.map((part) => part.path),
+    ),
     partRefs: ordered.map((part) => part.clientRef),
     source,
     rootIdentity,
@@ -83,10 +87,14 @@ export async function discoverSessionCandidates(
   }
   const parts = [...inputParts].sort((left, right) => left.path.localeCompare(right.path));
   if (source === "jsonl" || source === "otlp") {
-    return parts.slice(0, maxCandidates).map((part) => completedCandidate(source, part.path, [part]));
+    return parts
+      .slice(0, maxCandidates)
+      .map((part) => completedCandidate(source, part.path, [part]));
   }
   if (source === "opencode") {
-    const databaseParts = parts.filter((part) => /(?:^|\/)opencode\.db(?:-(?:wal|shm))?$/u.test(part.path));
+    const databaseParts = parts.filter((part) =>
+      /(?:^|\/)opencode\.db(?:-(?:wal|shm))?$/u.test(part.path),
+    );
     if (databaseParts.length === 0) return [];
     const failure = databaseParts.some((part) => !part.complete)
       ? "OpenCode candidate inspection requires complete database and WAL bytes"
@@ -108,13 +116,18 @@ export async function discoverSessionCandidates(
       const companions = parts.filter((part) => {
         if (!part.path.includes("/subagents/") && !part.path.startsWith("subagents/")) return false;
         const candidate = jsonObject(part);
-        return candidate !== null && String(candidate.sessionId ?? candidate.session_id ?? "") === rootIdentity;
+        return (
+          candidate !== null &&
+          String(candidate.sessionId ?? candidate.session_id ?? "") === rootIdentity
+        );
       });
       return completedCandidate(source, rootIdentity, [root, ...companions]);
     });
   }
   if (source === "omp") {
-    const roots = parts.filter((part) => /\.(?:jsonl|ndjson)$/iu.test(part.path) && dirname(part.path) === ".").slice(0, maxCandidates);
+    const roots = parts
+      .filter((part) => /\.(?:jsonl|ndjson)$/iu.test(part.path) && dirname(part.path) === ".")
+      .slice(0, maxCandidates);
     return roots.map((root) => {
       const stem = root.path.slice(0, -extname(root.path).length);
       const companions = parts.filter((part) => part.path.startsWith(`${stem}/`));
@@ -157,15 +170,23 @@ export async function discoverSessionCandidates(
       group.push(entry.part);
       groups.set(root, group);
     }
-    return [...groups.entries()].sort().slice(0, maxCandidates).map(([root, group]) => completedCandidate(source, root, group));
+    return [...groups.entries()]
+      .sort()
+      .slice(0, maxCandidates)
+      .map(([root, group]) => completedCandidate(source, root, group));
   }
   const roots = new Map<string, SessionDiscoveryPart[]>();
   for (const part of parts) {
     const object = jsonObject(part);
-    const root = String(object?.parent_session_id ?? object?.resumed_from ?? object?.session_id ?? dirname(part.path));
+    const root = String(
+      object?.parent_session_id ?? object?.resumed_from ?? object?.session_id ?? dirname(part.path),
+    );
     const group = roots.get(root) ?? [];
     group.push(part);
     roots.set(root, group);
   }
-  return [...roots.entries()].sort().slice(0, maxCandidates).map(([root, group]) => completedCandidate(source, root, group));
+  return [...roots.entries()]
+    .sort()
+    .slice(0, maxCandidates)
+    .map(([root, group]) => completedCandidate(source, root, group));
 }
