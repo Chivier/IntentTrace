@@ -16,6 +16,7 @@ import {
   IntegrityConflictError,
   IntentTraceRepository,
   RepositoryNotFoundError,
+  StaleSummaryJobError,
 } from "./repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -320,7 +321,26 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
       const revisionCountBefore = (await repository.listRevisions(ids.traceId, 100)).length;
       await sql`update traces set status = 'completed' where id = ${ids.traceId}`;
 
-      const rebuiltRevisionId = await repository.rederiveTopology(ids.traceId, revisionId);
+      const concurrentSql = postgres(databaseUrl!, { max: 1 });
+      const concurrentRepository = new IntentTraceRepository(concurrentSql, {
+        lookupTopologyCapability: () => passthroughTopology,
+      });
+      const attempts = await Promise.allSettled([
+        repository.rederiveTopology(ids.traceId, revisionId),
+        concurrentRepository.rederiveTopology(ids.traceId, revisionId),
+      ]);
+      await concurrentSql.end();
+      const fulfilled = attempts.filter(
+        (attempt): attempt is PromiseFulfilledResult<string | null> =>
+          attempt.status === "fulfilled",
+      );
+      const rejected = attempts.filter(
+        (attempt): attempt is PromiseRejectedResult => attempt.status === "rejected",
+      );
+      expect(fulfilled).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect(rejected[0]?.reason).toBeInstanceOf(StaleSummaryJobError);
+      const rebuiltRevisionId = fulfilled[0]!.value;
       expect(rebuiltRevisionId).toMatch(/^[0-9a-f-]{36}$/u);
       const rebuilt = await repository.getGraph(ids.traceId, rebuiltRevisionId!);
       expect(rebuilt?.revision).toMatchObject({

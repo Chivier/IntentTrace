@@ -1199,6 +1199,10 @@ export class IntentTraceRepository {
       `;
       if (prior[0]) return prior[0].id;
       if (job.status !== "running") throw new Error(`summary job is ${job.status}`);
+      const traceLocks = await tx<Array<{ id: string }>>`
+        select id from traces where id = ${job.trace_id} for update
+      `;
+      if (!traceLocks[0]) throw new RepositoryNotFoundError("trace");
       const latest = await tx<Array<{ id: string }>>`
         select id from semantic_revisions where trace_id = ${job.trace_id}
         order by created_at desc, id desc limit 1
@@ -1402,15 +1406,20 @@ export class IntentTraceRepository {
     });
 
     return this.sql.begin(async (tx) => {
+      const lockedTraceRows = await tx<Array<{ status: TraceSummary["status"] }>>`
+        select status from traces where id = ${traceId} for update
+      `;
+      const lockedTrace = lockedTraceRows[0];
+      if (!lockedTrace) throw new RepositoryNotFoundError("trace");
       const latestRows = await tx<Array<{ id: string }>>`
         select id from semantic_revisions where trace_id = ${traceId}
-        order by created_at desc, id desc limit 1 for update
+        order by created_at desc, id desc limit 1
       `;
       if (latestRows[0]?.id !== base.revision.id) throw new StaleSummaryJobError();
       if (derived.changedNodeIds.length === 0 && derived.changedEdgeIds.length === 0) {
         return null;
       }
-      const branchKind = trace.status === "completed" ? "final" : "live";
+      const branchKind = lockedTrace.status === "completed" ? "final" : "live";
       const sequenceRows = await tx<Array<{ value: number }>>`
         select coalesce(max(branch_sequence), -1)::int + 1 as value
         from semantic_revisions where trace_id = ${traceId} and branch_kind = ${branchKind}
@@ -1497,9 +1506,13 @@ export class IntentTraceRepository {
     input: HumanNodeEdit,
   ): Promise<string> {
     return this.sql.begin(async (tx) => {
+      const traceLocks = await tx<Array<{ id: string }>>`
+        select id from traces where id = ${traceId} for update
+      `;
+      if (!traceLocks[0]) throw new RepositoryNotFoundError("trace");
       const baseRows = await tx<Array<{ id: string; event_watermark: string | bigint }>>`
         select id, event_watermark from semantic_revisions
-        where trace_id = ${traceId} order by created_at desc, id desc limit 1 for update
+        where trace_id = ${traceId} order by created_at desc, id desc limit 1
       `;
       const base = baseRows[0];
       if (!base) throw new RepositoryNotFoundError("semantic revision");
