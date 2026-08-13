@@ -334,11 +334,8 @@ async function inspectCatalog(
   const failures: Array<{ candidate: SessionFileCandidate; diagnostic: PublicDiagnostic }> = [];
   await mapWithConcurrency(discovered.candidates, concurrency, async (candidate, index) => {
     try {
-      // Retain only the bounded catalog descriptor. Full events become eligible
-      // for collection before the next candidate batch is imported.
-      descriptorsByIndex[index] = (
-        await prepareSession(source, candidate, maxFileBytes)
-      ).descriptor;
+      const prepared = await prepareSession(source, candidate, maxFileBytes);
+      descriptorsByIndex[index] = prepared[0]?.descriptor;
     } catch (error) {
       failures.push({ candidate, diagnostic: publicError(error) });
     }
@@ -469,24 +466,26 @@ async function importPath(
 
   await mapWithConcurrency(discovered.candidates, options.concurrency, async (candidate) => {
     try {
-      const prepared = await prepareSession(source, candidate, options.maxFileBytes);
-      const result = await uploadPreparedSession(prepared, source, apiOrigin, dependencies);
-      totals.imported += 1;
-      totals.inserted += result.inserted;
-      totals.duplicates += result.duplicates;
-      totals.warnings += result.warnings;
-      dependencies.output(
-        JSON.stringify({
-          protocolVersion: 2,
-          level: "result",
-          command: "upload",
-          sessionId: candidate.id,
-          traceId: result.traceId,
-          inserted: result.inserted,
-          duplicates: result.duplicates,
-          warnings: result.warnings,
-        }),
-      );
+      const preparedBundles = await prepareSession(source, candidate, options.maxFileBytes);
+      for (const prepared of preparedBundles) {
+        const result = await uploadPreparedSession(prepared, source, apiOrigin, dependencies);
+        totals.imported += 1;
+        totals.inserted += result.inserted;
+        totals.duplicates += result.duplicates;
+        totals.warnings += result.warnings;
+        dependencies.output(
+          JSON.stringify({
+            protocolVersion: 2,
+            level: "result",
+            command: "upload",
+            sessionId: candidate.id,
+            traceId: result.traceId,
+            inserted: result.inserted,
+            duplicates: result.duplicates,
+            warnings: result.warnings,
+          }),
+        );
+      }
     } catch (error) {
       totals.failed += 1;
       const diagnostic = publicError(error);
@@ -581,7 +580,7 @@ async function followPath(
           .replace(/[^A-Za-z0-9_.:-]/gu, "-")
           .slice(0, 128),
       };
-      const prepared = await prepareSession(source, candidate, DEFAULT_MAX_FILE_MIB * 1024 * 1024);
+      const prepared = (await prepareSession(source, candidate, DEFAULT_MAX_FILE_MIB * 1024 * 1024))[0]!;
       const result = await ingestPreparedSession(
         prepared,
         apiOrigin,

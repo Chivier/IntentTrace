@@ -752,16 +752,16 @@ paths:
       summary: Inspect candidate metadata or application/vnd.intenttrace.session-bundle
       responses:
         "200":
-          description: Default Response
+          description: Candidate inspection
           content:
             application/json:
               schema:
+                $schema: https://json-schema.org/draft/2020-12/schema
                 type: object
                 properties:
                   protocolVersion:
                     type: number
-                    enum:
-                      - 2
+                    const: 2
                   candidates:
                     maxItems: 50
                     type: array
@@ -876,6 +876,63 @@ paths:
                   - candidates
                   - alreadyImportedCount
                 additionalProperties: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $schema: https://json-schema.org/draft/2020-12/schema
+              type: object
+              properties:
+                protocolVersion:
+                  type: number
+                  const: 2
+                includePreviews:
+                  type: boolean
+                parts:
+                  minItems: 1
+                  maxItems: 5000
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      clientRef:
+                        type: string
+                        minLength: 1
+                        maxLength: 64
+                      path:
+                        type: string
+                        minLength: 1
+                        maxLength: 1024
+                      byteLength:
+                        type: integer
+                        minimum: 0
+                        maximum: 9007199254740991
+                      modifiedAt:
+                        type: string
+                        format: date-time
+                        pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+                      headBase64:
+                        type: string
+                      complete:
+                        type: boolean
+                    required:
+                      - clientRef
+                      - path
+                      - byteLength
+                      - modifiedAt
+                      - complete
+                    additionalProperties: false
+              required:
+                - protocolVersion
+                - includePreviews
+                - parts
+              additionalProperties: false
+          application/vnd.intenttrace.session-bundle:
+            schema: &a1
+              type: string
+              contentMediaType: application/vnd.intenttrace.session-bundle
+              description: ITB1 framed session bundle bytes
   /api/v1/imports/sessions:
     post:
       operationId: importUploadedSession
@@ -883,24 +940,22 @@ paths:
         application/vnd.intenttrace.session-bundle
       responses:
         "200":
-          description: Default Response
+          description: Batch import outcome
           content:
             application/json:
               schema:
+                $schema: https://json-schema.org/draft/2020-12/schema
                 type: object
                 properties:
                   protocolVersion:
                     type: number
-                    enum:
-                      - 2
+                    const: 2
                   level:
                     type: string
-                    enum:
-                      - result
+                    const: result
                   command:
                     type: string
-                    enum:
-                      - upload
+                    const: upload
                   results:
                     minItems: 1
                     maxItems: 50
@@ -944,6 +999,11 @@ paths:
                   - command
                   - results
                 additionalProperties: false
+      requestBody:
+        required: true
+        content:
+          application/vnd.intenttrace.session-bundle:
+            schema: *a1
   /api/v1/traces:
     get:
       operationId: listTraces

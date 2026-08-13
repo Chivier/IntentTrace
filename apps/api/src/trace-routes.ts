@@ -37,6 +37,7 @@ import {
   TraceSnapshotSchema,
   TraceSummarySchema,
   UuidSchema,
+  type ImportSourceKind,
   type TraceSourceKind,
 } from "@intenttrace/schema";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -156,7 +157,7 @@ function bundleSourceIdentity(parts: readonly { path: string; bytes: Uint8Array 
   return `bundle-${sessionBundleContentSha256(parts).slice(0, 32)}`;
 }
 
-function sessionCandidateId(source: TraceSourceKind, rootIdentity: string, paths: readonly string[]): string {
+function sessionCandidateId(source: ImportSourceKind, rootIdentity: string, paths: readonly string[]): string {
   return computeSessionCandidateId(source, rootIdentity, paths);
 }
 
@@ -164,7 +165,7 @@ interface ImportCandidate {
   clientRef: string;
   candidateId: string;
   partRefs: string[];
-  source: TraceSourceKind;
+  source: ImportSourceKind;
   prepared: PreparedTraceBundle | null;
   partialHead: boolean;
   failureCode: "preflight_failed" | null;
@@ -172,24 +173,43 @@ interface ImportCandidate {
 }
 
 async function discoverCandidates(
-  sourceHint: TraceSourceKind | "auto",
+  sourceHint: ImportSourceKind | "auto",
   parts: readonly { clientRef: string; path: string; bytes: Uint8Array; modifiedAt: string; complete: boolean }[],
 ): Promise<ImportCandidate[]> {
-  const detected = sourceHint === "auto"
-    ? await Promise.all(
-        parts.slice(0, 50).map(async (part) => ({
-          part,
-          source: await detectSourceKind({
-            parts: [{ path: part.path, bytes: part.bytes }],
-            sourceIdentity: bundleSourceIdentity([{ path: part.path, bytes: part.bytes }]),
-          }),
-        })),
-      )
-    : parts.map((part) => ({ part, source: sourceHint }));
+  const detectedSources: ImportSourceKind[] = [];
+  if (sourceHint === "auto") {
+    const potentialRoots = parts.filter(
+      (part) =>
+        !part.path.includes("/subagents/") &&
+        !part.path.startsWith("subagents/") &&
+        !part.path.endsWith(".meta.json") &&
+        !part.path.endsWith("-wal") &&
+        !part.path.endsWith("-shm"),
+    );
+    for (const part of potentialRoots.slice(0, 50)) {
+      const source = await detectSourceKind({
+        parts: [{ path: part.path, bytes: part.bytes }],
+        sourceIdentity: bundleSourceIdentity([{ path: part.path, bytes: part.bytes }]),
+      });
+      if (
+        source === "jsonl" ||
+        source === "otlp" ||
+        source === "codex" ||
+        source === "claude" ||
+        source === "opencode" ||
+        source === "omp" ||
+        source === "grok"
+      ) {
+        detectedSources.push(source);
+      }
+    }
+  } else {
+    detectedSources.push(sourceHint);
+  }
   const candidates: ImportCandidate[] = [];
-  for (const source of [...new Set(detected.map(({ source }) => source).filter((value): value is TraceSourceKind => value !== null))]) {
-    const sourceParts = detected.filter((entry) => entry.source === source).map(({ part }) => part);
-    const discovered = await discoverSessionCandidates(source, sourceParts);
+  for (const source of [...new Set(detectedSources)]) {
+    const sourceParts = parts.map((part) => ({ ...part, byteLength: part.bytes.byteLength }));
+    const discovered = await discoverSessionCandidates(source, sourceParts, 50);
     for (const candidate of discovered) {
       const selectedParts = sourceParts.filter((part) => candidate.partRefs.includes(part.clientRef));
       if (candidate.failureCode) {

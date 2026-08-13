@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 
-import { prepareSessionParts, type PreparedSessionWarning } from "@intenttrace/adapters";
+import { prepareSessionParts, sessionBundleContentSha256, type PreparedSessionWarning } from "@intenttrace/adapters";
 import type { RawTraceEventInput, SessionCatalogEntry, TraceSourceKind } from "@intenttrace/schema";
 
 import type { SessionFileCandidate } from "./session-discovery.js";
@@ -28,11 +28,11 @@ export async function prepareSession(
   source: TraceSourceKind,
   candidate: SessionFileCandidate,
   maxFileBytes: number,
-): Promise<PreparedSession> {
+): Promise<PreparedSession[]> {
   if (candidate.byteLength > maxFileBytes) {
     throw new Error("Session exceeds the configured file-size limit");
   }
-  const parts = [];
+  const parts: PreparedSession["parts"] = [];
   for (const part of candidate.parts) {
     const handle = await open(part.filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
     try {
@@ -59,19 +59,19 @@ export async function prepareSession(
       await handle.close();
     }
   }
+  const aggregateContentSha256 = sessionBundleContentSha256(parts);
+  const sourceIdentity = `bundle-${aggregateContentSha256.slice(0, 32)}`;
   const prepared = await prepareSessionParts(
     source,
     parts,
-    candidate.normalizationIdentity,
+    sourceIdentity,
     {
       id: candidate.id,
       byteLength: candidate.byteLength,
       modifiedAt: candidate.modifiedAt,
     },
   );
-  if (prepared.length !== 1) throw new Error("Session bundle contains multiple logical traces");
-  const trace = prepared[0]!;
-  return {
+  return prepared.map((trace) => ({
     candidate,
     parts,
     contentSha256: trace.contentSha256,
@@ -79,5 +79,5 @@ export async function prepareSession(
     warnings: trace.warnings,
     descriptor: trace.descriptor,
     completionMarker: trace.completionMarker,
-  };
+  }));
 }

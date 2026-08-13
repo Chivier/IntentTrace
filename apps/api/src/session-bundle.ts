@@ -87,12 +87,17 @@ export function parseSessionBundleFrame(bytes: Buffer): SessionBundleFrame {
     bytes: payload.subarray(part.offset, part.offset + part.byteLength),
   }));
   const normalized = normalizeAdapterInput({ parts: views, sourceIdentity: "frame-validation" });
-  const byPath = new Map(views.map((part) => [part.path.replaceAll(/\/\.?(?=\/|$)/gu, "/").replace(/^\//u, ""), part]));
+  const byPath = new Map(
+    views.map((part) => [
+      normalizeAdapterInput({ parts: [part], sourceIdentity: "path-normalization" }).parts[0]!.path,
+      part,
+    ]),
+  );
   return {
     source: manifest.source,
     candidateIds: [...manifest.candidateIds],
     parts: normalized.parts.map((part) => {
-      const metadata = views.find((candidate) => candidate.bytes === part.bytes) ?? byPath.get(part.path);
+      const metadata = byPath.get(part.path);
       if (!metadata) throw new Error("Missing session bundle part metadata");
       return { ...part, clientRef: metadata.clientRef, modifiedAt: metadata.modifiedAt };
     }),

@@ -4,15 +4,12 @@ import { fileURLToPath } from "node:url";
 
 import YAML from "yaml";
 
-import { buildApp } from "../src/app.js";
+import { document } from "./openapi-document.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const output = resolve(here, "../../../docs/contracts/api/openapi.yaml");
 const check = process.argv.includes("--check");
-const app = buildApp({ version: "0.0.0", gitCommit: "generated" });
-await app.ready();
-const content = `# Generated from implemented Fastify routes. Do not edit manually.\n${YAML.stringify(app.swagger())}`;
-await app.close();
+const content = `# Generated from implemented Fastify routes. Do not edit manually.\n${YAML.stringify(document)}`;
 
 if (check) {
   const existing = await readFile(output, "utf8").catch(() => "");

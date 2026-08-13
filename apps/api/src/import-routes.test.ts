@@ -432,4 +432,75 @@ describe("browser session import routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().candidates[0]).toMatchObject({ source: "codex", partialHead: true });
   });
+
+  it("rejects canonical-only sources at the framed import boundary", async () => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const bytes = await codexFixture();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/sessions",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: rawFrame(
+        {
+          protocolVersion: 1,
+          source: "pi",
+          candidateIds: ["a".repeat(24)],
+          parts: [
+            {
+              clientRef: "c1",
+              path: "valid.jsonl",
+              offset: 0,
+              byteLength: bytes.byteLength,
+              modifiedAt: "2026-08-01T00:00:00.000Z",
+            },
+          ],
+        },
+        bytes,
+      ),
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("invalid_session_bundle");
+  });
+
+  it("bounds explicit-source candidate roots without dropping companions", async () => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const root = Buffer.from('{"type":"user","sessionId":"root","message":{"role":"user","content":"x"}}\n');
+    const parts = [
+      { clientRef: "root", path: "root.jsonl", bytes: root },
+      ...Array.from({ length: 51 }, (_, index) => ({
+        clientRef: `side-${index}`,
+        path: `subagents/agent-${index}.meta.json`,
+        bytes: Buffer.from(JSON.stringify({ sessionId: "root" })),
+      })),
+    ];
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: frame(parts, "claude", []),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().candidates).toHaveLength(1);
+    expect(response.json().candidates[0].partRefs).toHaveLength(52);
+  });
+
+  it("caps explicit-source candidate roots at 50", async () => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const parts = Array.from({ length: 51 }, (_, index) => ({
+      clientRef: `root-${index}`,
+      path: `root-${index}.jsonl`,
+      bytes: Buffer.from(`{"type":"session_meta","payload":{"id":"root-${index}"}}\n`),
+    }));
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: frame(parts, "codex", []),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().candidates).toHaveLength(50);
+  });
 });
