@@ -450,6 +450,7 @@ export class IntentTraceRepository {
       join projects p on p.id = t.project_id
       where e.id = ${eventId}
     `;
+    if (!inserted[0]) throw new Error("raw event insert returned no row");
     return { event: mapRawEvent(inserted[0]), duplicate: false, traceStale: late, warnings: [] };
   }
 
