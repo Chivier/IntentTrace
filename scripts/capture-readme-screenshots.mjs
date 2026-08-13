@@ -5,7 +5,7 @@ import process from "node:process";
 
 import { chromium } from "@playwright/test";
 
-const demoTitle = "IMO 2025 P1 solved by six parallel agents";
+const demoTitle = "IMO 2025 P1 solved by eight parallel agents";
 
 function resolveOrigin() {
   if (process.env.INTENTTRACE_WEB_ORIGIN) return process.env.INTENTTRACE_WEB_ORIGIN;
