@@ -240,22 +240,46 @@ export function rankCandidates(files: readonly File[], mode: "folder" | "files")
       file.name.endsWith("-shm")
     );
   };
+  const jsonCandidates = kept.filter(
+    (file) => !isExplicitCompanion(file) && /\.(?:jsonl|ndjson)$/iu.test(file.name),
+  );
+  const candidateStems = new Set(
+    jsonCandidates.map((file) => {
+      const path = pathOf(file);
+      return path.slice(0, path.lastIndexOf("."));
+    }),
+  );
   const isNestedJson = (file: File) => {
     const path = pathOf(file);
-    return path.includes("/") && /\.(?:jsonl|ndjson)$/iu.test(file.name);
+    return [...candidateStems].some((stem) => path.startsWith(`${stem}/`));
   };
   const roots = kept.filter((file) => !isExplicitCompanion(file) && !isNestedJson(file));
   const selectedRoots = roots.slice(0, CANDIDATE_WINDOW);
+  const selectedPaths = selectedRoots.map(pathOf);
   const selectedStems = new Set(
-    selectedRoots.map((file) => {
-      const path = pathOf(file);
-      return path.slice(0, -file.name.slice(file.name.lastIndexOf(".")).length);
-    }),
+    selectedPaths.map((path) => path.slice(0, path.lastIndexOf("."))),
+  );
+  const selectedDirectories = new Set(
+    selectedPaths.map((path) => path.slice(0, Math.max(0, path.lastIndexOf("/")))),
+  );
+  const selectedDatabasePaths = new Set(
+    selectedPaths.filter((path) => path.endsWith(".db")),
   );
   const companions = kept.filter((file) => {
-    if (isExplicitCompanion(file)) return true;
-    if (!isNestedJson(file)) return false;
     const path = pathOf(file);
+    if (path.includes("/subagents/") || path.startsWith("subagents/") || file.name.endsWith(".meta.json")) {
+      const projectDirectory = path.includes("/subagents/")
+        ? path.slice(0, path.indexOf("/subagents/"))
+        : path.startsWith("subagents/")
+          ? ""
+          : path.slice(0, Math.max(0, path.lastIndexOf("/")));
+      return selectedDirectories.has(projectDirectory);
+    }
+    if (file.name.endsWith("-wal") || file.name.endsWith("-shm")) {
+      const databasePath = path.replace(/-(?:wal|shm)$/u, "");
+      return selectedDatabasePaths.has(databasePath);
+    }
+    if (!isNestedJson(file)) return false;
     return [...selectedStems].some((stem) => path.startsWith(`${stem}/`));
   });
   return {

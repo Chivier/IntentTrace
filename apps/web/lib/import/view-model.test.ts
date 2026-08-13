@@ -153,6 +153,32 @@ describe("browser bundle transport", () => {
     expect(ranked.window).not.toContain(skippedChild);
   });
 
+  it("drops Claude and OpenCode companions for roots outside the window", () => {
+    const roots = Array.from({ length: CANDIDATE_WINDOW + 1 }, (_, index) => {
+      const root = file(`root-${index}.jsonl`, 100 - index);
+      Object.defineProperty(root, "webkitRelativePath", { value: `project-${index}/root-${index}.jsonl` });
+      return root;
+    });
+    const selectedMeta = file("agent.meta.json", 0);
+    Object.defineProperty(selectedMeta, "webkitRelativePath", { value: "project-0/subagents/agent.meta.json" });
+    const skippedMeta = file("agent.meta.json", 0);
+    Object.defineProperty(skippedMeta, "webkitRelativePath", { value: `project-${CANDIDATE_WINDOW}/subagents/agent.meta.json` });
+    const selectedDb = file("opencode.db", 99);
+    Object.defineProperty(selectedDb, "webkitRelativePath", { value: "selected/opencode.db" });
+    const selectedWal = file("opencode.db-wal", 0);
+    Object.defineProperty(selectedWal, "webkitRelativePath", { value: "selected/opencode.db-wal" });
+    const skippedWal = file("other.db-wal", 0);
+    Object.defineProperty(skippedWal, "webkitRelativePath", { value: "unselected/other.db-wal" });
+    const ranked = rankCandidates(
+      [...roots, selectedDb, selectedMeta, skippedMeta, selectedWal, skippedWal],
+      "folder",
+    );
+    expect(ranked.window).toContain(selectedMeta);
+    expect(ranked.window).toContain(selectedWal);
+    expect(ranked.window).not.toContain(skippedMeta);
+    expect(ranked.window).not.toContain(skippedWal);
+  });
+
   it("creates distinct rows when one part yields several logical traces", () => {
     const source = row({ clientRef: "c1" });
     const candidates = candidateRowsFromResponse([source], [
