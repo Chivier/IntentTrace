@@ -10,6 +10,7 @@ import {
 } from "@intenttrace/schema";
 
 import { createAdapter } from "./registry.js";
+import { normalizeAdapterInput } from "./types.js";
 
 export interface PreparedSessionWarning {
   code: string;
@@ -92,7 +93,9 @@ export async function prepareSessionBytes(
   const events: RawTraceEventInput[] = [];
   const warnings: PreparedSessionWarning[] = [];
 
-  for await (const record of adapter.parse({ bytes, sourceIdentity })) {
+  for await (const record of adapter.parse(
+    normalizeAdapterInput({ parts: [{ path: ".", bytes }], sourceIdentity }),
+  )) {
     if (record.type === "warning") {
       warnings.push({
         code: record.code,

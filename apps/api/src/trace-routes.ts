@@ -208,7 +208,10 @@ export async function registerTraceRoutes(
       let rejectedSpans = 0;
       const errors: string[] = [];
       const bytes = new TextEncoder().encode(JSON.stringify(request.body));
-      for await (const record of adapter.parse({ bytes, sourceIdentity: "otlp-http" })) {
+      for await (const record of adapter.parse({
+        parts: [{ path: ".", bytes }],
+        sourceIdentity: "otlp-http",
+      })) {
         if (record.type === "warning") {
           errors.push(record.message);
           continue;
@@ -265,7 +268,10 @@ export async function registerTraceRoutes(
             bytes = cut >= 0 ? bytes.subarray(0, cut + 1) : bytes;
           }
           const sourceIdentity = safeIdentifier(basename(input.fileName), "upload");
-          const source = await detectSourceKind({ bytes, sourceIdentity });
+          const source = await detectSourceKind({
+            parts: [{ path: input.fileName, bytes }],
+            sourceIdentity,
+          });
           if (!source) {
             return {
               ...base,
@@ -356,7 +362,12 @@ export async function registerTraceRoutes(
       const query = ImportUploadQuerySchema.parse(request.query);
       const sourceIdentity = safeIdentifier(basename(query.fileName), "upload");
       const source =
-        query.source === "auto" ? await detectSourceKind({ bytes, sourceIdentity }) : query.source;
+        query.source === "auto"
+          ? await detectSourceKind({
+              parts: [{ path: query.fileName, bytes }],
+              sourceIdentity,
+            })
+          : query.source;
       if (!source) {
         return problem(
           reply,

@@ -24,7 +24,10 @@ async function fixture(source: string, name: string): Promise<Uint8Array> {
 
 async function parse(adapter: TraceAdapter, bytes: Uint8Array): Promise<AdapterRecord[]> {
   const records: AdapterRecord[] = [];
-  for await (const record of adapter.parse({ bytes, sourceIdentity: "anonymous-fixture" })) {
+  for await (const record of adapter.parse({
+    parts: [{ path: ".", bytes }],
+    sourceIdentity: "anonymous-fixture",
+  })) {
     records.push(record);
   }
   return records;
@@ -96,7 +99,9 @@ describe("implemented trace adapters", () => {
   it("accepts Claude client versions while omitting thinking and file snapshots", async () => {
     const adapter = new ClaudeSessionAdapter();
     const bytes = await fixture("claude", "privacy.jsonl");
-    await expect(adapter.sniff({ bytes, sourceIdentity: "anonymous-fixture" })).resolves.toBe(true);
+    await expect(
+      adapter.sniff({ parts: [{ path: ".", bytes }], sourceIdentity: "anonymous-fixture" }),
+    ).resolves.toBe(true);
     const records = await parse(adapter, bytes);
     expect(records.filter((record) => record.type === "event")).toHaveLength(3);
     const events = records.filter((record) => record.type === "event");
@@ -162,12 +167,17 @@ describe("implemented trace adapters", () => {
     ["claude", "valid.jsonl", "claude"],
   ] as const)("detects %s fixtures", async (directory, name, expected) => {
     const bytes = await fixture(directory, name);
-    await expect(detectSourceKind({ bytes, sourceIdentity: "fixture" })).resolves.toBe(expected);
+    await expect(
+      detectSourceKind({ parts: [{ path: ".", bytes }], sourceIdentity: "fixture" }),
+    ).resolves.toBe(expected);
   });
 
   it("returns null when no adapter recognizes the bytes", async () => {
     await expect(
-      detectSourceKind({ bytes: Buffer.from("not json"), sourceIdentity: "fixture" }),
+      detectSourceKind({
+        parts: [{ path: ".", bytes: Buffer.from("not json") }],
+        sourceIdentity: "fixture",
+      }),
     ).resolves.toBeNull();
   });
 });

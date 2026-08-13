@@ -3,6 +3,7 @@ import type { RawEventKind } from "@intenttrace/schema";
 import { decodeAdapterBytes, normalizeEvent, objectRecord } from "./common.js";
 import {
   MalformedAdapterInputError,
+  singleAdapterPart,
   UnsupportedAdapterVersionError,
   type AdapterInput,
   type AdapterManifest,
@@ -42,11 +43,22 @@ export class OtlpHttpJsonAdapter implements TraceAdapter {
     adapterVersion: "1.0.0",
     supportedFormatVersions: ["1.11-json"],
     status: "implemented",
+    topology: {
+      spawn: "passthrough",
+      join: "passthrough",
+      peerMessages: "unsupported",
+      input: "single-file",
+      laneKey: "service.name",
+      limits: [
+        "Spawn and join require explicit canonical topology attributes; peer messages are unsupported.",
+      ],
+    },
   };
 
   async sniff(input: AdapterInput): Promise<boolean> {
+    const part = singleAdapterPart(input);
     try {
-      const root = objectRecord(JSON.parse(decodeAdapterBytes(input.bytes)) as unknown);
+      const root = objectRecord(JSON.parse(decodeAdapterBytes(part.bytes)) as unknown);
       return Array.isArray(root?.resourceSpans);
     } catch {
       return false;
@@ -54,9 +66,10 @@ export class OtlpHttpJsonAdapter implements TraceAdapter {
   }
 
   async *parse(input: AdapterInput): AsyncIterable<AdapterRecord> {
+    const part = singleAdapterPart(input);
     let root: Record<string, unknown> | null;
     try {
-      root = objectRecord(JSON.parse(decodeAdapterBytes(input.bytes)) as unknown);
+      root = objectRecord(JSON.parse(decodeAdapterBytes(part.bytes)) as unknown);
     } catch (error) {
       throw new MalformedAdapterInputError("otlp", String(error));
     }

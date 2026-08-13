@@ -8,6 +8,7 @@ import {
 } from "./common.js";
 import {
   MalformedAdapterInputError,
+  singleAdapterPart,
   UnsupportedAdapterVersionError,
   type AdapterInput,
   type AdapterManifest,
@@ -21,11 +22,22 @@ export class CanonicalJsonlAdapter implements TraceAdapter {
     adapterVersion: "1.0.0",
     supportedFormatVersions: ["1.0.0"],
     status: "implemented",
+    topology: {
+      spawn: "passthrough",
+      join: "passthrough",
+      peerMessages: "passthrough",
+      input: "single-file",
+      laneKey: "agentId",
+      limits: [
+        "Topology requires explicit canonical fields; passthrough never infers a missing relationship.",
+      ],
+    },
   };
 
   async sniff(input: AdapterInput): Promise<boolean> {
+    const part = singleAdapterPart(input);
     try {
-      const first = readSessionRecords(decodeAdapterBytes(input.bytes))[0]?.value;
+      const first = readSessionRecords(decodeAdapterBytes(part.bytes))[0]?.value;
       return RawTraceEventInputSchema.safeParse(first).success;
     } catch {
       return false;
@@ -33,9 +45,10 @@ export class CanonicalJsonlAdapter implements TraceAdapter {
   }
 
   async *parse(input: AdapterInput): AsyncIterable<AdapterRecord> {
+    const part = singleAdapterPart(input);
     let records: SessionRecord[];
     try {
-      records = readSessionRecords(decodeAdapterBytes(input.bytes));
+      records = readSessionRecords(decodeAdapterBytes(part.bytes));
     } catch (error) {
       throw new MalformedAdapterInputError("jsonl", String(error));
     }
@@ -53,7 +66,9 @@ export class CanonicalJsonlAdapter implements TraceAdapter {
         );
       }
       yield { type: "event", event: parsed.data };
+      const artifactKey = `event-${parsed.data.source.sourceEventId}`;
       yield {
+        key: artifactKey,
         type: "artifact",
         sourceEventId: parsed.data.source.sourceEventId,
         bytes: record.bytes,

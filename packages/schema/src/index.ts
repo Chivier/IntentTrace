@@ -11,8 +11,53 @@ export const IdentifierSchema = z.string().regex(/^[A-Za-z0-9_.:-]{1,128}$/u);
 export const TemporaryNodeRefSchema = z.string().regex(/^tmp:[1-9][0-9]*$/u);
 export const NodeRefSchema = z.union([UuidSchema, TemporaryNodeRefSchema]);
 
-export const TraceSourceKindSchema = z.enum(["jsonl", "otlp", "codex", "claude", "custom"]);
+export const TraceSourceKindSchema = z.enum([
+  "jsonl",
+  "otlp",
+  "codex",
+  "claude",
+  "opencode",
+  "omp",
+  "grok",
+  "pi",
+  "custom",
+]);
 export type TraceSourceKind = z.infer<typeof TraceSourceKindSchema>;
+
+export const TopologyFidelitySchema = z.enum([
+  "stated",
+  "inferred",
+  "passthrough",
+  "unsupported",
+]);
+export type TopologyFidelity = z.infer<typeof TopologyFidelitySchema>;
+
+export const TopologyCapabilitySchema = z
+  .object({
+    spawn: TopologyFidelitySchema,
+    join: TopologyFidelitySchema,
+    peerMessages: TopologyFidelitySchema,
+    input: z.enum(["single-file", "bundle"]),
+    laneKey: z.string().min(1).max(160),
+    limits: z.array(z.string().min(1).max(480)),
+  })
+  .strict();
+export type TopologyCapability = z.infer<typeof TopologyCapabilitySchema>;
+
+export const TraceTopologySchema = z
+  .object({
+    declared: TopologyCapabilitySchema,
+    observed: z
+      .object({
+        lanes: z.number().int().nonnegative(),
+        lanesWithParent: z.number().int().nonnegative(),
+        spawnEdges: z.number().int().nonnegative(),
+        peerEdges: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+export type TraceTopology = z.infer<typeof TraceTopologySchema>;
 
 export const SessionCatalogIdSchema = z.string().regex(/^[a-f0-9]{24}$/u);
 export const SessionCatalogEntrySchema = z
@@ -222,12 +267,22 @@ export const RawTraceEventInputSchema = RawTraceEventSchema.omit({
   ingestedAt: true,
 })
   .extend({
+    causationSourceEventId: IdentifierSchema.optional(),
     workspaceName: z.string().min(1).max(120).optional(),
     projectName: z.string().min(1).max(120).optional(),
     traceTitle: z.string().min(1).max(240).optional(),
     payload: z.unknown().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((event, context) => {
+    if (Object.hasOwn(event.attributes, "intenttraceWarnings")) {
+      context.addIssue({
+        code: "custom",
+        path: ["attributes", "intenttraceWarnings"],
+        message: "attributes.intenttraceWarnings is reserved for repository diagnostics",
+      });
+    }
+  });
 export type RawTraceEventInput = z.infer<typeof RawTraceEventInputSchema>;
 
 export const IngestResultSchema = z
@@ -235,6 +290,16 @@ export const IngestResultSchema = z
     event: RawTraceEventSchema,
     duplicate: z.boolean(),
     traceStale: z.boolean(),
+    warnings: z
+      .array(
+        z
+          .object({
+            code: IdentifierSchema,
+            sourceEventId: IdentifierSchema.optional(),
+          })
+          .strict(),
+      )
+      .max(64),
   })
   .strict();
 export type IngestResult = z.infer<typeof IngestResultSchema>;
@@ -363,6 +428,7 @@ export const TraceSnapshotSchema = z
     raw: RawEventPageSchema,
     agents: z.array(AgentTimelineLaneSchema),
     revision: SemanticRevisionSchema.nullable(),
+    topology: TraceTopologySchema,
   })
   .strict();
 export type TraceSnapshot = z.infer<typeof TraceSnapshotSchema>;
@@ -401,6 +467,8 @@ export const SemanticEdgeVersionSchema = z
     targetNodeId: UuidSchema,
     kind: SemanticEdgeKindSchema,
     retired: z.boolean(),
+    evidenceEventIds: z.array(UuidSchema).min(1).max(64),
+    provenance: ProvenanceSchema,
   })
   .strict();
 export type SemanticEdgeVersion = z.infer<typeof SemanticEdgeVersionSchema>;

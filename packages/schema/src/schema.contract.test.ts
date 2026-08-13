@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  IngestResultSchema,
   ProviderIntentGraphPatchSchema,
+  RawTraceEventInputSchema,
   RawTraceEventSchema,
   SchemaVersion,
+  SemanticEdgeVersionSchema,
   SemanticRevisionSchema,
   SessionCatalogSchema,
   SessionImportOutcomeSchema,
   SessionImportSummarySchema,
+  TopologyCapabilitySchema,
+  TopologyFidelitySchema,
+  TraceSnapshotSchema,
+  TraceSourceKindSchema,
+  TraceTopologySchema,
 } from "./index.js";
 
 const ids = {
@@ -15,6 +23,33 @@ const ids = {
   workspace: "019fbbb3-4324-7d43-8f9c-cd489a92cb29",
   project: "019fbbb3-4324-7d43-8f9c-cd489a92cb30",
   trace: "019fbbb3-4324-7d43-8f9c-cd489a92cb31",
+};
+
+const rawInput = {
+  schemaVersion: SchemaVersion,
+  workspaceId: ids.workspace,
+  projectId: ids.project,
+  traceId: ids.trace,
+  source: {
+    kind: "jsonl" as const,
+    formatVersion: "1",
+    adapterVersion: "1.0.0",
+    sourceInstanceId: "fixture-main",
+    sourceEventId: "evt-1",
+  },
+  occurredAt: "2026-08-01T00:00:00.000Z",
+  kind: "user_message" as const,
+  name: "request",
+  status: "ok" as const,
+  artifactRefs: [],
+  attributes: {},
+};
+
+const persistedEvent = {
+  ...rawInput,
+  id: ids.event,
+  ingestSeq: "1",
+  ingestedAt: "2026-08-01T00:00:00.100Z",
 };
 
 describe("RawTraceEvent contract", () => {
@@ -47,6 +82,151 @@ describe("RawTraceEvent contract", () => {
 
   it("rejects floating-point or zero ingest sequences", () => {
     expect(() => RawTraceEventSchema.parse({ ingestSeq: "0" })).toThrow();
+  });
+});
+
+describe("topology and evidence contracts", () => {
+  it("locks source kinds and topology fidelity literals", () => {
+    expect(TraceSourceKindSchema.options).toEqual([
+      "jsonl",
+      "otlp",
+      "codex",
+      "claude",
+      "opencode",
+      "omp",
+      "grok",
+      "pi",
+      "custom",
+    ]);
+    expect(TopologyFidelitySchema.options).toEqual([
+      "stated",
+      "inferred",
+      "passthrough",
+      "unsupported",
+    ]);
+  });
+
+  it("accepts only strict topology declarations and non-negative observations", () => {
+    const declared = {
+      spawn: "stated" as const,
+      join: "inferred" as const,
+      peerMessages: "unsupported" as const,
+      input: "bundle" as const,
+      laneKey: "agentId",
+      limits: ["Measured limitation."],
+    };
+    expect(TopologyCapabilitySchema.parse(declared)).toEqual(declared);
+    expect(() => TopologyCapabilitySchema.parse({ ...declared, extra: true })).toThrow();
+    expect(
+      TraceTopologySchema.parse({
+        declared,
+        observed: { lanes: 2, lanesWithParent: 1, spawnEdges: 1, peerEdges: 0 },
+      }).observed.lanes,
+    ).toBe(2);
+    expect(() =>
+      TraceTopologySchema.parse({
+        declared,
+        observed: { lanes: -1, lanesWithParent: 0, spawnEdges: 0, peerEdges: 0 },
+      }),
+    ).toThrow();
+  });
+
+  it("requires topology on trace snapshots", () => {
+    const snapshot = {
+      trace: {
+        id: ids.trace,
+        projectId: ids.project,
+        title: "Fixture trace",
+        status: "active" as const,
+        eventCount: "1",
+        latestIngestSeq: "1",
+        latestRevisionId: null,
+        createdAt: "2026-08-01T00:00:00.000Z",
+        updatedAt: "2026-08-01T00:00:00.100Z",
+      },
+      raw: { events: [persistedEvent], nextCursor: null },
+      agents: [],
+      revision: null,
+      topology: {
+        declared: {
+          spawn: "passthrough" as const,
+          join: "passthrough" as const,
+          peerMessages: "passthrough" as const,
+          input: "single-file" as const,
+          laneKey: "agentId",
+          limits: [],
+        },
+        observed: { lanes: 0, lanesWithParent: 0, spawnEdges: 0, peerEdges: 0 },
+      },
+    };
+    expect(TraceSnapshotSchema.parse(snapshot).topology.observed.spawnEdges).toBe(0);
+    const { topology: _topology, ...withoutTopology } = snapshot;
+    expect(TraceSnapshotSchema.safeParse(withoutTopology).success).toBe(false);
+  });
+
+  it("keeps producer causation source IDs input-only and reserves repository warnings", () => {
+    expect(
+      RawTraceEventInputSchema.parse({ ...rawInput, causationSourceEventId: "evt-parent" })
+        .causationSourceEventId,
+    ).toBe("evt-parent");
+    expect(
+      RawTraceEventSchema.safeParse({ ...persistedEvent, causationSourceEventId: "evt-parent" })
+        .success,
+    ).toBe(false);
+    expect(
+      RawTraceEventInputSchema.safeParse({
+        ...rawInput,
+        attributes: { intenttraceWarnings: [{ code: "repository-only" }] },
+      }).success,
+    ).toBe(false);
+    expect(
+      RawTraceEventSchema.parse({
+        ...persistedEvent,
+        attributes: { intenttraceWarnings: [{ code: "repository-only" }] },
+      }).attributes,
+    ).toHaveProperty("intenttraceWarnings");
+  });
+
+  it("requires edge evidence and provenance", () => {
+    const edge = {
+      id: ids.event,
+      logicalEdgeId: ids.workspace,
+      traceId: ids.trace,
+      sourceNodeId: ids.project,
+      targetNodeId: ids.workspace,
+      kind: "decomposes_to" as const,
+      retired: false,
+      evidenceEventIds: [ids.event],
+      provenance: "stated" as const,
+    };
+    expect(SemanticEdgeVersionSchema.parse(edge).evidenceEventIds).toEqual([ids.event]);
+    expect(SemanticEdgeVersionSchema.safeParse({ ...edge, evidenceEventIds: [] }).success).toBe(
+      false,
+    );
+    const { provenance: _provenance, ...withoutProvenance } = edge;
+    expect(SemanticEdgeVersionSchema.safeParse(withoutProvenance).success).toBe(false);
+  });
+
+  it("requires structured ingest warnings", () => {
+    expect(
+      IngestResultSchema.parse({
+        event: persistedEvent,
+        duplicate: false,
+        traceStale: false,
+        warnings: [
+          { code: "causation_source_event_unresolved", sourceEventId: "evt-parent" },
+        ],
+      }).warnings,
+    ).toEqual([
+      { code: "causation_source_event_unresolved", sourceEventId: "evt-parent" },
+    ]);
+    expect(
+      IngestResultSchema.safeParse({
+        event: persistedEvent,
+        duplicate: false,
+        traceStale: false,
+      }).success,
+    ).toBe(false);
   });
 });
 

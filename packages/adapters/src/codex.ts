@@ -11,6 +11,7 @@ import {
 } from "./common.js";
 import {
   MalformedAdapterInputError,
+  singleAdapterPart,
   UnsupportedAdapterVersionError,
   type AdapterInput,
   type AdapterManifest,
@@ -183,11 +184,24 @@ export class CodexSessionAdapter implements TraceAdapter {
     adapterVersion: "2.0.0",
     supportedFormatVersions: ["codex-jsonl-v1"],
     status: "implemented",
+    topology: {
+      spawn: "stated",
+      join: "stated",
+      peerMessages: "stated",
+      input: "bundle",
+      laneKey: "session_meta.payload.id",
+      limits: [
+        "Full-history forks duplicate ancestor records and require payload-hash deduplication.",
+        "Paginated history may omit persisted sub_agent_activity, so affected spawn facts are inferred or absent.",
+        "Collaboration message bodies are encrypted and unavailable.",
+      ],
+    },
   };
 
   async sniff(input: AdapterInput): Promise<boolean> {
+    const part = singleAdapterPart(input);
     try {
-      const first = objectRecord(readSessionRecords(decodeAdapterBytes(input.bytes))[0]?.value);
+      const first = objectRecord(readSessionRecords(decodeAdapterBytes(part.bytes))[0]?.value);
       return ["session_meta", "turn_context", "response_item", "event_msg"].includes(
         String(first?.type),
       );
@@ -197,9 +211,10 @@ export class CodexSessionAdapter implements TraceAdapter {
   }
 
   async *parse(input: AdapterInput): AsyncIterable<AdapterRecord> {
+    const part = singleAdapterPart(input);
     let records: SessionRecord[];
     try {
-      records = readSessionRecords(decodeAdapterBytes(input.bytes));
+      records = readSessionRecords(decodeAdapterBytes(part.bytes));
     } catch (error) {
       throw new MalformedAdapterInputError("codex", String(error));
     }
@@ -318,7 +333,9 @@ export class CodexSessionAdapter implements TraceAdapter {
           },
         ),
       };
+      const artifactKey = `event-${eventId}`;
       yield {
+        key: artifactKey,
         type: "artifact",
         sourceEventId: eventId,
         bytes: new TextEncoder().encode(JSON.stringify(sanitizedObject)),
