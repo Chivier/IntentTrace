@@ -51,7 +51,6 @@ describe("provider patch trust boundary", () => {
             ref: "tmp:1",
             node: {
               kind: "work",
-              status: "active",
               title: "Normalize source events",
               claims: [
                 {
@@ -62,8 +61,6 @@ describe("provider patch trust boundary", () => {
                   evidenceEventIds: ["019fbbb3-4324-7d43-8f9c-cd489a92cb99"],
                 },
               ],
-              participantAgentIds: [],
-              artifactIds: [],
             },
           },
         ],

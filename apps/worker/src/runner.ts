@@ -73,12 +73,12 @@ export async function runSummaryJob(
       allowedNodeIds: context.graph.nodes.map((node) => node.logicalNodeId),
       locale: "zh-CN",
     });
-    const capabilities = new Map(
-      context.reducerFacts.map((fact) => [
-        topologyCapabilityKey(fact.sourceKind, fact.adapterVersion),
-        lookupTopologyCapability(fact.sourceKind, fact.adapterVersion),
-      ]),
-    );
+    const capabilities = new Map<string, ReturnType<typeof lookupTopologyCapability>>();
+    for (const fact of context.reducerFacts) {
+      const key = topologyCapabilityKey(fact.sourceKind, fact.adapterVersion);
+      if (capabilities.has(key)) continue;
+      capabilities.set(key, lookupTopologyCapability(fact.sourceKind, fact.adapterVersion));
+    }
     const reduced = applyProviderPatch(
       patch,
       context.graph,

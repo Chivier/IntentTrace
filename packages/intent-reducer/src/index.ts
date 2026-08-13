@@ -473,12 +473,9 @@ export function deriveTopology(
       fact.spawnedAgentIds?.includes(childLane),
     );
     if (!parentFact) continue;
-    const childCapability = capabilityFor(context, childStart)?.spawn ?? "unsupported";
-    const parentCapability = capabilityFor(context, parentFact)?.spawn ?? "unsupported";
-    if (
-      (childCapability === "passthrough" || parentCapability === "passthrough") &&
-      (!childStart.parentAgentId || (!childStart.parentSpanId && !parentFact.spawnedAgentIds?.includes(childLane)))
-    ) continue;
+    // `passthrough` sources reach this point only through the structured
+    // `parentSpanId`/`spawnedAgentIds` match required above, so no extra gate
+    // is needed here; `structuralProvenance` still rejects `unsupported`.
     const provenance = structuralProvenance("spawn", context, [parentFact, childStart]);
     const source = outboundEndpoint(anchors, childStart.parentAgentId ?? null, parentFact);
     const target = laneFirst(anchors, childLane);
@@ -549,7 +546,14 @@ export function deriveTopology(
       evidenceEventIds: [write.eventId],
       provenance,
     });
-    for (const consumer of anchors.filter((anchor) => anchor !== producer && anchor.node.artifactIds.some((id) => write.artifactRefs.includes(id)))) {
+    const producedArtifacts = producer.node.artifactIds.filter((id) => write.artifactRefs.includes(id));
+    if (producedArtifacts.length === 0) continue;
+    for (const consumer of anchors.filter(
+      (anchor) =>
+        anchor !== producer &&
+        anchor !== beneficiary &&
+        anchor.node.artifactIds.some((id) => producedArtifacts.includes(id)),
+    )) {
       addDesiredEdge(desired, {
         kind: "depends_on",
         sourceNodeId: consumer.node.logicalNodeId,
