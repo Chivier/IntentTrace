@@ -24,7 +24,11 @@ export interface DiscoveredSessionCandidate {
   failureMessage: string | null;
 }
 
-function candidateId(source: ImportSourceKind, rootIdentity: string, paths: readonly string[]): string {
+export function computeSessionCandidateId(
+  source: ImportSourceKind,
+  rootIdentity: string,
+  paths: readonly string[],
+): string {
   const hash = createHash("sha256")
     .update("intenttrace-session-candidate-v2")
     .update("\0")
@@ -33,6 +37,14 @@ function candidateId(source: ImportSourceKind, rootIdentity: string, paths: read
     .update(rootIdentity);
   for (const path of [...paths].sort()) hash.update("\0").update(path);
   return hash.digest("hex").slice(0, 24);
+}
+
+export function logicalSessionRootIdentity(
+  rootIdentity: string,
+  index: number,
+  total: number,
+): string {
+  return total === 1 ? rootIdentity : `${rootIdentity}:logical-${index + 1}`;
 }
 
 function completedCandidate(
@@ -44,7 +56,7 @@ function completedCandidate(
   const ordered = [...parts].sort((left, right) => left.path.localeCompare(right.path));
   return {
     clientRef: ordered[0]!.clientRef,
-    candidateId: candidateId(source, rootIdentity, ordered.map((part) => part.path)),
+    candidateId: computeSessionCandidateId(source, rootIdentity, ordered.map((part) => part.path)),
     partRefs: ordered.map((part) => part.clientRef),
     source,
     rootIdentity,
@@ -64,10 +76,14 @@ function jsonObject(part: SessionDiscoveryPart): Record<string, unknown> | null 
 export async function discoverSessionCandidates(
   source: ImportSourceKind,
   inputParts: readonly SessionDiscoveryPart[],
+  maxCandidates = 50,
 ): Promise<DiscoveredSessionCandidate[]> {
+  if (!Number.isInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 50) {
+    throw new Error("Session candidate root limit must be between 1 and 50");
+  }
   const parts = [...inputParts].sort((left, right) => left.path.localeCompare(right.path));
   if (source === "jsonl" || source === "otlp") {
-    return parts.map((part) => completedCandidate(source, part.path, [part]));
+    return parts.slice(0, maxCandidates).map((part) => completedCandidate(source, part.path, [part]));
   }
   if (source === "opencode") {
     const databaseParts = parts.filter((part) => /(?:^|\/)opencode\.db(?:-(?:wal|shm))?$/u.test(part.path));
@@ -78,22 +94,27 @@ export async function discoverSessionCandidates(
     return [completedCandidate(source, "opencode-root", databaseParts, failure)];
   }
   if (source === "claude") {
-    const roots = parts.filter(
-      (part) => /\.(?:jsonl|ndjson|json)$/iu.test(part.path) && !part.path.includes("/subagents/"),
-    );
+    const roots = parts
+      .filter(
+        (part) =>
+          /\.(?:jsonl|ndjson)$/iu.test(part.path) &&
+          !part.path.includes("/subagents/") &&
+          !part.path.startsWith("subagents/"),
+      )
+      .slice(0, maxCandidates);
     return roots.map((root) => {
       const object = jsonObject(root);
       const rootIdentity = String(object?.sessionId ?? object?.session_id ?? root.path);
       const companions = parts.filter((part) => {
         if (!part.path.includes("/subagents/") && !part.path.startsWith("subagents/")) return false;
         const candidate = jsonObject(part);
-        return candidate === null || String(candidate.sessionId ?? candidate.session_id ?? rootIdentity) === rootIdentity;
+        return candidate !== null && String(candidate.sessionId ?? candidate.session_id ?? "") === rootIdentity;
       });
       return completedCandidate(source, rootIdentity, [root, ...companions]);
     });
   }
   if (source === "omp") {
-    const roots = parts.filter((part) => /\.(?:jsonl|ndjson)$/iu.test(part.path) && dirname(part.path) === ".");
+    const roots = parts.filter((part) => /\.(?:jsonl|ndjson)$/iu.test(part.path) && dirname(part.path) === ".").slice(0, maxCandidates);
     return roots.map((root) => {
       const stem = root.path.slice(0, -extname(root.path).length);
       const companions = parts.filter((part) => part.path.startsWith(`${stem}/`));
@@ -136,7 +157,7 @@ export async function discoverSessionCandidates(
       group.push(entry.part);
       groups.set(root, group);
     }
-    return [...groups.entries()].sort().map(([root, group]) => completedCandidate(source, root, group));
+    return [...groups.entries()].sort().slice(0, maxCandidates).map(([root, group]) => completedCandidate(source, root, group));
   }
   const roots = new Map<string, SessionDiscoveryPart[]>();
   for (const part of parts) {
@@ -146,5 +167,5 @@ export async function discoverSessionCandidates(
     group.push(part);
     roots.set(root, group);
   }
-  return [...roots.entries()].sort().map(([root, group]) => completedCandidate(source, root, group));
+  return [...roots.entries()].sort().slice(0, maxCandidates).map(([root, group]) => completedCandidate(source, root, group));
 }

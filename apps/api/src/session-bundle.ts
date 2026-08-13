@@ -12,7 +12,7 @@ const ManifestPartSchema = z
     clientRef: z.string().min(1).max(64),
     path: z.string().min(1).max(1024),
     offset: z.number().int().nonnegative(),
-    byteLength: z.number().int().nonnegative(),
+    byteLength: z.number().int().positive(),
     modifiedAt: z.string().datetime({ offset: true }),
   })
   .strict();
@@ -57,10 +57,16 @@ export function parseSessionBundleFrame(bytes: Buffer): SessionBundleFrame {
     throw new Error("Invalid UTF-8 JSON session bundle manifest");
   }
   const manifest = ManifestSchema.parse(decoded);
+  const refs = new Set<string>();
+  for (const [index, part] of manifest.parts.entries()) {
+    if (refs.has(part.clientRef)) throw new Error(`Duplicate session bundle clientRef: ${part.clientRef}`);
+    refs.add(part.clientRef);
+    if (index > 0 && part.offset <= manifest.parts[index - 1]!.offset) {
+      throw new Error("Session bundle parts must be declared in increasing offset order");
+    }
+  }
   const payload = bytes.subarray(8 + manifestLength);
-  const sorted = [...manifest.parts].sort(
-    (left, right) => left.offset - right.offset || left.path.localeCompare(right.path),
-  );
+  const sorted = manifest.parts;
   let expectedOffset = 0;
   for (const part of sorted) {
     if (part.offset !== expectedOffset) {

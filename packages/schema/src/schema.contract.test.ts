@@ -382,6 +382,17 @@ describe("Session upload bundle contract", () => {
         })),
       }).success,
     ).toBe(false);
+    expect(
+      SessionUploadCandidateRequestSchema.safeParse({
+        protocolVersion: 2,
+        includePreviews: false,
+        parts: Array.from({ length: 51 }, (_, index) => ({
+          ...part,
+          clientRef: `p${index}`,
+          path: `root-${index}.jsonl`,
+        })),
+      }).success,
+    ).toBe(false);
   });
 
   it("requires opaque candidate IDs and explicit part references", () => {

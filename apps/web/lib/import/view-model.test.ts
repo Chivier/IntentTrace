@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_SOURCES,
   buildSessionBundleFrame,
+  candidateRowsFromResponse,
   CANDIDATE_WINDOW,
   computeEmptyState,
   dedupeKey,
@@ -99,13 +100,78 @@ describe("browser bundle transport", () => {
       row({ clientRef: "c1", file: a, name: a.name, candidateId: "a".repeat(24), partRefs: ["c1", "c2"] }),
       row({ clientRef: "c2", file: b, name: b.name, candidateId: "b".repeat(24), partRefs: ["c1", "c2"] }),
     ];
-    const groups = groupSelectedBundles(rows);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.candidateIds).toEqual(["a".repeat(24), "b".repeat(24)]);
-    const blob = await buildSessionBundleFrame(groups[0]!.parts, "auto", groups[0]!.candidateIds);
+    const grouped = groupSelectedBundles(rows);
+    expect(grouped.failures).toEqual([]);
+    expect(grouped.groups).toHaveLength(1);
+    expect(grouped.groups[0]?.candidateIds).toEqual(["a".repeat(24), "b".repeat(24)]);
+    const blob = await buildSessionBundleFrame(
+      grouped.groups[0]!.parts,
+      "auto",
+      grouped.groups[0]!.candidateIds,
+    );
     const bytes = new Uint8Array(await blob.arrayBuffer());
     expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("ITB1");
     expect(new DataView(bytes.buffer).getUint32(4)).toBeGreaterThan(0);
+  });
+
+  it("keeps companion extensions in folder metadata", () => {
+    const ranked = rankCandidates(
+      [file("agent.meta.json", 1), file("opencode.db", 2), file("opencode.db-wal", 3)],
+      "folder",
+    );
+    expect(ranked.window.map((entry) => entry.name)).toEqual([
+      "opencode.db-wal",
+      "opencode.db",
+      "agent.meta.json",
+    ]);
+  });
+
+  it("creates distinct rows when one part yields several logical traces", () => {
+    const source = row({ clientRef: "c1" });
+    const candidates = candidateRowsFromResponse([source], [
+      {
+        clientRef: "c1:logical-1",
+        candidateId: "a".repeat(24),
+        partRefs: ["c1"],
+        source: "jsonl",
+        title: "Trace A",
+        projectHint: null,
+        firstPromptPreview: null,
+        lastPromptPreview: null,
+        partialHead: false,
+        traceId: "11111111-1111-4111-8111-111111111111",
+        imported: false,
+        importedEventCount: null,
+        failureCode: null,
+        failureMessage: null,
+      },
+      {
+        clientRef: "c1:logical-2",
+        candidateId: "b".repeat(24),
+        partRefs: ["c1"],
+        source: "jsonl",
+        title: "Trace B",
+        projectHint: null,
+        firstPromptPreview: null,
+        lastPromptPreview: null,
+        partialHead: false,
+        traceId: "22222222-2222-4222-8222-222222222222",
+        imported: false,
+        importedEventCount: null,
+        failureCode: null,
+        failureMessage: null,
+      },
+    ]);
+    expect(candidates.map((entry) => entry.candidateId)).toEqual(["a".repeat(24), "b".repeat(24)]);
+    expect(candidates.map((entry) => entry.clientRef)).toEqual(["c1:logical-1", "c1:logical-2"]);
+  });
+
+  it("reports missing companion groups without throwing", () => {
+    const groups = groupSelectedBundles([
+      row({ clientRef: "c1", candidateId: "a".repeat(24), partRefs: ["c1", "missing"] }),
+    ]);
+    expect(groups.groups).toEqual([]);
+    expect(groups.failures).toEqual([{ rowRefs: ["c1"], message: "Missing selected part missing" }]);
   });
 });
 

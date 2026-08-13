@@ -1,15 +1,16 @@
 import { createHash } from "node:crypto";
-import type { Dirent } from "node:fs";
-import { lstat, readdir, realpath } from "node:fs/promises";
+import { constants, type Dirent } from "node:fs";
+import { lstat, open, readdir, realpath } from "node:fs/promises";
 import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
 
-import type { TraceSourceKind } from "@intenttrace/schema";
+import type { ImportSourceKind } from "@intenttrace/schema";
+import { discoverSessionCandidates } from "@intenttrace/adapters";
 
 import type { ValidatedExplicitPath } from "./path-policy.js";
 
 const TEXT_SESSION_EXTENSIONS = new Set([".jsonl", ".ndjson"]);
 
-export interface SessionFileCandidate {
+export interface SessionFilePart {
   id: string;
   filePath: string;
   relativePath: string;
@@ -17,6 +18,16 @@ export interface SessionFileCandidate {
   modifiedAt: string;
   modifiedAtMs: number;
   fileIdentity: string;
+}
+
+export interface SessionFileCandidate {
+  id: string;
+  internalCandidateId: string;
+  logicalRootIdentity: string;
+  parts: SessionFilePart[];
+  byteLength: number;
+  modifiedAt: string;
+  modifiedAtMs: number;
   normalizationIdentity: string;
 }
 
@@ -45,7 +56,7 @@ function portableRelativePath(root: ValidatedExplicitPath, filePath: string): st
  * intentionally contain neither an absolute path nor a provider-native session ID.
  */
 export function sessionCatalogId(
-  source: TraceSourceKind,
+  source: ImportSourceKind,
   authorizedRoot: string,
   relativePath: string,
   byteLength: number,
@@ -71,7 +82,7 @@ export function sessionCatalogId(
 }
 
 async function walkSessionFiles(
-  source: TraceSourceKind,
+  source: ImportSourceKind,
   directory: string,
   onUnreadable: () => void,
 ): Promise<string[]> {
@@ -112,7 +123,7 @@ async function walkSessionFiles(
 }
 
 export async function discoverSessionFiles(input: {
-  source: TraceSourceKind;
+  source: ImportSourceKind;
   root: ValidatedExplicitPath;
   limit: number;
   newestFirst: boolean;
@@ -127,10 +138,7 @@ export async function discoverSessionFiles(input: {
           unreadableDirectories += 1;
         });
 
-  const described: Array<SessionFileCandidate | null> = Array.from(
-    { length: files.length },
-    () => null,
-  );
+  const described: Array<SessionFilePart | null> = Array.from({ length: files.length }, () => null);
   let cursor = 0;
   const workers = Array.from({ length: Math.min(32, files.length) }, async () => {
     while (cursor < files.length) {
@@ -171,7 +179,6 @@ export async function discoverSessionFiles(input: {
           modifiedAt: info.mtime.toISOString(),
           modifiedAtMs: info.mtimeMs,
           fileIdentity: `${info.dev}:${info.ino}`,
-          normalizationIdentity: normalizationIdentity(resolvedFile),
         };
       } catch {
         rejectedFiles += 1;
@@ -180,29 +187,85 @@ export async function discoverSessionFiles(input: {
   });
   await Promise.all(workers);
 
-  const allCandidates = described.filter(
-    (candidate): candidate is SessionFileCandidate => candidate !== null,
-  );
-  const byId = new Map(allCandidates.map((candidate) => [candidate.id, candidate]));
+  const fileParts = described.filter((part): part is SessionFilePart => part !== null);
+  const discoveryParts = [];
+  for (const part of fileParts) {
+    const handle = await open(part.filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    try {
+      const before = await handle.stat();
+      if (
+        !before.isFile() ||
+        `${before.dev}:${before.ino}` !== part.fileIdentity ||
+        before.size !== part.byteLength ||
+        Math.trunc(before.mtimeMs) !== Math.trunc(part.modifiedAtMs)
+      ) {
+        throw new Error("Session changed after discovery; refresh the catalog");
+      }
+      const bytes = await handle.readFile();
+      const after = await handle.stat();
+      if (
+        `${after.dev}:${after.ino}` !== part.fileIdentity ||
+        after.size !== part.byteLength ||
+        Math.trunc(after.mtimeMs) !== Math.trunc(part.modifiedAtMs)
+      ) {
+        throw new Error("Session changed after discovery; refresh the catalog");
+      }
+      discoveryParts.push({
+        clientRef: part.id,
+        path: part.relativePath,
+        byteLength: part.byteLength,
+        modifiedAt: part.modifiedAt,
+        bytes,
+        complete: true,
+      });
+    } finally {
+      await handle.close();
+    }
+  }
+  const grouped = await discoverSessionCandidates(input.source, discoveryParts, 50);
+  const byPartId = new Map(fileParts.map((part) => [part.id, part]));
+  const candidates = grouped.map((candidate) => {
+    const parts = candidate.partRefs.map((ref) => byPartId.get(ref)!);
+    const byteLength = parts.reduce((total, part) => total + part.byteLength, 0);
+    const modifiedAtMs = Math.max(...parts.map((part) => part.modifiedAtMs));
+    const publicId = sessionCatalogId(
+      input.source,
+      input.root.realPath,
+      parts.map((part) => part.relativePath).sort().join("\0"),
+      byteLength,
+      modifiedAtMs,
+      parts.map((part) => part.fileIdentity).sort().join("\0"),
+    );
+    return {
+      id: publicId,
+      internalCandidateId: candidate.candidateId,
+      logicalRootIdentity: candidate.rootIdentity,
+      parts,
+      byteLength,
+      modifiedAt: new Date(modifiedAtMs).toISOString(),
+      modifiedAtMs,
+      normalizationIdentity: `bundle-${publicId}`,
+    };
+  });
+  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
   const missingSessionIds = input.selectedSessionIds
     ? [...input.selectedSessionIds].filter((id) => !byId.has(id)).sort()
     : [];
   const selected = input.selectedSessionIds
-    ? allCandidates.filter((candidate) => input.selectedSessionIds!.has(candidate.id))
-    : allCandidates;
+    ? candidates.filter((candidate) => input.selectedSessionIds!.has(candidate.id))
+    : candidates;
   const ordered = selected.sort((left, right) =>
     input.newestFirst
-      ? right.modifiedAtMs - left.modifiedAtMs ||
-        left.relativePath.localeCompare(right.relativePath)
-      : left.relativePath.localeCompare(right.relativePath),
+      ? right.modifiedAtMs - left.modifiedAtMs || left.id.localeCompare(right.id)
+      : left.parts[0]!.relativePath.localeCompare(right.parts[0]!.relativePath),
   );
 
   return {
     candidates: ordered.slice(0, input.limit),
     matchedFiles: files.length,
-    skippedByLimit: Math.max(0, ordered.length - input.limit),
     unreadableDirectories,
     rejectedFiles,
+    skippedByLimit: Math.max(0, candidates.length - input.limit),
     missingSessionIds,
   };
 }

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { formatCollectorFatalError, HELP_TEXT, runCollector } from "../src/cli.js";
+import { discoverSessionFiles } from "../src/session-discovery.js";
 import { validateExplicitPath } from "../src/path-policy.js";
 
 const temporaryDirectories: string[] = [];
@@ -625,5 +626,36 @@ describe("collector path boundary", () => {
     await runCollector(["follow", "--source", "codex", "--path", path, "--once"], dependencies);
     expect(outputs.some((line) => line.includes('"truncated":true'))).toBe(true);
     expect(outputs.some((line) => line.includes('"rotated":true'))).toBe(true);
+  });
+
+  it("groups Claude root and sidecars into one collector candidate", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "intenttrace-collector-"));
+    temporaryDirectories.push(directory);
+    await mkdir(join(directory, "subagents"));
+    await writeFile(join(directory, "root.jsonl"), '{"type":"user","sessionId":"root"}\n');
+    await writeFile(join(directory, "subagents", "agent-child.jsonl"), '{"type":"assistant","sessionId":"root","agentId":"child"}\n');
+    await writeFile(join(directory, "subagents", "agent-child.meta.json"), '{"sessionId":"root"}');
+    const root = await validateExplicitPath(directory);
+    const discovered = await discoverSessionFiles({ source: "claude", root, limit: 50, newestFirst: false });
+    expect(discovered.candidates).toHaveLength(1);
+    expect(discovered.candidates[0]?.parts.map((part) => part.relativePath)).toEqual([
+      "root.jsonl",
+      "subagents/agent-child.jsonl",
+      "subagents/agent-child.meta.json",
+    ]);
+  });
+
+  it("groups OpenCode database and WAL into one collector candidate", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "intenttrace-collector-"));
+    temporaryDirectories.push(directory);
+    await writeFile(join(directory, "opencode.db"), "db");
+    await writeFile(join(directory, "opencode.db-wal"), "wal");
+    const root = await validateExplicitPath(directory);
+    const discovered = await discoverSessionFiles({ source: "opencode", root, limit: 50, newestFirst: false });
+    expect(discovered.candidates).toHaveLength(1);
+    expect(discovered.candidates[0]?.parts.map((part) => part.relativePath)).toEqual([
+      "opencode.db",
+      "opencode.db-wal",
+    ]);
   });
 });

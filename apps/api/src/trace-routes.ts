@@ -5,8 +5,10 @@ import {
   aggregateTopologyCapabilities,
   buildCompletionMarker,
   classifySessionFailure,
+  computeSessionCandidateId,
   detectSourceKind,
   discoverSessionCandidates,
+  logicalSessionRootIdentity,
   OtlpHttpJsonAdapter,
   prepareSessionParts,
   redactCatalogEntry,
@@ -155,14 +157,7 @@ function bundleSourceIdentity(parts: readonly { path: string; bytes: Uint8Array 
 }
 
 function sessionCandidateId(source: TraceSourceKind, rootIdentity: string, paths: readonly string[]): string {
-  const hash = createHash("sha256")
-    .update("intenttrace-session-candidate-v2")
-    .update("\0")
-    .update(source)
-    .update("\0")
-    .update(rootIdentity);
-  for (const path of [...paths].sort()) hash.update("\0").update(path);
-  return hash.digest("hex").slice(0, 24);
+  return computeSessionCandidateId(source, rootIdentity, paths);
 }
 
 interface ImportCandidate {
@@ -182,7 +177,7 @@ async function discoverCandidates(
 ): Promise<ImportCandidate[]> {
   const detected = sourceHint === "auto"
     ? await Promise.all(
-        parts.map(async (part) => ({
+        parts.slice(0, 50).map(async (part) => ({
           part,
           source: await detectSourceKind({
             parts: [{ path: part.path, bytes: part.bytes }],
@@ -218,10 +213,17 @@ async function discoverCandidates(
           byteLength: selectedParts.reduce((total, part) => total + part.bytes.byteLength, 0),
           modifiedAt: selectedParts.map((part) => part.modifiedAt).sort().at(-1)!,
         });
-        for (const prepared of bundles) {
+        for (const [bundleIndex, prepared] of bundles.entries()) {
           candidates.push({
-            clientRef: candidate.clientRef,
-            candidateId: sessionCandidateId(source, prepared.events[0]!.event.traceId, adapterParts.map((part) => part.path)),
+            clientRef:
+              bundles.length === 1
+                ? candidate.clientRef
+                : `${candidate.clientRef}:logical-${bundleIndex + 1}`,
+            candidateId: sessionCandidateId(
+              source,
+              logicalSessionRootIdentity(candidate.rootIdentity, bundleIndex, bundles.length),
+              adapterParts.map((part) => part.path),
+            ),
             partRefs: candidate.partRefs,
             source,
             prepared,
@@ -244,7 +246,7 @@ async function discoverCandidates(
       }
     }
   }
-  return candidates.slice(0, 50);
+  return candidates;
 }
 
 async function persistPreparedBundle(
@@ -381,7 +383,7 @@ export async function registerTraceRoutes(
       bodyLimit: uploadMaxBytes,
       schema: {
         operationId: "inspectImportCandidates",
-        summary: `Inspect session bundle metadata or ${SESSION_BUNDLE_MEDIA_TYPE} bytes`,
+        summary: `Inspect candidate metadata or ${SESSION_BUNDLE_MEDIA_TYPE}`,
         response: { 200: SessionUploadCandidateListSchema },
       },
     },
@@ -402,20 +404,31 @@ export async function registerTraceRoutes(
           return problem(reply, request, 400, "invalid_session_bundle", "Invalid session bundle frame");
         }
       } else {
-        const body = SessionUploadCandidateRequestSchema.parse(request.body);
+        const parsedBody = SessionUploadCandidateRequestSchema.safeParse(request.body);
+        if (!parsedBody.success) {
+          return problem(reply, request, 400, "validation_failed", "Invalid candidate metadata request");
+        }
+        const body = parsedBody.data;
         includePreviews = body.includePreviews;
         candidates = await discoverCandidates(
           "auto",
-          body.parts.map((part) => ({
-            clientRef: part.clientRef,
-            path: part.path,
-            bytes:
+          body.parts.map((part) => {
+            let bytes =
               part.headBase64 === undefined
                 ? Buffer.alloc(0)
-                : Buffer.from(part.headBase64, "base64"),
-            modifiedAt: part.modifiedAt,
-            complete: part.complete,
-          })),
+                : Buffer.from(part.headBase64, "base64");
+            if (!part.complete) {
+              const cut = bytes.lastIndexOf(0x0a);
+              bytes = cut >= 0 ? bytes.subarray(0, cut + 1) : Buffer.alloc(0);
+            }
+            return {
+              clientRef: part.clientRef,
+              path: part.path,
+              bytes,
+              modifiedAt: part.modifiedAt,
+              complete: part.complete,
+            };
+          }),
         );
       }
       const traceIds = [

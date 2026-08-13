@@ -15,6 +15,7 @@ import {
   SessionImportBatchOutcomeSchema,
   SessionImportOutcomeSchema,
   SessionImportSummarySchema,
+  type ImportSourceKind,
   type IngestResult,
   type RawTraceEventInput,
   type TraceSourceKind,
@@ -97,10 +98,9 @@ function isLoopbackHostname(hostname: string): boolean {
     ipv4 && ipv4.slice(1).every((part) => Number(part) <= 255) && Number(ipv4[1]) === 127,
   );
 }
-
-function parseSource(value: string): TraceSourceKind {
+function parseSource(value: string): ImportSourceKind {
   if (["jsonl", "otlp", "codex", "claude", "opencode", "omp", "grok"].includes(value)) {
-    return value as TraceSourceKind;
+    return value as ImportSourceKind;
   }
   throw new Error(
     "Unsupported source; expected jsonl, otlp, codex, claude, opencode, omp, or grok",
@@ -183,34 +183,38 @@ function collectorCandidateId(source: TraceSourceKind, prepared: PreparedSession
     .update("\0")
     .update(source)
     .update("\0")
-    .update(prepared.events[0]!.traceId)
+    .update(prepared.candidate.logicalRootIdentity)
     .update("\0")
-    .update(prepared.candidate.relativePath)
+    .update(prepared.parts.map((part) => part.path).sort().join("\0"))
     .digest("hex")
     .slice(0, 24);
 }
 
 function collectorFrame(prepared: PreparedSession, source: TraceSourceKind, candidateId: string): Blob {
+  const ordered = [...prepared.parts].sort((left, right) => left.path.localeCompare(right.path));
+  let offset = 0;
   const manifest = {
     protocolVersion: 1,
     source,
     candidateIds: [candidateId],
-    parts: [
-      {
-        clientRef: prepared.candidate.id,
-        path: prepared.candidate.relativePath,
-        offset: 0,
-        byteLength: prepared.bytes.byteLength,
-        modifiedAt: prepared.candidate.modifiedAt,
-      },
-    ],
+    parts: ordered.map((part) => {
+      const entry = {
+        clientRef: part.clientRef,
+        path: part.path,
+        offset,
+        byteLength: part.bytes.byteLength,
+        modifiedAt: part.modifiedAt,
+      };
+      offset += part.bytes.byteLength;
+      return entry;
+    }),
   };
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
   const header = new ArrayBuffer(8);
   const headerBytes = new Uint8Array(header);
   headerBytes.set(new TextEncoder().encode("ITB1"));
   new DataView(header).setUint32(4, manifestBytes.byteLength);
-  return new Blob([headerBytes, manifestBytes, prepared.bytes], {
+  return new Blob([headerBytes, manifestBytes, ...ordered.map((part) => new Uint8Array(part.bytes))], {
     type: "application/vnd.intenttrace.session-bundle",
   });
 }
@@ -344,7 +348,7 @@ async function inspectCatalog(
       (entry): entry is PreparedSession["descriptor"] => entry !== undefined,
     ),
     failures: failures.sort((left, right) =>
-      left.candidate.relativePath.localeCompare(right.candidate.relativePath),
+      left.candidate.id.localeCompare(right.candidate.id),
     ),
   };
 }
@@ -386,7 +390,7 @@ function outputCatalog(input: {
 }
 
 async function discoverPath(
-  source: TraceSourceKind,
+  source: ImportSourceKind,
   path: ValidatedExplicitPath,
   limit: number,
   includePreviews: boolean,
@@ -415,7 +419,7 @@ async function discoverPath(
 }
 
 async function importPath(
-  source: TraceSourceKind,
+  source: ImportSourceKind,
   path: ValidatedExplicitPath,
   apiOrigin: string,
   options: ImportOptions,
@@ -530,7 +534,7 @@ async function importPath(
 }
 
 async function followPath(
-  source: TraceSourceKind,
+  source: ImportSourceKind,
   path: ValidatedExplicitPath,
   apiOrigin: string,
   stateRoot: string,
@@ -548,21 +552,31 @@ async function followPath(
     const rotated = checkpoint !== null && checkpoint.fileIdentity !== fileIdentity;
     const truncated = checkpoint !== null && info.size < checkpoint.byteOffset;
     if (!checkpoint || rotated || truncated || info.size > checkpoint.byteOffset) {
-      const candidate: SessionFileCandidate = {
-        id: sessionCatalogId(
-          source,
-          path.realPath,
-          ".",
-          info.size,
-          info.mtimeMs,
-          `${info.dev}:${info.ino}`,
-        ),
+      const publicId = sessionCatalogId(
+        source,
+        path.realPath,
+        ".",
+        info.size,
+        info.mtimeMs,
+        `${info.dev}:${info.ino}`,
+      );
+      const part = {
+        id: publicId,
         filePath: path.realPath,
         relativePath: ".",
         byteLength: info.size,
         modifiedAt: info.mtime.toISOString(),
         modifiedAtMs: info.mtimeMs,
         fileIdentity: `${info.dev}:${info.ino}`,
+      };
+      const candidate: SessionFileCandidate = {
+        id: publicId,
+        internalCandidateId: publicId,
+        logicalRootIdentity: ".",
+        parts: [part],
+        byteLength: info.size,
+        modifiedAt: part.modifiedAt,
+        modifiedAtMs: info.mtimeMs,
         normalizationIdentity: basename(path.realPath)
           .replace(/[^A-Za-z0-9_.:-]/gu, "-")
           .slice(0, 128),

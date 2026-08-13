@@ -9,6 +9,7 @@ import {
   ClaudeSessionAdapter,
   CodexSessionAdapter,
   detectSourceKind,
+  computeSessionCandidateId,
   discoverSessionCandidates,
   MalformedAdapterInputError,
   OtlpHttpJsonAdapter,
@@ -350,5 +351,41 @@ describe("session candidate discovery", () => {
       failureCode: "preflight_failed",
       partRefs: ["root.jsonl"],
     });
+  });
+
+  it("derives the same candidate ID for success and preflight failure", async () => {
+    const paths = ["root.jsonl", "root/child.jsonl"];
+    const expected = computeSessionCandidateId("omp", "root", paths);
+    const success = await discoverSessionCandidates("omp", [
+      part("root.jsonl", '{"id":"root"}\n'),
+      part("root/child.jsonl", '{"id":"child"}\n'),
+    ]);
+    const failure = await discoverSessionCandidates("omp", [
+      part("root.jsonl", '{"id":"root","details":{"progress":[{"id":"child"}]}}\n'),
+    ]);
+    expect(success[0]?.candidateId).toBe(expected);
+    expect(failure[0]?.candidateId).toBe(computeSessionCandidateId("omp", "root", ["root.jsonl"]));
+  });
+
+  it("caps candidate roots before preparation while preserving companions", async () => {
+    const candidates = await discoverSessionCandidates(
+      "jsonl",
+      Array.from({ length: 51 }, (_, index) => part(`root-${index}.jsonl`, "{}\n")),
+      50,
+    );
+    expect(candidates).toHaveLength(50);
+  });
+
+  it("does not attach unrelated Claude sidecars to every root", async () => {
+    const candidates = await discoverSessionCandidates("claude", [
+      part("a.jsonl", '{"type":"user","sessionId":"a"}\n'),
+      part("b.jsonl", '{"type":"user","sessionId":"b"}\n'),
+      part("subagents/agent-a.meta.json", '{"sessionId":"a"}'),
+      part("subagents/agent-b.meta.json", '{"sessionId":"b"}'),
+    ]);
+    expect(candidates.map((candidate) => candidate.partRefs)).toEqual([
+      ["a.jsonl", "subagents/agent-a.meta.json"],
+      ["b.jsonl", "subagents/agent-b.meta.json"],
+    ]);
   });
 });

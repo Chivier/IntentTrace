@@ -221,6 +221,14 @@ export const SessionUploadCandidateRequestSchema = z
     if (decodedBytes > 4 * 1024 * 1024) {
       context.addIssue({ code: "custom", message: "decoded heads exceed 4 MiB", path: ["parts"] });
     }
+    const ordinaryTextRoots = request.parts.filter((part) =>
+      /\.(?:jsonl|ndjson|json)$/iu.test(part.path) &&
+      !part.path.includes("/subagents/") &&
+      !part.path.endsWith(".meta.json"),
+    ).length;
+    if (ordinaryTextRoots > 50) {
+      context.addIssue({ code: "custom", message: "candidate roots exceed 50", path: ["parts"] });
+    }
   });
 export type SessionUploadCandidateRequest = z.infer<typeof SessionUploadCandidateRequestSchema>;
 

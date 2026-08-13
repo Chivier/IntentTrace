@@ -127,6 +127,14 @@ function candidateId(source: string, rootIdentity: string, paths: readonly strin
   return hash.digest("hex").slice(0, 24);
 }
 
+function rawFrame(manifest: Record<string, unknown>, payload: Buffer): Buffer {
+  const manifestBytes = Buffer.from(JSON.stringify(manifest));
+  const header = Buffer.alloc(8);
+  header.write("ITB1", 0, "ascii");
+  header.writeUInt32BE(manifestBytes.byteLength, 4);
+  return Buffer.concat([header, manifestBytes, payload]);
+}
+
 async function inspect(
   app: ReturnType<typeof buildApp>,
   bytes: Buffer,
@@ -328,5 +336,100 @@ describe("browser session import routes", () => {
     });
     expect(response.statusCode).toBe(400);
     expect(response.json().code).toBe("invalid_session_bundle");
+  });
+
+  it.each([
+    [
+      "duplicate clientRef",
+      [
+        { clientRef: "same", path: "a.jsonl", offset: 0, byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+        { clientRef: "same", path: "b.jsonl", offset: 1, byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+      ],
+      Buffer.from("ab"),
+    ],
+    [
+      "manifest order differs from offsets",
+      [
+        { clientRef: "b", path: "b.jsonl", offset: 1, byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+        { clientRef: "a", path: "a.jsonl", offset: 0, byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+      ],
+      Buffer.from("ab"),
+    ],
+    [
+      "zero-length part",
+      [{ clientRef: "a", path: "a.jsonl", offset: 0, byteLength: 0, modifiedAt: "2026-08-01T00:00:00.000Z" }],
+      Buffer.alloc(0),
+    ],
+  ] as const)("rejects %s in framed manifests", async (_name, parts, payload) => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: rawFrame({ protocolVersion: 1, source: "codex", candidateIds: [], parts }, payload),
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("invalid_session_bundle");
+  });
+
+  it("requires empty inspection IDs and non-empty import IDs", async () => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const bytes = await codexFixture();
+    const inspectResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "codex", ["a".repeat(24)]),
+    });
+    expect(inspectResponse.statusCode).toBe(400);
+    const importResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/sessions",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "codex", []),
+    });
+    expect(importResponse.statusCode).toBe(400);
+  });
+
+  it("returns validation_failed for malformed JSON candidate metadata", async () => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      headers: { "content-type": "application/json" },
+      payload: { protocolVersion: 2, includePreviews: false, parts: [] },
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("validation_failed");
+  });
+
+  it("truncates incomplete text heads to the last newline", async () => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const complete = await codexFixture();
+    const cut = Buffer.concat([complete, Buffer.from('{"type":"event_msg","payload":')]);
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      payload: {
+        protocolVersion: 2,
+        includePreviews: false,
+        parts: [
+          {
+            clientRef: "c1",
+            path: "valid.jsonl",
+            byteLength: cut.byteLength + 100,
+            modifiedAt: "2026-08-01T00:00:00.000Z",
+            headBase64: cut.toString("base64"),
+            complete: false,
+          },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().candidates[0]).toMatchObject({ source: "codex", partialHead: true });
   });
 });

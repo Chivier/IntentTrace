@@ -11,7 +11,7 @@ export type { PreparedSessionWarning };
 export interface PreparedSession {
   candidate: SessionFileCandidate;
   contentSha256: string;
-  bytes: Uint8Array;
+  parts: Array<{ path: string; bytes: Uint8Array; clientRef: string; modifiedAt: string }>;
   events: RawTraceEventInput[];
   warnings: PreparedSessionWarning[];
   descriptor: SessionDescriptor;
@@ -32,33 +32,36 @@ export async function prepareSession(
   if (candidate.byteLength > maxFileBytes) {
     throw new Error("Session exceeds the configured file-size limit");
   }
-  const handle = await open(candidate.filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
-  let bytes: Uint8Array;
-  try {
-    const info = await handle.stat();
-    if (
-      !info.isFile() ||
-      `${info.dev}:${info.ino}` !== candidate.fileIdentity ||
-      info.size !== candidate.byteLength ||
-      Math.trunc(info.mtimeMs) !== Math.trunc(candidate.modifiedAtMs)
-    ) {
-      throw new Error("Session changed after discovery; refresh the catalog");
+  const parts = [];
+  for (const part of candidate.parts) {
+    const handle = await open(part.filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    try {
+      const info = await handle.stat();
+      if (
+        !info.isFile() ||
+        `${info.dev}:${info.ino}` !== part.fileIdentity ||
+        info.size !== part.byteLength ||
+        Math.trunc(info.mtimeMs) !== Math.trunc(part.modifiedAtMs)
+      ) {
+        throw new Error("Session changed after discovery; refresh the catalog");
+      }
+      const bytes = await handle.readFile();
+      const afterRead = await handle.stat();
+      if (
+        `${afterRead.dev}:${afterRead.ino}` !== part.fileIdentity ||
+        afterRead.size !== part.byteLength ||
+        Math.trunc(afterRead.mtimeMs) !== Math.trunc(part.modifiedAtMs)
+      ) {
+        throw new Error("Session changed after discovery; refresh the catalog");
+      }
+      parts.push({ path: part.relativePath, bytes, clientRef: part.id, modifiedAt: part.modifiedAt });
+    } finally {
+      await handle.close();
     }
-    bytes = await handle.readFile();
-    const afterRead = await handle.stat();
-    if (
-      `${afterRead.dev}:${afterRead.ino}` !== candidate.fileIdentity ||
-      afterRead.size !== candidate.byteLength ||
-      Math.trunc(afterRead.mtimeMs) !== Math.trunc(candidate.modifiedAtMs)
-    ) {
-      throw new Error("Session changed after discovery; refresh the catalog");
-    }
-  } finally {
-    await handle.close();
   }
   const prepared = await prepareSessionParts(
     source,
-    [{ path: candidate.relativePath, bytes }],
+    parts,
     candidate.normalizationIdentity,
     {
       id: candidate.id,
@@ -70,7 +73,7 @@ export async function prepareSession(
   const trace = prepared[0]!;
   return {
     candidate,
-    bytes,
+    parts,
     contentSha256: trace.contentSha256,
     events: trace.events.map(({ event }) => event),
     warnings: trace.warnings,

@@ -7,8 +7,8 @@ export const HEAD_BYTES = 64 * 1024;
 export const UPLOAD_CONCURRENCY = 2;
 export const ALL_SOURCES = "__all__";
 
-const FOLDER_EXTENSIONS = [".jsonl", ".ndjson"];
-const FILE_EXTENSIONS = [".jsonl", ".ndjson", ".json"];
+const FOLDER_EXTENSIONS = [".jsonl", ".ndjson", ".meta.json", ".db", "-wal", "-shm"];
+const FILE_EXTENSIONS = [".jsonl", ".ndjson", ".json", ".db", "-wal", "-shm"];
 
 export type ImportRowStatus =
   "inspecting" | "ready" | "queued" | "uploading" | "imported" | "failed";
@@ -68,8 +68,14 @@ export interface SelectedBundleGroup {
   rowRefs: string[];
 }
 
-export function groupSelectedBundles(rows: readonly ImportRow[]): SelectedBundleGroup[] {
+export interface BundleGroupingResult {
+  groups: SelectedBundleGroup[];
+  failures: Array<{ rowRefs: string[]; message: string }>;
+}
+
+export function groupSelectedBundles(rows: readonly ImportRow[]): BundleGroupingResult {
   const groups = new Map<string, SelectedBundleGroup>();
+  const failures: BundleGroupingResult["failures"] = [];
   const byRef = new Map(rows.map((row) => [row.clientRef, row]));
   for (const row of rows) {
     if (!row.candidateId) continue;
@@ -81,9 +87,13 @@ export function groupSelectedBundles(rows: readonly ImportRow[]): SelectedBundle
       existing.rowRefs.push(row.clientRef);
       continue;
     }
+    const missing = refs.find((ref) => !byRef.has(ref));
+    if (missing) {
+      failures.push({ rowRefs: [row.clientRef], message: `Missing selected part ${missing}` });
+      continue;
+    }
     const parts = refs.map((ref) => {
-      const part = byRef.get(ref);
-      if (!part) throw new Error(`Missing selected part ${ref}`);
+      const part = byRef.get(ref)!;
       return { clientRef: ref, path: part.path, file: part.file };
     });
     groups.set(key, {
@@ -94,11 +104,62 @@ export function groupSelectedBundles(rows: readonly ImportRow[]): SelectedBundle
       rowRefs: [row.clientRef],
     });
   }
-  return [...groups.values()].map((group) => ({
-    ...group,
-    candidateIds: [...new Set(group.candidateIds)].sort(),
-    rowRefs: [...new Set(group.rowRefs)].sort(),
-  }));
+  return {
+    groups: [...groups.values()].map((group) => ({
+      ...group,
+      candidateIds: [...new Set(group.candidateIds)].sort(),
+      rowRefs: [...new Set(group.rowRefs)].sort(),
+    })),
+    failures,
+  };
+}
+
+interface CandidateResponseRow {
+  clientRef: string;
+  candidateId: string;
+  partRefs: string[];
+  source: TraceSourceKind | null;
+  title: string | null;
+  projectHint: string | null;
+  firstPromptPreview: string | null;
+  lastPromptPreview: string | null;
+  partialHead: boolean;
+  traceId: string | null;
+  imported: boolean;
+  failureCode: string | null;
+  importedEventCount: string | null;
+  failureMessage: string | null;
+}
+
+export function candidateRowsFromResponse(
+  partRows: readonly ImportRow[],
+  candidates: readonly CandidateResponseRow[],
+): ImportRow[] {
+  const byPart = new Map(partRows.map((row) => [row.clientRef, row]));
+  return candidates.flatMap((candidate) => {
+    const sourceRef = candidate.partRefs[0];
+    const source = sourceRef ? byPart.get(sourceRef) : undefined;
+    if (!source) return [];
+    return [{
+      ...source,
+      clientRef: candidate.clientRef,
+      key: `${source.key}\0${candidate.candidateId}`,
+      status: candidate.failureCode ? "failed" : "ready",
+      candidateId: candidate.candidateId,
+      partRefs: [...candidate.partRefs],
+      source: candidate.source,
+      title: candidate.title,
+      projectHint: candidate.projectHint,
+      firstPromptPreview: candidate.firstPromptPreview,
+      lastPromptPreview: candidate.lastPromptPreview,
+      partialHead: candidate.partialHead,
+      imported: candidate.imported,
+      traceId: candidate.traceId,
+      failureCode: candidate.failureCode,
+      failureMessage: candidate.failureMessage,
+      failureStage: candidate.failureCode ? "inspect" : null,
+    }];
+  });
 }
 
 export async function buildSessionBundleFrame(

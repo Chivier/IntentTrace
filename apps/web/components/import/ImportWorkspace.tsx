@@ -12,6 +12,7 @@ import {
   CANDIDATE_WINDOW,
   HEAD_BYTES,
   UPLOAD_CONCURRENCY,
+  candidateRowsFromResponse,
   computeEmptyState,
   dedupeKey,
   fileRelativePath,
@@ -80,30 +81,11 @@ export function ImportWorkspace() {
         includePreviews,
         parts,
       });
-      const byRef = new Map(result.candidates.map((entry) => [entry.clientRef, entry]));
-      setRows((previous) =>
-        previous.map((row) => {
-          const found = byRef.get(row.clientRef);
-          if (!found) return row;
-          return {
-            ...row,
-            status: found.failureCode ? "failed" : "ready",
-            candidateId: found.candidateId,
-            partRefs: [...found.partRefs],
-            source: found.source,
-            title: found.title,
-            projectHint: found.projectHint,
-            firstPromptPreview: found.firstPromptPreview,
-            lastPromptPreview: found.lastPromptPreview,
-            partialHead: found.partialHead,
-            imported: found.imported,
-            traceId: found.traceId,
-            failureCode: found.failureCode,
-            failureMessage: found.failureMessage,
-            failureStage: found.failureCode ? "inspect" : null,
-          };
-        }),
-      );
+      setRows((previous) => {
+        const targetRefs = new Set(target.map((row) => row.clientRef));
+        const retained = previous.filter((row) => !targetRefs.has(row.clientRef));
+        return [...retained, ...candidateRowsFromResponse(target, result.candidates)];
+      });
     } catch (error) {
       setInspectError(error instanceof Error ? error.message : String(error));
       setRows((previous) =>
@@ -174,7 +156,24 @@ export function ImportWorkspace() {
           : row,
       ),
     );
-    const groups = groupSelectedBundles(target);
+    const grouped = groupSelectedBundles(target);
+    const groups = grouped.groups;
+    for (const failure of grouped.failures) {
+      const refs = new Set(failure.rowRefs);
+      setRows((previous) =>
+        previous.map((entry) =>
+          refs.has(entry.clientRef)
+            ? {
+                ...entry,
+                status: "failed",
+                failureCode: "missing_companion",
+                failureMessage: failure.message,
+                failureStage: "upload",
+              }
+            : entry,
+        ),
+      );
+    }
     let cursor = 0;
     const worker = async (): Promise<void> => {
       while (cursor < groups.length) {

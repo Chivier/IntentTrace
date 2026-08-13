@@ -749,8 +749,7 @@ paths:
   /api/v1/imports/candidates:
     post:
       operationId: inspectImportCandidates
-      summary: Inspect session bundle metadata or
-        application/vnd.intenttrace.session-bundle bytes
+      summary: Inspect candidate metadata or application/vnd.intenttrace.session-bundle
       responses:
         "200":
           description: Default Response
