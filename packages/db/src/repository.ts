@@ -937,7 +937,7 @@ export class IntentTraceRepository {
           where trace_id = ${job.trace_id}
             and ingest_seq > ${chunkAfter}
             and ingest_seq <= ${String(job.event_watermark)}
-        ), claim_evidence as (
+        ), claim_facts as (
           select distinct ce.event_id as id
           from revision_node_members rnm
           join node_claims nc on nc.node_version_id = rnm.node_version_id
@@ -961,7 +961,7 @@ export class IntentTraceRepository {
         join (
           select id from current_chunk
           union
-          select id from claim_evidence
+          select id from claim_facts
           union
           select id from topology_prefix
         ) selected on selected.id = re.id
