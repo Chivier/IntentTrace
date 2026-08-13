@@ -14,13 +14,18 @@ const claudeSession = [
   "",
 ].join("\n");
 
+const candidateIdA = "a".repeat(24);
+const candidateIdB = "b".repeat(24);
+
 const candidates = {
   hidden: {
-    protocolVersion: 1,
+    protocolVersion: 2,
     alreadyImportedCount: 0,
     candidates: [
       {
         clientRef: "c1",
+        candidateId: candidateIdA,
+        partRefs: ["c1"],
         source: "codex",
         title: "Codex session",
         projectHint: null,
@@ -35,6 +40,8 @@ const candidates = {
       },
       {
         clientRef: "c2",
+        candidateId: candidateIdB,
+        partRefs: ["c2"],
         source: "claude",
         title: "Claude session",
         projectHint: null,
@@ -50,11 +57,13 @@ const candidates = {
     ],
   },
   shown: {
-    protocolVersion: 1,
+    protocolVersion: 2,
     alreadyImportedCount: 0,
     candidates: [
       {
         clientRef: "c1",
+        candidateId: candidateIdA,
+        partRefs: ["c1"],
         source: "codex",
         title: "Codex · Fix the failing build",
         projectHint: null,
@@ -69,6 +78,8 @@ const candidates = {
       },
       {
         clientRef: "c2",
+        candidateId: candidateIdB,
+        partRefs: ["c2"],
         source: "claude",
         title: "Claude · Explain the crash",
         projectHint: null,
@@ -85,6 +96,17 @@ const candidates = {
   },
 };
 
+function frameCandidateIds(bytes: Buffer | null): string[] {
+  if (!bytes || bytes.byteLength < 8 || bytes.toString("ascii", 0, 4) !== "ITB1") return [];
+  const manifestLength = bytes.readUInt32BE(4);
+  const manifest = JSON.parse(bytes.subarray(8, 8 + manifestLength).toString("utf8")) as {
+    candidateIds?: unknown;
+  };
+  return Array.isArray(manifest.candidateIds)
+    ? manifest.candidateIds.filter((id): id is string => typeof id === "string")
+    : [];
+}
+
 test("imports browser-selected sessions, gating previews and isolating failures", async ({
   page,
 }) => {
@@ -94,9 +116,9 @@ test("imports browser-selected sessions, gating previews and isolating failures"
     includePreviews = body.includePreviews;
     await route.fulfill({ json: includePreviews ? candidates.shown : candidates.hidden });
   });
-  await page.route("**/api/v1/imports/sessions**", async (route) => {
-    const url = new URL(route.request().url());
-    if (url.searchParams.get("fileName") === "beta.jsonl") {
+  await page.route("**/api/v1/imports/sessions", async (route) => {
+    const candidateIds = frameCandidateIds(route.request().postDataBuffer());
+    if (candidateIds.includes(candidateIdB)) {
       await route.fulfill({
         status: 422,
         contentType: "application/problem+json",
@@ -112,14 +134,19 @@ test("imports browser-selected sessions, gating previews and isolating failures"
     }
     await route.fulfill({
       json: {
-        protocolVersion: 1,
+        protocolVersion: 2,
         level: "result",
         command: "upload",
-        sessionId: "0123456789abcdef01234567",
-        traceId: traceIdA,
-        inserted: 3,
-        duplicates: 0,
-        warnings: 0,
+        results: [
+          {
+            candidateId: candidateIdA,
+            sessionId: "0123456789abcdef01234567",
+            traceId: traceIdA,
+            inserted: 3,
+            duplicates: 0,
+            warnings: 0,
+          },
+        ],
       },
     });
   });
