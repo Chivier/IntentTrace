@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
@@ -57,5 +57,23 @@ describe("recorded demo trace", () => {
     const blob = lines.join("\n");
     expect(blob).not.toMatch(/\/home\//u);
     expect(blob).not.toMatch(/"thinking"/u);
+  });
+});
+describe("topology fixture policy", () => {
+  it("rejects host paths, secrets, reasoning, and raw encrypted content in topology fixtures", () => {
+    const sources = ["codex", "claude", "opencode", "omp", "grok"];
+    for (const source of sources) {
+      const root = new URL(`../fixtures/${source}/topology/`, import.meta.url);
+      const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+        .map((file) => new URL(String(file), root))
+        .filter((file) => statSync(file).isFile());
+      for (const file of files) {
+        const text = readFileSync(file, "latin1");
+        expect(text).not.toMatch(/\/home\/|[A-Z]:\\/u);
+        expect(text).not.toMatch(/(?:api[_-]?key|authorization|secret|password)\s*[:=]/iu);
+        expect(text).not.toMatch(/"(?:thinking|reasoning|agent_thought_chunk|thinkingSignature)"\s*:/u);
+        expect(text).not.toMatch(/gAAAA[A-Za-z0-9_-]{8,}/u);
+      }
+    }
   });
 });
