@@ -9,8 +9,9 @@ import {
   type TraceSourceKind,
 } from "@intenttrace/schema";
 
+import { sessionBundleContentSha256 } from "./common.js";
 import { createAdapter } from "./registry.js";
-import { normalizeAdapterInput } from "./types.js";
+import { normalizeAdapterInput, type AdapterPart, type TraceAdapter } from "./types.js";
 
 export interface PreparedSessionWarning {
   code: string;
@@ -25,12 +26,27 @@ export interface SessionDescriptorMeta {
   modifiedAt: string;
 }
 
-export interface PreparedSessionBytes {
+export interface PreparedTraceEvent {
+  event: RawTraceEventInput;
+  artifactKeys: readonly string[];
+}
+
+export interface PreparedTraceArtifact {
+  key: string;
+  sourceEventId: string;
+  bytes: Uint8Array;
+  mediaType: string;
+}
+
+export interface PreparedTraceBundle {
   source: TraceSourceKind;
   contentSha256: string;
-  events: RawTraceEventInput[];
+  aggregateContentSha256: string;
+  events: PreparedTraceEvent[];
+  artifacts: PreparedTraceArtifact[];
   warnings: PreparedSessionWarning[];
   descriptor: SessionCatalogEntry;
+  completionMarker: RawTraceEventInput;
 }
 
 function promptPreview(event: RawTraceEventInput): string | null {
@@ -79,59 +95,88 @@ function latestActivity(events: readonly RawTraceEventInput[], fallback: string)
   return latestIso;
 }
 
-/**
- * Parse and validate the complete input before the caller sends its first raw
- * fact. This prevents a malformed tail from leaving a partially imported trace.
- */
-export async function prepareSessionBytes(
+/** Parse and fully preflight every logical trace before the caller writes one fact. */
+export async function prepareSessionParts(
   source: TraceSourceKind,
-  bytes: Uint8Array,
+  parts: readonly AdapterPart[],
   sourceIdentity: string,
   meta: SessionDescriptorMeta,
-): Promise<PreparedSessionBytes> {
-  const adapter = createAdapter(source);
-  const events: RawTraceEventInput[] = [];
+  adapter: TraceAdapter = createAdapter(source),
+): Promise<PreparedTraceBundle[]> {
+  const input = normalizeAdapterInput({ parts, sourceIdentity });
+  const aggregateContentSha256 = sessionBundleContentSha256(input.parts);
+  const events: PreparedTraceEvent[] = [];
   const warnings: PreparedSessionWarning[] = [];
+  const artifacts = new Map<string, PreparedTraceArtifact>();
+  const duplicateArtifactKeys = new Set<string>();
 
-  for await (const record of adapter.parse(
-    normalizeAdapterInput({ parts: [{ path: ".", bytes }], sourceIdentity }),
-  )) {
+  for await (const record of adapter.parse(input)) {
     if (record.type === "warning") {
-      warnings.push({
-        code: record.code,
-        message: record.message,
-      });
+      warnings.push({ code: record.code, message: record.message });
       continue;
     }
     if (record.type === "event") {
-      events.push(RawTraceEventInputSchema.parse(record.event));
+      events.push({
+        event: RawTraceEventInputSchema.parse(record.event),
+        artifactKeys: [...new Set(record.artifactKeys ?? [])].sort(),
+      });
+      continue;
+    }
+    if (record.type === "artifact") {
+      if (artifacts.has(record.key)) duplicateArtifactKeys.add(record.key);
+      else artifacts.set(record.key, { ...record });
     }
   }
-  if (events.length === 0) {
-    throw new Error("Session contains no importable visible events");
-  }
+  if (events.length === 0) throw new Error("Session contains no importable visible events");
 
-  const prompts = events.map(promptPreview).filter((value): value is string => value !== null);
-  const title = events.find((event) => event.traceTitle)?.traceTitle ?? `${source} session`;
-  return {
-    source,
-    contentSha256: createHash("sha256").update(bytes).digest("hex"),
-    events,
-    warnings,
-    descriptor: SessionCatalogEntrySchema.parse({
-      id: meta.id,
+  const traceIds = [...new Set(events.map(({ event }) => event.traceId))].sort();
+  return traceIds.map((traceId, traceIndex) => {
+    const traceEvents = events.filter(({ event }) => event.traceId === traceId);
+    const referencedKeys = new Set(traceEvents.flatMap(({ artifactKeys }) => artifactKeys));
+    for (const key of referencedKeys) {
+      if (duplicateArtifactKeys.has(key)) throw new Error(`Duplicate artifact key: ${key}`);
+      if (!artifacts.has(key)) throw new Error(`Missing referenced artifact key: ${key}`);
+    }
+    const referencedArtifacts = [...referencedKeys]
+      .sort()
+      .map((key) => artifacts.get(key)!);
+    const traceHash = createHash("sha256")
+      .update("intenttrace-logical-trace-v1")
+      .update("\0")
+      .update(aggregateContentSha256)
+      .update("\0")
+      .update(traceId)
+      .digest("hex");
+    const rawEvents = traceEvents.map(({ event }) => event);
+    const prompts = rawEvents.map(promptPreview).filter((value): value is string => value !== null);
+    const title = rawEvents.find((event) => event.traceTitle)?.traceTitle ?? `${source} session`;
+    const descriptor = SessionCatalogEntrySchema.parse({
+      id:
+        traceIds.length === 1
+          ? meta.id
+          : uploadSessionKey(source, `${aggregateContentSha256}:${traceId}:${traceIndex}`),
       source,
       title,
-      projectHint: safeProjectHint(source, events),
+      projectHint: safeProjectHint(source, rawEvents),
       firstPromptPreview: prompts[0] ?? null,
       lastPromptPreview: prompts.at(-1) ?? null,
-      lastActivityAt: latestActivity(events, meta.modifiedAt),
+      lastActivityAt: latestActivity(rawEvents, meta.modifiedAt),
       byteLength: meta.byteLength,
-      eventCount: events.length,
+      eventCount: rawEvents.length,
       warningCount: warnings.length,
       modifiedAt: meta.modifiedAt,
-    }),
-  };
+    });
+    return {
+      source,
+      contentSha256: traceHash,
+      aggregateContentSha256,
+      events: traceEvents,
+      artifacts: referencedArtifacts,
+      warnings: [...warnings],
+      descriptor,
+      completionMarker: buildCompletionMarker(rawEvents.at(-1)!, traceHash),
+    };
+  });
 }
 
 /**

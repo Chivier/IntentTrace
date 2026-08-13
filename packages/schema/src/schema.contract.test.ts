@@ -9,8 +9,11 @@ import {
   SemanticEdgeVersionSchema,
   SemanticRevisionSchema,
   SessionCatalogSchema,
+  SessionImportBatchOutcomeSchema,
   SessionImportOutcomeSchema,
   SessionImportSummarySchema,
+  SessionUploadCandidateListSchema,
+  SessionUploadCandidateRequestSchema,
   TopologyCapabilitySchema,
   TopologyFidelitySchema,
   TraceSnapshotSchema,
@@ -332,6 +335,106 @@ describe("SessionCatalog contract", () => {
         missingSessionIds: [],
       }),
     ).toThrow();
+  });
+});
+
+describe("Session upload bundle contract", () => {
+  const part = {
+    clientRef: "p1",
+    path: "project/session.jsonl",
+    byteLength: 3,
+    modifiedAt: "2026-08-01T00:00:00.000Z",
+    headBase64: Buffer.from("abc").toString("base64"),
+    complete: true,
+  };
+
+  it("accepts protocol v2 metadata and bounded optional heads", () => {
+    expect(
+      SessionUploadCandidateRequestSchema.parse({
+        protocolVersion: 2,
+        includePreviews: false,
+        parts: [part],
+      }).parts,
+    ).toEqual([part]);
+    expect(
+      SessionUploadCandidateRequestSchema.safeParse({
+        protocolVersion: 1,
+        includePreviews: false,
+        parts: [part],
+      }).success,
+    ).toBe(false);
+    expect(
+      SessionUploadCandidateRequestSchema.safeParse({
+        protocolVersion: 2,
+        includePreviews: false,
+        parts: [{ ...part, headBase64: Buffer.alloc(64 * 1024 + 1).toString("base64") }],
+      }).success,
+    ).toBe(false);
+    expect(
+      SessionUploadCandidateRequestSchema.safeParse({
+        protocolVersion: 2,
+        includePreviews: false,
+        parts: Array.from({ length: 65 }, (_, index) => ({
+          ...part,
+          clientRef: `p${index}`,
+          path: `p${index}.jsonl`,
+          headBase64: Buffer.alloc(64 * 1024).toString("base64"),
+        })),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires opaque candidate IDs and explicit part references", () => {
+    const candidate = {
+      clientRef: "p1",
+      candidateId: "a".repeat(24),
+      partRefs: ["p1"],
+      source: "codex" as const,
+      title: "Codex session",
+      projectHint: null,
+      firstPromptPreview: null,
+      lastPromptPreview: null,
+      partialHead: false,
+      traceId: ids.trace,
+      imported: false,
+      importedEventCount: null,
+      failureCode: null,
+      failureMessage: null,
+    };
+    expect(
+      SessionUploadCandidateListSchema.parse({
+        protocolVersion: 2,
+        candidates: [candidate],
+        alreadyImportedCount: 0,
+      }).candidates[0]?.candidateId,
+    ).toBe("a".repeat(24));
+    expect(
+      SessionUploadCandidateListSchema.safeParse({
+        protocolVersion: 2,
+        candidates: [{ ...candidate, candidateId: "native-session-id" }],
+        alreadyImportedCount: 0,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts protocol v2 batch upload outcomes", () => {
+    expect(
+      SessionImportBatchOutcomeSchema.parse({
+        protocolVersion: 2,
+        level: "result",
+        command: "upload",
+        results: [
+          {
+            candidateId: "b".repeat(24),
+            sessionId: "c".repeat(24),
+            traceId: ids.trace,
+            inserted: 2,
+            duplicates: 0,
+            warnings: 1,
+          },
+        ],
+      }).results,
+    ).toHaveLength(1);
   });
 });
 

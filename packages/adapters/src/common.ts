@@ -22,6 +22,38 @@ export function stableUuid(namespace: string, value: string): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+function updateLength(hash: ReturnType<typeof createHash>, length: number): void {
+  const bytes = Buffer.allocUnsafe(8);
+  bytes.writeBigUInt64BE(BigInt(length));
+  hash.update(bytes);
+}
+
+/** Stable aggregate identity without concatenating complete session bytes. */
+export function sessionBundleContentSha256(parts: readonly { path: string; bytes: Uint8Array }[]): string {
+  const normalized = [...parts]
+    .map((part) => {
+      if (part.path.length === 0 || part.path.includes("\0") || part.path.includes("\\") || part.path.startsWith("/") || /^[A-Za-z]:/u.test(part.path)) {
+        throw new Error("Invalid session part path");
+      }
+      const segments = part.path.split("/");
+      if (segments.includes("..")) throw new Error("Invalid session part path");
+      return { path: segments.filter((segment) => segment !== "" && segment !== ".").join("/") || ".", bytes: part.bytes };
+    })
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const paths = new Set<string>();
+  const hash = createHash("sha256").update("intenttrace-session-bundle-v1").update("\0");
+  for (const part of normalized) {
+    if (paths.has(part.path)) throw new Error(`Duplicate session part path: ${part.path}`);
+    paths.add(part.path);
+    const pathBytes = new TextEncoder().encode(part.path);
+    updateLength(hash, pathBytes.byteLength);
+    hash.update(pathBytes);
+    updateLength(hash, part.bytes.byteLength);
+    hash.update(part.bytes);
+  }
+  return hash.digest("hex");
+}
+
 export function decodeAdapterBytes(bytes: Uint8Array): string {
   const decoded = bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes) : bytes;
   return new TextDecoder("utf-8", { fatal: true }).decode(decoded);

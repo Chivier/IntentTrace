@@ -11,6 +11,8 @@ import {
   detectSourceKind,
   MalformedAdapterInputError,
   OtlpHttpJsonAdapter,
+  prepareSessionParts,
+  sessionBundleContentSha256,
   UnsupportedAdapterVersionError,
   type AdapterRecord,
   type TraceAdapter,
@@ -179,5 +181,115 @@ describe("implemented trace adapters", () => {
         sourceIdentity: "fixture",
       }),
     ).resolves.toBeNull();
+  });
+});
+
+describe("session bundle preparation", () => {
+  const canonical = (traceId: string, sourceEventId: string) =>
+    Buffer.from(
+      `${JSON.stringify({
+        schemaVersion: "1.0.0",
+        workspaceId: "11111111-1111-4111-8111-111111111111",
+        projectId: "22222222-2222-4222-8222-222222222222",
+        traceId,
+        workspaceName: "Fixture",
+        projectName: "Bundle",
+        traceTitle: `Trace ${traceId.slice(0, 4)}`,
+        source: {
+          kind: "jsonl",
+          formatVersion: "1.0.0",
+          adapterVersion: "1.0.0",
+          sourceInstanceId: "bundle-fixture",
+          sourceEventId,
+        },
+        occurredAt: "2026-08-01T00:00:00.000Z",
+        kind: "user_message",
+        name: "Request",
+        status: "ok",
+        artifactRefs: [],
+        attributes: {},
+      })}\n`,
+    );
+
+  it("hashes normalized POSIX-sorted parts with the session domain", () => {
+    const hash = sessionBundleContentSha256([
+      { path: "z.jsonl", bytes: new Uint8Array([2]) },
+      { path: "a/./b.jsonl", bytes: new Uint8Array([1]) },
+    ]);
+    expect(hash).toBe(
+      sessionBundleContentSha256([
+        { path: "a/b.jsonl", bytes: new Uint8Array([1]) },
+        { path: "z.jsonl", bytes: new Uint8Array([2]) },
+      ]),
+    );
+    expect(hash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(sessionBundleContentSha256([{ path: "a/b.jsonl", bytes: new Uint8Array([2]) }])).not.toBe(hash);
+  });
+
+  it("returns one prepared bundle per logical trace", async () => {
+    const prepared = await prepareSessionParts(
+      "jsonl",
+      [
+        { path: "b.jsonl", bytes: canonical("bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", "b") },
+        { path: "a.jsonl", bytes: canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a") },
+      ],
+      "bundle-fixture",
+      {
+        id: "a".repeat(24),
+        byteLength: 2,
+        modifiedAt: "2026-08-01T00:00:00.000Z",
+      },
+    );
+    expect(prepared).toHaveLength(2);
+    expect(prepared.map((bundle) => bundle.events[0]?.event.traceId)).toEqual([
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    ]);
+    expect(prepared.every((bundle) => bundle.artifacts.length === 0)).toBe(true);
+    expect(prepared.every((bundle) => bundle.completionMarker.kind === "trace_complete")).toBe(true);
+    expect(new Set(prepared.map((bundle) => bundle.contentSha256)).size).toBe(2);
+  });
+
+  it("keeps referenced artifact keys unresolved and only retains referenced bytes", async () => {
+    class ArtifactAdapter extends CanonicalJsonlAdapter {
+      override async *parse(): AsyncIterable<AdapterRecord> {
+        const event = JSON.parse(canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a").toString()) as never;
+        yield { type: "event", event, artifactKeys: ["used"] };
+        yield { type: "artifact", key: "unused", sourceEventId: "a", bytes: Buffer.from("unused"), mediaType: "text/plain" };
+        yield { type: "artifact", key: "used", sourceEventId: "a", bytes: Buffer.from("used"), mediaType: "text/plain" };
+      }
+    }
+    const prepared = await prepareSessionParts(
+      "jsonl",
+      [{ path: ".", bytes: canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a") }],
+      "bundle-fixture",
+      { id: "a".repeat(24), byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+      new ArtifactAdapter(),
+    );
+    expect(prepared[0]?.events[0]?.artifactKeys).toEqual(["used"]);
+    expect(prepared[0]?.artifacts.map((artifact) => artifact.key)).toEqual(["used"]);
+  });
+
+  it.each(["missing", "duplicate"] as const)("rejects %s referenced artifact keys during preflight", async (mode) => {
+    class BrokenArtifactAdapter extends CanonicalJsonlAdapter {
+      override async *parse(): AsyncIterable<AdapterRecord> {
+        const event = JSON.parse(canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a").toString()) as never;
+        yield { type: "event", event, artifactKeys: ["required"] };
+        if (mode === "duplicate") {
+          for (let index = 0; index < 2; index += 1) {
+            yield { type: "artifact", key: "required", sourceEventId: "a", bytes: Buffer.from("x"), mediaType: "text/plain" };
+          }
+        }
+      }
+    }
+    await expect(
+      prepareSessionParts(
+        "jsonl",
+        [{ path: ".", bytes: canonical("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "a") }],
+        "bundle-fixture",
+        { id: "a".repeat(24), byteLength: 1, modifiedAt: "2026-08-01T00:00:00.000Z" },
+        new BrokenArtifactAdapter(),
+      ),
+    ).rejects.toThrow(mode === "missing" ? "Missing referenced artifact key" : "Duplicate artifact key");
   });
 });

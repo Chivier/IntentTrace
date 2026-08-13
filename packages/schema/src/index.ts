@@ -137,6 +137,27 @@ export const SessionImportOutcomeSchema = z
   .strict();
 export type SessionImportOutcome = z.infer<typeof SessionImportOutcomeSchema>;
 
+const SessionImportBatchResultSchema = z
+  .object({
+    candidateId: SessionCatalogIdSchema,
+    sessionId: SessionCatalogIdSchema,
+    traceId: UuidSchema,
+    inserted: z.number().int().nonnegative(),
+    duplicates: z.number().int().nonnegative(),
+    warnings: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const SessionImportBatchOutcomeSchema = z
+  .object({
+    protocolVersion: z.literal(2),
+    level: z.literal("result"),
+    command: z.literal("upload"),
+    results: z.array(SessionImportBatchResultSchema).min(1).max(50),
+  })
+  .strict();
+export type SessionImportBatchOutcome = z.infer<typeof SessionImportBatchOutcomeSchema>;
+
 export const SessionImportSummarySchema = z
   .object({
     protocolVersion: z.literal(1),
@@ -159,29 +180,55 @@ export const SessionImportSummarySchema = z
   .strict();
 export type SessionImportSummary = z.infer<typeof SessionImportSummarySchema>;
 
-export const SessionUploadCandidateInputSchema = z
+export const SessionUploadPartInputSchema = z
   .object({
     clientRef: z.string().min(1).max(64),
-    fileName: z.string().min(1).max(255),
+    path: z.string().min(1).max(1024),
     byteLength: z.number().int().nonnegative(),
     modifiedAt: TimestampSchema,
-    headBase64: z.string().max(131072),
+    headBase64: z.string().optional(),
     complete: z.boolean(),
   })
-  .strict();
+  .strict()
+  .superRefine((part, context) => {
+    if (part.headBase64 === undefined) return;
+    if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(part.headBase64)) {
+      context.addIssue({ code: "custom", message: "headBase64 must be valid base64", path: ["headBase64"] });
+      return;
+    }
+    if (Buffer.from(part.headBase64, "base64").byteLength > 64 * 1024) {
+      context.addIssue({ code: "custom", message: "decoded head exceeds 64 KiB", path: ["headBase64"] });
+    }
+  });
 
 export const SessionUploadCandidateRequestSchema = z
   .object({
-    protocolVersion: z.literal(1),
+    protocolVersion: z.literal(2),
     includePreviews: z.boolean(),
-    candidates: z.array(SessionUploadCandidateInputSchema).min(1).max(50),
+    parts: z.array(SessionUploadPartInputSchema).min(1).max(5_000),
   })
-  .strict();
+  .strict()
+  .superRefine((request, context) => {
+    let decodedBytes = 0;
+    const refs = new Set<string>();
+    for (const [index, part] of request.parts.entries()) {
+      if (refs.has(part.clientRef)) {
+        context.addIssue({ code: "custom", message: "duplicate clientRef", path: ["parts", index, "clientRef"] });
+      }
+      refs.add(part.clientRef);
+      if (part.headBase64 !== undefined) decodedBytes += Buffer.from(part.headBase64, "base64").byteLength;
+    }
+    if (decodedBytes > 4 * 1024 * 1024) {
+      context.addIssue({ code: "custom", message: "decoded heads exceed 4 MiB", path: ["parts"] });
+    }
+  });
 export type SessionUploadCandidateRequest = z.infer<typeof SessionUploadCandidateRequestSchema>;
 
 export const SessionUploadCandidateSchema = z
   .object({
     clientRef: z.string().min(1).max(64),
+    candidateId: SessionCatalogIdSchema,
+    partRefs: z.array(z.string().min(1).max(64)).min(1).max(5_000),
     source: ImportSourceKindSchema.nullable(),
     title: z.string().min(1).max(240).nullable(),
     projectHint: z.string().min(1).max(120).nullable(),
@@ -198,8 +245,8 @@ export const SessionUploadCandidateSchema = z
 
 export const SessionUploadCandidateListSchema = z
   .object({
-    protocolVersion: z.literal(1),
-    candidates: z.array(SessionUploadCandidateSchema),
+    protocolVersion: z.literal(2),
+    candidates: z.array(SessionUploadCandidateSchema).max(50),
     alreadyImportedCount: z.number().int().nonnegative(),
   })
   .strict();
