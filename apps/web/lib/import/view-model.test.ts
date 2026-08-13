@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   ALL_SOURCES,
+  buildSessionBundleFrame,
   CANDIDATE_WINDOW,
   computeEmptyState,
   dedupeKey,
+  fileRelativePath,
+  groupSelectedBundles,
   rankCandidates,
   summarize,
   visibleRows,
@@ -18,11 +21,14 @@ function file(name: string, lastModified: number, size = 10): File {
 function row(overrides: Partial<ImportRow> & { clientRef: string }): ImportRow {
   const source = file(`${overrides.clientRef}.jsonl`, 0);
   return {
+    path: source.name,
     key: dedupeKey(source),
     file: source,
     name: source.name,
     size: source.size,
     lastModified: 0,
+    candidateId: null,
+    partRefs: [overrides.clientRef],
     status: "ready",
     selected: false,
     source: null,
@@ -75,6 +81,31 @@ describe("rankCandidates", () => {
   it("is first-wins on identical name, size, and mtime", () => {
     const ranked = rankCandidates([file("a.jsonl", 1), file("a.jsonl", 1)], "folder");
     expect(ranked.window).toHaveLength(1);
+  });
+});
+
+describe("browser bundle transport", () => {
+  it("retains webkitRelativePath for folder picks and basename for files", () => {
+    const folderFile = file("root.jsonl", 1);
+    Object.defineProperty(folderFile, "webkitRelativePath", { value: "project/root.jsonl" });
+    expect(fileRelativePath(folderFile, "folder")).toBe("project/root.jsonl");
+    expect(fileRelativePath(folderFile, "files")).toBe("root.jsonl");
+  });
+
+  it("builds ITB1 frames with sorted unique part groups", async () => {
+    const a = file("a.jsonl", 1, 3);
+    const b = file("b.jsonl", 2, 2);
+    const rows = [
+      row({ clientRef: "c1", file: a, name: a.name, candidateId: "a".repeat(24), partRefs: ["c1", "c2"] }),
+      row({ clientRef: "c2", file: b, name: b.name, candidateId: "b".repeat(24), partRefs: ["c1", "c2"] }),
+    ];
+    const groups = groupSelectedBundles(rows);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.candidateIds).toEqual(["a".repeat(24), "b".repeat(24)]);
+    const blob = await buildSessionBundleFrame(groups[0]!.parts, "auto", groups[0]!.candidateIds);
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("ITB1");
+    expect(new DataView(bytes.buffer).getUint32(4)).toBeGreaterThan(0);
   });
 });
 

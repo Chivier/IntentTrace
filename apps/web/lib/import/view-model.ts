@@ -13,19 +13,25 @@ const FILE_EXTENSIONS = [".jsonl", ".ndjson", ".json"];
 export type ImportRowStatus =
   "inspecting" | "ready" | "queued" | "uploading" | "imported" | "failed";
 
-export interface ImportRow {
-  /** "c1", "c2", … assigned in pick order; stable for the page's lifetime. */
+export interface ImportPart {
   clientRef: string;
-  /** `dedupeKey(file)`; the React key. */
-  key: string;
-  /** Retained so import streams the original bytes; never persisted. */
+  path: string;
   file: File;
+}
+
+export interface ImportRow {
+  clientRef: string;
+  key: string;
+  file: File;
+  path: string;
   name: string;
   size: number;
   lastModified: number;
   status: ImportRowStatus;
   selected: boolean;
   source: TraceSourceKind | null;
+  candidateId: string | null;
+  partRefs: string[];
   title: string | null;
   projectHint: string | null;
   firstPromptPreview: string | null;
@@ -37,7 +43,6 @@ export interface ImportRow {
   duplicates: number;
   failureCode: string | null;
   failureMessage: string | null;
-  /** Which phase produced `failureCode`; an upload failure is always retryable. */
   failureStage: "inspect" | "upload" | null;
 }
 
@@ -49,6 +54,84 @@ export interface CandidateFile {
 
 export function dedupeKey(file: CandidateFile): string {
   return `${file.name}\0${file.size}\0${file.lastModified}`;
+}
+
+export function fileRelativePath(file: File, mode: "folder" | "files"): string {
+  return mode === "folder" && file.webkitRelativePath ? file.webkitRelativePath : file.name;
+}
+
+export interface SelectedBundleGroup {
+  key: string;
+  source: TraceSourceKind | "auto";
+  candidateIds: string[];
+  parts: ImportPart[];
+  rowRefs: string[];
+}
+
+export function groupSelectedBundles(rows: readonly ImportRow[]): SelectedBundleGroup[] {
+  const groups = new Map<string, SelectedBundleGroup>();
+  const byRef = new Map(rows.map((row) => [row.clientRef, row]));
+  for (const row of rows) {
+    if (!row.candidateId) continue;
+    const refs = [...new Set(row.partRefs)].sort();
+    const key = refs.join("\0");
+    const existing = groups.get(key);
+    if (existing) {
+      existing.candidateIds.push(row.candidateId);
+      existing.rowRefs.push(row.clientRef);
+      continue;
+    }
+    const parts = refs.map((ref) => {
+      const part = byRef.get(ref);
+      if (!part) throw new Error(`Missing selected part ${ref}`);
+      return { clientRef: ref, path: part.path, file: part.file };
+    });
+    groups.set(key, {
+      key,
+      source: row.source ?? "auto",
+      candidateIds: [row.candidateId],
+      parts,
+      rowRefs: [row.clientRef],
+    });
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    candidateIds: [...new Set(group.candidateIds)].sort(),
+    rowRefs: [...new Set(group.rowRefs)].sort(),
+  }));
+}
+
+export async function buildSessionBundleFrame(
+  inputParts: readonly ImportPart[],
+  source: TraceSourceKind | "auto",
+  candidateIds: readonly string[],
+): Promise<Blob> {
+  const parts = [...inputParts].sort((left, right) => left.path.localeCompare(right.path));
+  let offset = 0;
+  const manifest = {
+    protocolVersion: 1,
+    source,
+    candidateIds: [...candidateIds],
+    parts: parts.map((part) => {
+      const entry = {
+        clientRef: part.clientRef,
+        path: part.path,
+        offset,
+        byteLength: part.file.size,
+        modifiedAt: new Date(part.file.lastModified).toISOString(),
+      };
+      offset += part.file.size;
+      return entry;
+    }),
+  };
+  const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+  const header = new ArrayBuffer(8);
+  const headerBytes = new Uint8Array(header);
+  headerBytes.set(new TextEncoder().encode("ITB1"));
+  new DataView(header).setUint32(4, manifestBytes.byteLength);
+  return new Blob([headerBytes, manifestBytes, ...parts.map((part) => part.file)], {
+    type: "application/vnd.intenttrace.session-bundle",
+  });
 }
 
 export interface RankedCandidates {

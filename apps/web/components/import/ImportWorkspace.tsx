@@ -6,7 +6,7 @@ import { useCallback, useMemo, useRef, useState, type DragEvent } from "react";
 import type { TraceSourceKind } from "@intenttrace/schema";
 import { Banner, Button, Chip, StatusBadge } from "@intenttrace/ui";
 
-import { ImportRequestError, inspectCandidates, uploadSession } from "@/lib/import/api";
+import { ImportRequestError, inspectCandidates, uploadSessionBundle } from "@/lib/import/api";
 import {
   ALL_SOURCES,
   CANDIDATE_WINDOW,
@@ -14,8 +14,10 @@ import {
   UPLOAD_CONCURRENCY,
   computeEmptyState,
   dedupeKey,
+  fileRelativePath,
   formatBytes,
   formatRelativeTime,
+  groupSelectedBundles,
   rankCandidates,
   summarize,
   visibleRows,
@@ -63,10 +65,10 @@ export function ImportWorkspace() {
     setPhase("inspecting");
     setInspectError(null);
     try {
-      const candidates = await Promise.all(
+      const parts = await Promise.all(
         target.map(async (row) => ({
           clientRef: row.clientRef,
-          fileName: row.name,
+          path: row.path,
           byteLength: row.size,
           modifiedAt: new Date(row.lastModified).toISOString(),
           headBase64: toBase64(await row.file.slice(0, HEAD_BYTES).arrayBuffer()),
@@ -74,9 +76,9 @@ export function ImportWorkspace() {
         })),
       );
       const result = await inspectCandidates({
-        protocolVersion: 1,
+        protocolVersion: 2,
         includePreviews,
-        candidates,
+        parts,
       });
       const byRef = new Map(result.candidates.map((entry) => [entry.clientRef, entry]));
       setRows((previous) =>
@@ -86,6 +88,8 @@ export function ImportWorkspace() {
           return {
             ...row,
             status: found.failureCode ? "failed" : "ready",
+            candidateId: found.candidateId,
+            partRefs: [...found.partRefs],
             source: found.source,
             title: found.title,
             projectHint: found.projectHint,
@@ -124,16 +128,20 @@ export function ImportWorkspace() {
         if (known.has(key)) continue;
         known.add(key);
         nextRef.current += 1;
+        const path = fileRelativePath(file, mode);
         added.push({
           clientRef: `c${nextRef.current}`,
           key,
           file,
+          path,
           name: file.name,
           size: file.size,
           lastModified: file.lastModified,
           status: "inspecting",
           selected: true,
           source: null,
+          candidateId: null,
+          partRefs: [`c${nextRef.current}`],
           title: null,
           projectHint: null,
           firstPromptPreview: null,
@@ -158,69 +166,58 @@ export function ImportWorkspace() {
   const runImport = useCallback(async (target: readonly ImportRow[]) => {
     if (target.length === 0) return;
     setPhase("importing");
-    const refs = target.map((row) => row.clientRef);
-    const queued = new Set(refs);
+    const queued = new Set(target.map((row) => row.clientRef));
     setRows((previous) =>
       previous.map((row) =>
         queued.has(row.clientRef)
-          ? {
-              ...row,
-              status: "queued",
-              failureCode: null,
-              failureMessage: null,
-              failureStage: null,
-            }
+          ? { ...row, status: "queued", failureCode: null, failureMessage: null, failureStage: null }
           : row,
       ),
     );
+    const groups = groupSelectedBundles(target);
     let cursor = 0;
     const worker = async (): Promise<void> => {
-      while (cursor < target.length) {
-        const row = target[cursor++]!;
+      while (cursor < groups.length) {
+        const group = groups[cursor++]!;
+        const refs = new Set(group.rowRefs);
         setRows((previous) =>
-          previous.map((entry) =>
-            entry.clientRef === row.clientRef ? { ...entry, status: "uploading" } : entry,
-          ),
+          previous.map((entry) => (refs.has(entry.clientRef) ? { ...entry, status: "uploading" } : entry)),
         );
         try {
-          const outcome = await uploadSession(row.file, row.source ?? "auto");
+          const outcome = await uploadSessionBundle(group);
+          const byId = new Map(outcome.results.map((result) => [result.candidateId, result]));
           setRows((previous) =>
-            previous.map((entry) =>
-              entry.clientRef === row.clientRef
-                ? {
-                    ...entry,
-                    status: "imported",
-                    imported: true,
-                    traceId: outcome.traceId,
-                    inserted: outcome.inserted,
-                    duplicates: outcome.duplicates,
-                    failureCode: null,
-                    failureMessage: null,
-                    failureStage: null,
-                  }
-                : entry,
-            ),
+            previous.map((entry) => {
+              if (!refs.has(entry.clientRef) || !entry.candidateId) return entry;
+              const result = byId.get(entry.candidateId);
+              if (!result) return entry;
+              return {
+                ...entry,
+                status: "imported",
+                imported: true,
+                traceId: result.traceId,
+                inserted: result.inserted,
+                duplicates: result.duplicates,
+                failureCode: null,
+                failureMessage: null,
+                failureStage: null,
+              };
+            }),
           );
         } catch (error) {
           const code = error instanceof ImportRequestError ? error.code : "upload_failed";
           const message = error instanceof Error ? error.message : String(error);
           setRows((previous) =>
             previous.map((entry) =>
-              entry.clientRef === row.clientRef
-                ? {
-                    ...entry,
-                    status: "failed",
-                    failureCode: code,
-                    failureMessage: message,
-                    failureStage: "upload",
-                  }
+              refs.has(entry.clientRef)
+                ? { ...entry, status: "failed", failureCode: code, failureMessage: message, failureStage: "upload" }
                 : entry,
             ),
           );
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, target.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(UPLOAD_CONCURRENCY, groups.length) }, worker));
     setPhase("ready");
   }, []);
 

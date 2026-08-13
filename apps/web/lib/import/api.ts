@@ -1,11 +1,12 @@
 import {
-  SessionImportOutcomeSchema,
+  SessionImportBatchOutcomeSchema,
   SessionUploadCandidateListSchema,
-  type SessionImportOutcome,
+  type SessionImportBatchOutcome,
   type SessionUploadCandidateList,
   type SessionUploadCandidateRequest,
-  type TraceSourceKind,
 } from "@intenttrace/schema";
+
+import { buildSessionBundleFrame, type SelectedBundleGroup } from "./view-model";
 
 /** Carries the RFC 7807 `code` so a row can report the server's own failure name. */
 export class ImportRequestError extends Error {
@@ -44,20 +45,18 @@ export async function inspectCandidates(
   return SessionUploadCandidateListSchema.parse(await response.json());
 }
 
-export async function uploadSession(
-  file: File,
-  source: TraceSourceKind | "auto",
+export async function uploadSessionBundle(
+  group: SelectedBundleGroup,
   signal?: AbortSignal,
-): Promise<SessionImportOutcome> {
-  const query = `source=${source}&fileName=${encodeURIComponent(file.name)}`;
-  const response = await fetch(`/api/v1/imports/sessions?${query}`, {
+): Promise<SessionImportBatchOutcome> {
+  const body = await buildSessionBundleFrame(group.parts, group.source, group.candidateIds);
+  const response = await fetch("/api/v1/imports/sessions", {
     method: "POST",
-    // A `.jsonl` File has an empty `type`, so the content type must be explicit.
-    headers: { "content-type": "application/octet-stream" },
-    body: file,
+    headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+    body,
     cache: "no-store",
     signal: signal ?? null,
   });
   if (!response.ok) throw await readProblem(response, "upload");
-  return SessionImportOutcomeSchema.parse(await response.json());
+  return SessionImportBatchOutcomeSchema.parse(await response.json());
 }
