@@ -120,10 +120,22 @@ describe("browser bundle transport", () => {
       "folder",
     );
     expect(ranked.window.map((entry) => entry.name)).toEqual([
-      "opencode.db-wal",
       "opencode.db",
+      "opencode.db-wal",
       "agent.meta.json",
     ]);
+  });
+
+  it("windows folder roots while retaining companions", () => {
+    const roots = Array.from({ length: CANDIDATE_WINDOW + 1 }, (_, index) =>
+      file(`root-${index}.jsonl`, 100 - index),
+    );
+    const companion = file("agent.meta.json", 0);
+    Object.defineProperty(companion, "webkitRelativePath", { value: "subagents/agent.meta.json" });
+    const ranked = rankCandidates([...roots, companion], "folder");
+    expect(ranked.window).toContain(companion);
+    expect(ranked.window.filter((entry) => entry.name.endsWith(".jsonl"))).toHaveLength(CANDIDATE_WINDOW);
+    expect(ranked.skippedByLimit).toBe(1);
   });
 
   it("creates distinct rows when one part yields several logical traces", () => {
@@ -172,6 +184,15 @@ describe("browser bundle transport", () => {
     ]);
     expect(groups.groups).toEqual([]);
     expect(groups.failures).toEqual([{ rowRefs: ["c1"], message: "Missing selected part missing" }]);
+  });
+
+  it("builds groups from a separate part store", () => {
+    const root = row({ clientRef: "candidate", candidateId: "a".repeat(24), partRefs: ["p1", "p2"] });
+    const p1 = row({ clientRef: "p1" });
+    const p2 = row({ clientRef: "p2" });
+    const grouped = groupSelectedBundles([root], [p1, p2]);
+    expect(grouped.failures).toEqual([]);
+    expect(grouped.groups[0]?.parts.map((part) => part.clientRef)).toEqual(["p1", "p2"]);
   });
 });
 

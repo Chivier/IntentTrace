@@ -16,6 +16,8 @@ export interface PreparedSession {
   warnings: PreparedSessionWarning[];
   descriptor: SessionDescriptor;
   completionMarker: RawTraceEventInput;
+  logicalIndex: number;
+  logicalCount: number;
 }
 
 export type SessionDescriptor = SessionCatalogEntry;
@@ -71,7 +73,7 @@ export async function prepareSession(
       modifiedAt: candidate.modifiedAt,
     },
   );
-  return prepared.map((trace) => ({
+  return prepared.map((trace, logicalIndex) => ({
     candidate,
     parts,
     contentSha256: trace.contentSha256,
@@ -79,5 +81,7 @@ export async function prepareSession(
     warnings: trace.warnings,
     descriptor: trace.descriptor,
     completionMarker: trace.completionMarker,
+    logicalIndex,
+    logicalCount: prepared.length,
   }));
 }

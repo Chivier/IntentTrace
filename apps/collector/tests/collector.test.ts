@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { computeSessionCandidateId } from "@intenttrace/adapters";
 
-import { formatCollectorFatalError, HELP_TEXT, runCollector } from "../src/cli.js";
+import { collectorCandidateId, formatCollectorFatalError, HELP_TEXT, runCollector } from "../src/cli.js";
 import { discoverSessionFiles } from "../src/session-discovery.js";
 import { validateExplicitPath } from "../src/path-policy.js";
 
@@ -657,5 +658,32 @@ describe("collector path boundary", () => {
       "opencode.db",
       "opencode.db-wal",
     ]);
+  });
+
+  it("uses the shared logical suffix for multi-trace candidate IDs", () => {
+    const candidate = {
+      id: "a".repeat(24),
+      internalCandidateId: "b".repeat(24),
+      logicalRootIdentity: "root",
+      parts: [],
+      byteLength: 1,
+      modifiedAt: "2026-08-01T00:00:00.000Z",
+      modifiedAtMs: 1,
+      normalizationIdentity: "bundle-test",
+    };
+    const prepared = {
+      candidate,
+      parts: [{ path: "root.jsonl", bytes: new Uint8Array([1]), clientRef: "p1", modifiedAt: candidate.modifiedAt }],
+      contentSha256: "c".repeat(64),
+      events: [],
+      warnings: [],
+      descriptor: {} as never,
+      completionMarker: {} as never,
+      logicalIndex: 1,
+      logicalCount: 2,
+    };
+    expect(collectorCandidateId("jsonl", prepared)).toBe(
+      computeSessionCandidateId("jsonl", "root:logical-2", ["root.jsonl"]),
+    );
   });
 });

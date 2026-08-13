@@ -92,6 +92,16 @@ export function buildApp(options: BuildAppOptions = {}) {
       typeof error.code === "string"
         ? error.code
         : "";
+    if (failureCode === "FST_ERR_CTP_INVALID_JSON_BODY") {
+      void reply.status(400).send({
+        type: "https://intenttrace.local/problems/validation",
+        title: "Request validation failed",
+        status: 400,
+        code: "validation_failed",
+        requestId: request.id,
+      });
+      return;
+    }
     if (failureCode === "FST_ERR_CTP_BODY_TOO_LARGE") {
       void reply.status(413).send({
         type: "https://intenttrace.local/problems/payload-too-large",

@@ -5,6 +5,8 @@ import { basename, join } from "node:path";
 import {
   buildCompletionMarker,
   classifySessionFailure,
+  computeSessionCandidateId,
+  logicalSessionRootIdentity,
   redactCatalogEntry,
   type SessionFailureCode,
 } from "@intenttrace/adapters";
@@ -177,20 +179,19 @@ async function mapWithConcurrency<T>(
   await Promise.all(runners);
 }
 
-function collectorCandidateId(source: TraceSourceKind, prepared: PreparedSession): string {
-  return createHash("sha256")
-    .update("intenttrace-session-candidate-v2")
-    .update("\0")
-    .update(source)
-    .update("\0")
-    .update(prepared.candidate.logicalRootIdentity)
-    .update("\0")
-    .update(prepared.parts.map((part) => part.path).sort().join("\0"))
-    .digest("hex")
-    .slice(0, 24);
+export function collectorCandidateId(source: ImportSourceKind, prepared: PreparedSession): string {
+  return computeSessionCandidateId(
+    source,
+    logicalSessionRootIdentity(
+      prepared.candidate.logicalRootIdentity,
+      prepared.logicalIndex,
+      prepared.logicalCount,
+    ),
+    prepared.parts.map((part) => part.path),
+  );
 }
 
-function collectorFrame(prepared: PreparedSession, source: TraceSourceKind, candidateId: string): Blob {
+function collectorFrame(prepared: PreparedSession, source: ImportSourceKind, candidateId: string): Blob {
   const ordered = [...prepared.parts].sort((left, right) => left.path.localeCompare(right.path));
   let offset = 0;
   const manifest = {
@@ -221,7 +222,7 @@ function collectorFrame(prepared: PreparedSession, source: TraceSourceKind, cand
 
 async function uploadPreparedSession(
   prepared: PreparedSession,
-  source: TraceSourceKind,
+  source: ImportSourceKind,
   apiOrigin: string,
   dependencies: CollectorDependencies,
 ): Promise<{ inserted: number; duplicates: number; warnings: number; traceId: string }> {
@@ -330,23 +331,22 @@ async function inspectCatalog(
   sessions: PreparedSession["descriptor"][];
   failures: Array<{ candidate: SessionFileCandidate; diagnostic: PublicDiagnostic }>;
 }> {
-  const descriptorsByIndex: Array<PreparedSession["descriptor"] | undefined> = [];
+  const descriptorsByIndex: Array<PreparedSession["descriptor"][]> = Array.from(
+    { length: discovered.candidates.length },
+    () => [],
+  );
   const failures: Array<{ candidate: SessionFileCandidate; diagnostic: PublicDiagnostic }> = [];
   await mapWithConcurrency(discovered.candidates, concurrency, async (candidate, index) => {
     try {
       const prepared = await prepareSession(source, candidate, maxFileBytes);
-      descriptorsByIndex[index] = prepared[0]?.descriptor;
+      descriptorsByIndex[index] = prepared.map((bundle) => bundle.descriptor);
     } catch (error) {
       failures.push({ candidate, diagnostic: publicError(error) });
     }
   });
   return {
-    sessions: descriptorsByIndex.filter(
-      (entry): entry is PreparedSession["descriptor"] => entry !== undefined,
-    ),
-    failures: failures.sort((left, right) =>
-      left.candidate.id.localeCompare(right.candidate.id),
-    ),
+    sessions: descriptorsByIndex.flat(),
+    failures: failures.sort((left, right) => left.candidate.id.localeCompare(right.candidate.id)),
   };
 }
 

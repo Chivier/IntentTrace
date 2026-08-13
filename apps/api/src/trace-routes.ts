@@ -172,11 +172,21 @@ interface ImportCandidate {
   failureMessage: string | null;
 }
 
+function isCompanionPart(path: string): boolean {
+  return (
+    path.includes("/subagents/") ||
+    path.startsWith("subagents/") ||
+    path.endsWith(".meta.json") ||
+    path.endsWith("-wal") ||
+    path.endsWith("-shm")
+  );
+}
+
 async function discoverCandidates(
   sourceHint: ImportSourceKind | "auto",
   parts: readonly { clientRef: string; path: string; bytes: Uint8Array; modifiedAt: string; complete: boolean }[],
 ): Promise<ImportCandidate[]> {
-  const detectedSources: ImportSourceKind[] = [];
+  const sourceByRootRef = new Map<string, ImportSourceKind>();
   if (sourceHint === "auto") {
     const potentialRoots = parts.filter(
       (part) =>
@@ -200,16 +210,25 @@ async function discoverCandidates(
         source === "omp" ||
         source === "grok"
       ) {
-        detectedSources.push(source);
+        sourceByRootRef.set(part.clientRef, source);
       }
     }
-  } else {
-    detectedSources.push(sourceHint);
   }
   const candidates: ImportCandidate[] = [];
-  for (const source of [...new Set(detectedSources)]) {
-    const sourceParts = parts.map((part) => ({ ...part, byteLength: part.bytes.byteLength }));
-    const discovered = await discoverSessionCandidates(source, sourceParts, 50);
+  const sources = sourceHint === "auto" ? [...new Set(sourceByRootRef.values())] : [sourceHint];
+  let remainingRoots = 50;
+  for (const source of sources) {
+    if (remainingRoots === 0) break;
+    const rootRefs = new Set(
+      [...sourceByRootRef.entries()]
+        .filter(([, detectedSource]) => detectedSource === source)
+        .map(([ref]) => ref),
+    );
+    const sourceParts = parts
+      .filter((part) => sourceHint !== "auto" || rootRefs.has(part.clientRef) || isCompanionPart(part.path))
+      .map((part) => ({ ...part, byteLength: part.bytes.byteLength }));
+    const discovered = await discoverSessionCandidates(source, sourceParts, remainingRoots);
+    remainingRoots -= discovered.length;
     for (const candidate of discovered) {
       const selectedParts = sourceParts.filter((part) => candidate.partRefs.includes(part.clientRef));
       if (candidate.failureCode) {

@@ -393,14 +393,14 @@ describe("browser session import routes", () => {
     expect(importResponse.statusCode).toBe(400);
   });
 
-  it("returns validation_failed for malformed JSON candidate metadata", async () => {
+  it("returns validation_failed for syntactically malformed JSON", async () => {
     const app = buildApp({ services: services([]) });
     apps.push(app);
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/imports/candidates",
       headers: { "content-type": "application/json" },
-      payload: { protocolVersion: 2, includePreviews: false, parts: [] },
+      payload: '{"protocolVersion":2,"includePreviews":false,"parts":',
     });
     expect(response.statusCode).toBe(400);
     expect(response.json().code).toBe("validation_failed");

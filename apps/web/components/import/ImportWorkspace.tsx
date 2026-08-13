@@ -56,6 +56,7 @@ export function ImportWorkspace() {
   const [inspectError, setInspectError] = useState<string | null>(null);
   const [intake, setIntake] = useState({ skippedByLimit: 0, ignored: 0 });
   const nextRef = useRef(0);
+  const partRowsRef = useRef<Map<string, ImportRow>>(new Map());
   const now = Date.now();
 
   const inspect = useCallback(async (target: readonly ImportRow[], includePreviews: boolean) => {
@@ -81,6 +82,7 @@ export function ImportWorkspace() {
         includePreviews,
         parts,
       });
+      for (const row of target) partRowsRef.current.set(row.clientRef, row);
       setRows((previous) => {
         const targetRefs = new Set(target.map((row) => row.clientRef));
         const retained = previous.filter((row) => !targetRefs.has(row.clientRef));
@@ -137,6 +139,7 @@ export function ImportWorkspace() {
           failureMessage: null,
           failureStage: null,
         });
+        partRowsRef.current.set(`c${nextRef.current}`, added.at(-1)!);
       }
       if (added.length === 0) return;
       setRows((previous) => [...previous, ...added]);
@@ -156,7 +159,7 @@ export function ImportWorkspace() {
           : row,
       ),
     );
-    const grouped = groupSelectedBundles(target);
+    const grouped = groupSelectedBundles(target, [...partRowsRef.current.values()]);
     const groups = grouped.groups;
     for (const failure of grouped.failures) {
       const refs = new Set(failure.rowRefs);

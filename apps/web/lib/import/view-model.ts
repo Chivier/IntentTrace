@@ -73,10 +73,13 @@ export interface BundleGroupingResult {
   failures: Array<{ rowRefs: string[]; message: string }>;
 }
 
-export function groupSelectedBundles(rows: readonly ImportRow[]): BundleGroupingResult {
+export function groupSelectedBundles(
+  rows: readonly ImportRow[],
+  partRows: readonly ImportRow[] = rows,
+): BundleGroupingResult {
   const groups = new Map<string, SelectedBundleGroup>();
   const failures: BundleGroupingResult["failures"] = [];
-  const byRef = new Map(rows.map((row) => [row.clientRef, row]));
+  const byRef = new Map(partRows.map((row) => [row.clientRef, row]));
   for (const row of rows) {
     if (!row.candidateId) continue;
     const refs = [...new Set(row.partRefs)].sort();
@@ -227,9 +230,21 @@ export function rankCandidates(files: readonly File[], mode: "folder" | "files")
       ? left.name.localeCompare(right.name)
       : right.lastModified - left.lastModified,
   );
+  const isCompanion = (file: File) => {
+    const path = file.webkitRelativePath || file.name;
+    return (
+      path.includes("/subagents/") ||
+      file.name.endsWith(".meta.json") ||
+      file.name.endsWith("-wal") ||
+      file.name.endsWith("-shm")
+    );
+  };
+  const roots = kept.filter((file) => !isCompanion(file));
+  const companions = kept.filter(isCompanion);
+  const selectedRoots = roots.slice(0, CANDIDATE_WINDOW);
   return {
-    window: kept.slice(0, CANDIDATE_WINDOW),
-    skippedByLimit: Math.max(0, kept.length - CANDIDATE_WINDOW),
+    window: [...selectedRoots, ...companions],
+    skippedByLimit: Math.max(0, roots.length - CANDIDATE_WINDOW),
     ignored,
   };
 }
