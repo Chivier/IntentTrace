@@ -12,6 +12,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "regenerate:imo-demo": "tsx scripts/regenerate-imo-demo.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

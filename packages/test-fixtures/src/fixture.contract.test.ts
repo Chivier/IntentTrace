@@ -42,21 +42,23 @@ describe("recorded demo trace", () => {
 
   it("is canonical, single-trace and complete", () => {
     const events = lines.map((line) => RawTraceEventInputSchema.parse(JSON.parse(line)));
-    expect(events).toHaveLength(231);
+    expect(events).toHaveLength(691);
     expect(new Set(events.map((event) => event.traceId)).size).toBe(1);
     expect(new Set(events.map((event) => event.source.sourceEventId)).size).toBe(events.length);
-    expect(new Set(events.map((event) => event.agentId).filter(Boolean)).size).toBe(6);
+    expect(new Set(events.map((event) => event.agentId).filter(Boolean)).size).toBe(9);
     expect(events.some((event) => event.status === "error")).toBe(true);
     expect(events.at(-1)?.kind).toBe("trace_complete");
     expect(
-      events.every((event) => event.traceTitle === "IMO 2025 P1 solved by six parallel agents"),
+      events.every((event) => event.traceTitle === "IMO 2025 P1 solved by eight parallel agents"),
     ).toBe(true);
   });
 
   it("carries no host paths and no reasoning content", () => {
     const blob = lines.join("\n");
-    expect(blob).not.toMatch(/\/home\//u);
-    expect(blob).not.toMatch(/"thinking"/u);
+    expect(blob).not.toMatch(/(?:\/home\/|\/Users\/|[A-Z]:\\)/u);
+    expect(blob).not.toMatch(
+      /"(?:thinking|thinkingSignature|signature|reasoning|systemPrompt)"\s*:/u,
+    );
   });
 });
 describe("topology fixture policy", () => {
@@ -71,14 +73,23 @@ describe("topology fixture policy", () => {
         const text = readFileSync(file, "latin1");
         expect(text).not.toMatch(/(?:\/home\/|\/Users\/)(?!must-not-persist)|[A-Z]:\\/u);
         expect(text).not.toMatch(/(?:api[_-]?key|authorization|secret|password)\s*[:=]/iu);
-        expect(text).not.toMatch(/"(?:thinking|reasoning|agent_thought_chunk|thinkingSignature)"\s*:\s*"(?!must-not-persist)/u);
+        expect(text).not.toMatch(
+          /"(?:thinking|reasoning|agent_thought_chunk|thinkingSignature)"\s*:\s*"(?!must-not-persist)/u,
+        );
         expect(text).not.toMatch(/gAAAA[A-Za-z0-9_-]{8,}/u);
       }
     }
   });
 
   it("only allows synthetic marker text inside hidden-content values", () => {
-    const hiddenKeys = new Set(["thinking", "reasoning", "thinkingSignature", "signature", "encrypted_content", "systemPrompt"]);
+    const hiddenKeys = new Set([
+      "thinking",
+      "reasoning",
+      "thinkingSignature",
+      "signature",
+      "encrypted_content",
+      "systemPrompt",
+    ]);
     const marker = /^must-not-persist/u;
     const violations: string[] = [];
     const walk = (value: unknown, path: string, hiddenContext = false): void => {
@@ -87,32 +98,67 @@ describe("topology fixture policy", () => {
         return;
       }
       if (value === null || typeof value !== "object") {
-        if (hiddenContext && typeof value === "string" && !marker.test(value)) violations.push(path);
+        if (hiddenContext && typeof value === "string" && !marker.test(value))
+          violations.push(path);
         return;
       }
       const object = value as Record<string, unknown>;
-      const block = object.type === "thinking" || object.type === "redacted_thinking" || object.type === "agent_thought_chunk" || object.type === "encrypted_content";
+      const block =
+        object.type === "thinking" ||
+        object.type === "redacted_thinking" ||
+        object.type === "agent_thought_chunk" ||
+        object.type === "encrypted_content";
       for (const [key, item] of Object.entries(object)) {
         const discriminator = key === "type" && block;
-        walk(item, `${path}.${key}`, discriminator ? false : hiddenContext || hiddenKeys.has(key) || block);
+        walk(
+          item,
+          `${path}.${key}`,
+          discriminator ? false : hiddenContext || hiddenKeys.has(key) || block,
+        );
       }
     };
     for (const source of ["codex", "claude", "opencode", "omp", "grok"]) {
       const root = new URL(`../fixtures/${source}/topology/`, import.meta.url);
-      const files = readdirSync(root, { recursive: true, encoding: "utf8" }).map((file) => new URL(String(file), root)).filter((file) => statSync(file).isFile() && /\.(?:jsonl|json)$/u.test(file.pathname));
-      for (const file of files) for (const line of readFileSync(file, "utf8").split("\n").filter((entry) => entry.trim().length > 0)) {
-        try { walk(JSON.parse(line), `${source}:${file.pathname.split("/").at(-1)}`); } catch { violations.push(`${source}: unparseable fixture line`); }
-      }
+      const files = readdirSync(root, { recursive: true, encoding: "utf8" })
+        .map((file) => new URL(String(file), root))
+        .filter((file) => statSync(file).isFile() && /\.(?:jsonl|json)$/u.test(file.pathname));
+      for (const file of files)
+        for (const line of readFileSync(file, "utf8")
+          .split("\n")
+          .filter((entry) => entry.trim().length > 0)) {
+          try {
+            walk(JSON.parse(line), `${source}:${file.pathname.split("/").at(-1)}`);
+          } catch {
+            violations.push(`${source}: unparseable fixture line`);
+          }
+        }
     }
     expect(violations).toEqual([]);
-    const directWalk = (value: unknown, path: string, violations: string[], hiddenContext = false): void => {
-      if (Array.isArray(value)) return value.forEach((item, index) => directWalk(item, `${path}[${index}]`, violations, hiddenContext));
-      if (value === null || typeof value !== "object") { if (hiddenContext && typeof value === "string" && !marker.test(value)) violations.push(path); return; }
+    const directWalk = (
+      value: unknown,
+      path: string,
+      violations: string[],
+      hiddenContext = false,
+    ): void => {
+      if (Array.isArray(value))
+        return value.forEach((item, index) =>
+          directWalk(item, `${path}[${index}]`, violations, hiddenContext),
+        );
+      if (value === null || typeof value !== "object") {
+        if (hiddenContext && typeof value === "string" && !marker.test(value))
+          violations.push(path);
+        return;
+      }
       const object = value as Record<string, unknown>;
       const block = object.type === "thinking" || object.type === "encrypted_content";
       for (const [key, item] of Object.entries(object)) {
         const discriminator = key === "type" && block;
-        directWalk(item, `${path}.${key}`, violations, discriminator ? false : hiddenContext || hiddenKeys.has(key) || block);
+        directWalk(
+          item,
+          `${path}.${key}`,
+          violations,
+          discriminator ? false : hiddenContext || hiddenKeys.has(key) || block,
+        );
       }
     };
     const objectViolations: string[] = [];
@@ -122,7 +168,11 @@ describe("topology fixture policy", () => {
     directWalk({ thinking: ["real hidden"] }, "array", arrayViolations);
     expect(arrayViolations).toEqual(["array.thinking[0]"]);
     const encryptedViolations: string[] = [];
-    directWalk({ type: "encrypted_content", value: "not-a-token" }, "encrypted", encryptedViolations);
+    directWalk(
+      { type: "encrypted_content", value: "not-a-token" },
+      "encrypted",
+      encryptedViolations,
+    );
     expect(encryptedViolations).toEqual(["encrypted.value"]);
   });
 });
