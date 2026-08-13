@@ -51,6 +51,7 @@ function context(overrides: Partial<SummaryJobContext> = {}): SummaryJobContext 
     allowedAgentIds: [],
     eventSketch: [],
     reducerFacts: [],
+    registeredArtifactIds: [],
     graph: { nodes: [], edges: [] },
     ...overrides,
   };

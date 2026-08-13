@@ -163,7 +163,11 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
     const ids = scope();
     try {
       const parent = await repository.ingest(
-        event(ids, "evt-spawn-parent", { kind: "agent_start", agentId: "parent" }),
+        event(ids, "evt-spawn-parent", {
+          kind: "agent_handoff",
+          agentId: "parent",
+          attributes: { spawnedAgentIds: ["child"] },
+        }),
       );
       const child = await repository.ingest(
         event(ids, "evt-spawn-child", {
@@ -172,11 +176,21 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
           attributes: { parentAgentId: "parent" },
         }),
       );
-      const jobIds = await repository.listRunnableSummaryJobIds();
-      const jobId = jobIds.find(Boolean);
+      for (let index = 3; index <= 50; index += 1) {
+        await repository.ingest(event(ids, `evt-fill-${index}`));
+      }
+      const jobRows = await sql<Array<{ id: string }>>`
+        select id from summary_jobs
+        where trace_id = ${ids.traceId} and event_watermark = 50
+        order by created_at, id
+        limit 1
+      `;
+      const jobId = jobRows[0]?.id;
       expect(jobId).toBeDefined();
       const job = await repository.claimSummaryJob(jobId!);
       expect(job).not.toBeNull();
+      expect(job!.reducerFacts.map((fact) => fact.sourceEventId)).toContain("evt-spawn-parent");
+      expect(job!.allowedEventIds).not.toContain(parent.event.id);
 
       const sourceNodeId = randomUUID();
       const targetNodeId = randomUUID();
@@ -249,17 +263,28 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
       });
       expect(topology.sources).toEqual([{ sourceKind: "jsonl", adapterVersion: "1.0.0" }]);
 
-      // Pre-upgrade rows kept their immutable shape but lost their evidence, so
-      // the read path must omit them rather than invent provenance.
+      // Pre-upgrade rows kept their immutable shape but lack evidence. Insert
+      // one directly rather than violating the immutable-table trigger.
+      const legacyLogicalEdgeId = randomUUID();
+      const legacyVersionId = randomUUID();
       await sql`
-        update semantic_edge_versions
-        set evidence_event_ids = null, provenance = null
-        where trace_id = ${ids.traceId}
+        insert into semantic_edge_versions (
+          id, logical_edge_id, trace_id, source_node_id, target_node_id, kind, retired,
+          evidence_event_ids, provenance
+        ) values (
+          ${legacyVersionId}, ${legacyLogicalEdgeId}, ${ids.traceId}, ${sourceNodeId},
+          ${targetNodeId}, 'decomposes_to', false, null, null
+        )
       `;
-      const downgraded = await repository.getGraph(ids.traceId, revisionId);
-      expect(downgraded?.edges).toEqual([]);
-      const downgradedTopology = await repository.getObservedTopology(ids.traceId, revisionId);
-      expect(downgradedTopology.observed.spawnEdges).toBe(0);
+      await sql`
+        insert into revision_edge_members (revision_id, logical_edge_id, edge_version_id)
+        values (${revisionId}, ${legacyLogicalEdgeId}, ${legacyVersionId})
+      `;
+      const withLegacy = await repository.getGraph(ids.traceId, revisionId);
+      expect(withLegacy?.edges).toHaveLength(1);
+      expect(withLegacy?.edges[0]?.logicalEdgeId).toBe(logicalEdgeId);
+      const withLegacyTopology = await repository.getObservedTopology(ids.traceId, revisionId);
+      expect(withLegacyTopology.observed.spawnEdges).toBe(1);
     } finally {
       await discard(ids.traceId);
     }

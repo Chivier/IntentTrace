@@ -180,6 +180,7 @@ describe("topology derivation boundaries", () => {
         eventWatermark: "2",
         facts,
         capabilities: new Map([["jsonl\0test", capability]]),
+        registeredArtifactIds: new Set(),
       },
     );
     expect(result.state.nodes[0]?.primaryParentId).toBe(pinnedParent);
@@ -197,6 +198,7 @@ describe("topology derivation boundaries", () => {
       eventWatermark: "2",
       facts,
       capabilities: new Map([["jsonl\0test", capability]]),
+      registeredArtifactIds: new Set(),
     });
     expect(result.state.edges).toEqual([]);
   });

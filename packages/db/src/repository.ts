@@ -226,6 +226,7 @@ export interface SummaryJobContext {
   allowedAgentIds: string[];
   eventSketch: string[];
   reducerFacts: ReducerRawFact[];
+  registeredArtifactIds: string[];
   graph: ReducerGraphState;
 }
 
@@ -930,14 +931,17 @@ export class IntentTraceRepository {
       where trace_id = ${job.trace_id} and event_watermark < ${String(job.event_watermark)}
     `;
     const chunkAfter = String(priorWatermarks[0]?.watermark ?? 0);
-    const [eventRows, agentRows, snapshot] = await Promise.all([
+    const [chunkRows, reducerRows, artifactRows, agentRows, snapshot] = await Promise.all([
       this.sql<RawEventRow[]>`
-        with current_chunk as (
-          select id from raw_events
-          where trace_id = ${job.trace_id}
-            and ingest_seq > ${chunkAfter}
-            and ingest_seq <= ${String(job.event_watermark)}
-        ), claim_facts as (
+        select re.*
+        from raw_events re
+        where re.trace_id = ${job.trace_id}
+          and re.ingest_seq > ${chunkAfter}
+          and re.ingest_seq <= ${String(job.event_watermark)}
+        order by re.ingest_seq, re.id
+      `,
+      this.sql<RawEventRow[]>`
+        with claim_facts as (
           select distinct ce.event_id as id
           from revision_node_members rnm
           join node_claims nc on nc.node_version_id = rnm.node_version_id
@@ -959,7 +963,10 @@ export class IntentTraceRepository {
         select re.*
         from raw_events re
         join (
-          select id from current_chunk
+          select id from raw_events
+          where trace_id = ${job.trace_id}
+            and ingest_seq > ${chunkAfter}
+            and ingest_seq <= ${String(job.event_watermark)}
           union
           select id from claim_facts
           union
@@ -968,6 +975,9 @@ export class IntentTraceRepository {
         where re.trace_id = ${job.trace_id}
           and re.ingest_seq <= ${String(job.event_watermark)}
         order by re.ingest_seq, re.id
+      `,
+      this.sql<Array<{ id: string }>>`
+        select id from artifacts where trace_id = ${job.trace_id} order by id
       `,
       this.sql<Array<{ source_agent_id: string }>>`
         select source_agent_id from agents where trace_id = ${job.trace_id} order by created_at, id
@@ -989,17 +999,17 @@ export class IntentTraceRepository {
       branchKind: job.branch_kind,
       promptVersion: job.prompt_version,
       policyVersion: job.policy_version,
-      allowedEventIds: eventRows.map((row) => row.id),
+      allowedEventIds: chunkRows.map((row) => row.id),
       allowedArtifactIds: [
         ...new Set(
-          eventRows.flatMap((row) => [
+          chunkRows.flatMap((row) => [
             ...(row.payload_ref ? [row.payload_ref] : []),
             ...(row.artifact_refs ?? []),
           ]),
         ),
       ],
       allowedAgentIds: agentRows.map((row) => row.source_agent_id),
-      eventSketch: eventRows.map((row) =>
+      eventSketch: chunkRows.map((row) =>
         JSON.stringify({
           eventId: row.id,
           kind: row.kind,
@@ -1018,7 +1028,7 @@ export class IntentTraceRepository {
           ],
         }),
       ),
-      reducerFacts: eventRows.map((row): ReducerRawFact => {
+      reducerFacts: reducerRows.map((row): ReducerRawFact => {
         const attributes = row.attributes ?? {};
         const stringAttribute = (key: string): string | undefined =>
           typeof attributes[key] === "string" ? attributes[key] : undefined;
@@ -1070,6 +1080,7 @@ export class IntentTraceRepository {
             : {}),
         };
       }),
+      registeredArtifactIds: artifactRows.map((row) => row.id),
       graph: {
         nodes: snapshot.nodes.map((node) => ({
           logicalNodeId: node.logicalNodeId,

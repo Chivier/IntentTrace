@@ -99,6 +99,7 @@ export async function runSummaryJob(
         eventWatermark: context.eventWatermark,
         facts: context.reducerFacts,
         capabilities,
+        registeredArtifactIds: new Set(context.registeredArtifactIds),
       },
     );
     if (!reduced.ok) {

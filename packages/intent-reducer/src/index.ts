@@ -99,6 +99,7 @@ export interface ReducerTopologyContext {
   eventWatermark: string;
   facts: readonly ReducerRawFact[];
   capabilities: ReadonlyMap<string, TopologyCapability>;
+  registeredArtifactIds: ReadonlySet<string>;
 }
 
 export type PatchApplyResult =
@@ -378,9 +379,16 @@ function addDesiredEdge(edges: Map<string, DesiredEdge>, edge: DesiredEdge): voi
   if (edge.provenance === "inferred") previous.provenance = "inferred";
 }
 
-function nodeDerivedFields(anchor: NodeAnchor): Pick<ReducerNode, "status" | "primaryAgentId" | "participantAgentIds" | "artifactIds"> {
+function nodeDerivedFields(
+  anchor: NodeAnchor,
+  registeredArtifactIds: ReadonlySet<string>,
+): Pick<ReducerNode, "status" | "primaryAgentId" | "participantAgentIds" | "artifactIds"> {
   const participantAgentIds = [...new Set(anchor.facts.flatMap((fact) => fact.agentId ? [fact.agentId] : []))].sort();
-  const artifactIds = [...new Set(anchor.facts.flatMap((fact) => fact.artifactRefs))].sort();
+  const artifactIds = [
+    ...new Set(
+      anchor.facts.flatMap((fact) => fact.artifactRefs.filter((id) => registeredArtifactIds.has(id))),
+    ),
+  ].sort();
   const hasError = anchor.facts.some((fact) => fact.status === "error");
   const hasCompletion = anchor.facts.some((fact) => fact.kind === "trace_complete" || fact.kind === "agent_end");
   return {
@@ -399,18 +407,27 @@ function parentFor(anchor: NodeAnchor, anchors: readonly NodeAnchor[], facts: re
       .sort((left, right) => left.endSeq === right.endSeq ? compareNodeId(left, right) : left.endSeq > right.endSeq ? -1 : 1)[0];
     if (prior) return prior.node.logicalNodeId;
   }
-  const parentAgentId = anchor.facts.find((fact) => fact.parentAgentId)?.parentAgentId;
+  const childStart = anchor.lane
+    ? facts.find(
+        (fact) =>
+          fact.kind === "agent_start" &&
+          fact.agentId === anchor.lane &&
+          Boolean(fact.parentAgentId),
+      )
+    : undefined;
+  const parentAgentId = childStart?.parentAgentId;
   if (parentAgentId) {
-    const childStart = anchor.facts.find((fact) => fact.kind === "agent_start" && fact.parentAgentId === parentAgentId);
-    if (childStart) {
-      const dispatchFact = facts.find((fact) =>
-        (childStart.parentSpanId && fact.spanId === childStart.parentSpanId) ||
-        fact.spawnedAgentIds?.includes(anchor.lane ?? ""),
-      );
-      if (dispatchFact) {
-        const exact = outboundEndpoint(anchors, parentAgentId, dispatchFact);
-        if (exact) return exact.node.logicalNodeId;
-      }
+    const dispatchFact = facts.find(
+      (fact) =>
+        fact.agentId === parentAgentId &&
+        fact.sourceKind === childStart.sourceKind &&
+        fact.adapterVersion === childStart.adapterVersion &&
+        ((childStart.parentSpanId !== null && fact.spanId === childStart.parentSpanId) ||
+          fact.spawnedAgentIds?.includes(anchor.lane ?? "")),
+    );
+    if (dispatchFact) {
+      const exact = outboundEndpoint(anchors, parentAgentId, dispatchFact);
+      if (exact) return exact.node.logicalNodeId;
     }
     const parent = anchors
       .filter((candidate) => candidate.lane === parentAgentId && candidate.endSeq <= anchor.startSeq)
@@ -440,7 +457,7 @@ export function deriveTopology(
 
   for (const anchor of anchors) {
     if (anchor.node.pinnedByHuman) continue;
-    const derived = nodeDerivedFields(anchor);
+    const derived = nodeDerivedFields(anchor, context.registeredArtifactIds);
     const primaryParentId = parentFor(anchor, anchors, facts);
     const persisted = { ...derived, primaryParentId };
     if (
@@ -468,9 +485,13 @@ export function deriveTopology(
     const childLane = childStart.agentId!;
     if (seenChildLanes.has(childLane)) continue;
     seenChildLanes.add(childLane);
-    const parentFact = facts.find((fact) =>
-      (childStart.parentSpanId && fact.spanId === childStart.parentSpanId) ||
-      fact.spawnedAgentIds?.includes(childLane),
+    const parentFact = facts.find(
+      (fact) =>
+        fact.agentId === childStart.parentAgentId &&
+        fact.sourceKind === childStart.sourceKind &&
+        fact.adapterVersion === childStart.adapterVersion &&
+        ((childStart.parentSpanId !== null && fact.spanId === childStart.parentSpanId) ||
+          fact.spawnedAgentIds?.includes(childLane)),
     );
     if (!parentFact) continue;
     // `passthrough` sources reach this point only through the structured
@@ -532,10 +553,10 @@ export function deriveTopology(
   }
 
   // Produces and depends_on require an explicit producer fact and registered artifact membership.
-  for (const write of facts.filter((fact) => fact.kind === "file_write" && fact.onBehalfOf && fact.artifactRefs.length > 0)) {
+  for (const write of facts.filter((fact) => fact.kind === "file_write" && fact.onBehalfOf && fact.artifactRefs.some((id) => context.registeredArtifactIds.has(id)))) {
     const producer = outboundEndpoint(anchors, write.agentId, write);
     const beneficiary = anchors
-      .filter((anchor) => anchor.lane === write.onBehalfOf && anchor.node.artifactIds.some((id) => write.artifactRefs.includes(id)))
+      .filter((anchor) => anchor.lane === write.onBehalfOf && anchor.node.artifactIds.some((id) => write.artifactRefs.includes(id) && context.registeredArtifactIds.has(id)))
       .sort((left, right) => left.startSeq === right.startSeq ? compareNodeId(left, right) : left.startSeq < right.startSeq ? -1 : 1)[0];
     if (!producer || !beneficiary) continue;
     const provenance = write.topologyProvenance === "inferred" ? "inferred" : "stated";
@@ -546,12 +567,13 @@ export function deriveTopology(
       evidenceEventIds: [write.eventId],
       provenance,
     });
-    const producedArtifacts = producer.node.artifactIds.filter((id) => write.artifactRefs.includes(id));
+    const producedArtifacts = producer.node.artifactIds.filter(
+      (id) => write.artifactRefs.includes(id) && context.registeredArtifactIds.has(id),
+    );
     if (producedArtifacts.length === 0) continue;
     for (const consumer of anchors.filter(
       (anchor) =>
         anchor !== producer &&
-        anchor !== beneficiary &&
         anchor.node.artifactIds.some((id) => producedArtifacts.includes(id)),
     )) {
       addDesiredEdge(desired, {

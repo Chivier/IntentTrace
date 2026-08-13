@@ -135,12 +135,16 @@ const fanFacts: ReducerRawFact[] = [
   }),
 ];
 
-function topologyContext(facts: readonly ReducerRawFact[] = fanFacts): ReducerTopologyContext {
+function topologyContext(
+  facts: readonly ReducerRawFact[] = fanFacts,
+  registeredArtifactIds: ReadonlySet<string> = new Set(),
+): ReducerTopologyContext {
   return {
     traceId,
-    eventWatermark: "7",
+    eventWatermark: "20",
     facts,
     capabilities: new Map([["jsonl\0test", capability]]),
+    registeredArtifactIds,
   };
 }
 
@@ -267,5 +271,75 @@ describe("deterministic reducer properties", () => {
     );
     expect(restoredEdge?.retired).toBe(false);
     expect(restoredEdge?.versionId).not.toBe(retiredEdge?.versionId);
+  });
+
+  it("uses the lane's first qualifying start fact for parentage even outside node evidence", () => {
+    const childEvidence = "019fbbb3-4324-7d43-8f9c-cd489a92d020";
+    const childNode = node(childFirstA, childEvidence);
+    const state: ReducerGraphState = {
+      nodes: [node(requestNode, eventIds.request, "request"), node(dispatchNode, eventIds.dispatch), childNode],
+      edges: [],
+    };
+    const facts = [
+      fact(eventIds.request, 1, "user_message", "root"),
+      fact(eventIds.dispatch, 2, "agent_handoff", "root", {
+        spanId: "dispatch-call",
+        spawnedAgentIds: ["child-a"],
+      }),
+      fact(eventIds.childStartA, 3, "agent_start", "child-a", {
+        parentAgentId: "root",
+        parentSpanId: "dispatch-call",
+      }),
+      fact(childEvidence, 4, "assistant_message", "child-a"),
+    ];
+    const result = deriveTopology(state, topologyContext(facts));
+    expect(result.state.nodes.find((item) => item.logicalNodeId === childFirstA)?.primaryParentId).toBe(dispatchNode);
+  });
+
+  it("rejects colliding spawn facts from a different parent lane and source", () => {
+    const collision = fact("019fbbb3-4324-7d43-8f9c-cd489a92d021", 1, "agent_handoff", "other-parent", {
+      sourceKind: "otlp",
+      adapterVersion: "1.0.0",
+      spanId: "dispatch-call",
+      spawnedAgentIds: ["child-a"],
+    });
+    const context = topologyContext([collision, ...fanFacts]);
+    context.capabilities = new Map([
+      ["jsonl\0test", capability],
+      [`otlp${String.fromCharCode(0)}1.0.0`, capability],
+    ]);
+    const result = deriveTopology(fanState, context);
+    const spawn = result.state.edges.find(
+      (edge) => edge.kind === "decomposes_to" && edge.targetNodeId === childFirstA,
+    );
+    expect(spawn?.sourceNodeId).toBe(dispatchNode);
+    expect(spawn?.evidenceEventIds).toContain(eventIds.dispatch);
+    expect(spawn?.evidenceEventIds).not.toContain(collision.eventId);
+  });
+
+  it("copies only registered artifacts and includes the beneficiary as a dependency consumer", () => {
+    const artifact = "019fbbb3-4324-7d43-8f9c-cd489a92af01";
+    const unknown = "019fbbb3-4324-7d43-8f9c-cd489a92af02";
+    const producerEvent = "019fbbb3-4324-7d43-8f9c-cd489a92d022";
+    const consumerEvent = "019fbbb3-4324-7d43-8f9c-cd489a92d023";
+    const producer = { ...node(dispatchNode, producerEvent), artifactIds: [artifact] };
+    const beneficiary = node(childFirstA, consumerEvent);
+    const state: ReducerGraphState = { nodes: [producer, beneficiary], edges: [] };
+    const facts = [
+      fact(producerEvent, 1, "file_write", "root", {
+        artifactRefs: [artifact, unknown],
+        onBehalfOf: "child-a",
+      }),
+      fact(consumerEvent, 2, "assistant_message", "child-a", { artifactRefs: [artifact, unknown] }),
+    ];
+    const result = deriveTopology(state, topologyContext(facts, new Set([artifact])));
+    expect(result.state.nodes.map((item) => item.artifactIds)).toEqual([[artifact], [artifact]]);
+    expect(result.state.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "produces", sourceNodeId: dispatchNode, targetNodeId: childFirstA }),
+        expect.objectContaining({ kind: "depends_on", sourceNodeId: childFirstA, targetNodeId: dispatchNode }),
+      ]),
+    );
+    expect(result.state.edges.every((edge) => edge.evidenceEventIds.length > 0)).toBe(true);
   });
 });
