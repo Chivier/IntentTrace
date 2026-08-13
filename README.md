@@ -24,8 +24,7 @@ The screenshots in this README — the workbench above and the [trace list](docs
 - **Semantic conclusions stay traceable.** Every claim resolves back to a raw event or to artifact evidence. See [the artifact and evidence contract](docs/contracts.md#artifact-and-evidence-contract).
 - **Replay against the information available then.** Graph, Gantt, raw events and evidence share one ingest watermark. See [data flow](docs/architecture.md#data-flow-and-ordering).
 - **A deterministic commit boundary.** The model only proposes; Zod validation and a deterministic reducer decide whether a revision is committed. See [the reducer contract](docs/contracts.md#reducer-contract).
-- **Several ways in.** Canonical JSONL, OTLP HTTP JSON/gzip, and Codex/Claude sessions from explicitly chosen files. See [the adapter contract](docs/contracts.md#adapter-contract).
-- **Local-first, degrading instead of failing.** When the provider is unavailable, the raw trace and evidence paths keep working. See [the provider outage runbook](docs/operations/runbooks.md#runbook-provider-outage).
+- **Several ways in.** Canonical JSONL, OTLP HTTP JSON/gzip, Codex, Claude, OpenCode, OMP and Grok bundles from explicitly chosen bytes. Pi traces are accepted only in canonical event form; there is no Pi transcript parser.
 - **Human revisions.** Edit, pin and feedback, with an immutable revision history preserved. See [the revision model](docs/contracts.md#revision-model).
 
 ## Quick start

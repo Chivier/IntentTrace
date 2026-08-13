@@ -9,6 +9,7 @@ milestone: Gate 0-Gate 5
 # Database
 
 This document merges the ERD, schema invariants, the migration policy, and retention/deletion rules. `packages/db/src/schema.ts` and the committed migrations are always the source of truth for columns, indexes, FKs, and enums.
+Semantic edge versions retain nullable legacy evidence/provenance columns for pre-upgrade rows. New reducer writes always provide non-empty evidence event IDs and provenance; unaudited legacy edges are omitted from graph reads. `topology:rebuild` creates an immutable topology-only revision from existing raw facts without provider calls, preserving historical revisions and pinned node parents.
 
 ## Database ERD
 

@@ -20,6 +20,8 @@ The API only accesses the database/ArtifactStore and never reads arbitrary host 
 
 Full inspection/import uses `application/vnd.intenttrace.session-bundle`: `ITB1`, a big-endian u32 manifest length (maximum 1 MiB), strict UTF-8 JSON, then concatenated payload. Manifest part order must equal strictly increasing offset order; positive-length, unique-clientRef ranges exactly cover the payload. Inspection requires `candidateIds=[]`; import requires one to 50 IDs and returns protocol-v2 batch results. The configured aggregate request cap is 64 MiB. The API uses `prepareSessionParts`, completes preflight for every selected candidate before writes, then registers referenced artifacts and ingests each logical trace in deterministic event order.
 
+Topology declarations are exposed in snapshots as `topology.declared` and observed counts (`lanes`, `lanesWithParent`, `spawnEdges`, `peerEdges`). Graph structural edges are reducer-derived and include audited evidence event IDs plus provenance; adapter source mappings never authorize ingest-order edges.
+
 ## API errors
 
 JSON errors use the Problem Details fields: `type`, `title`, HTTP `status`, a stable `code`, and `requestId`, and MAY add a secret-free `detail`/field errors. Clients branch on `code` and do not parse the title.

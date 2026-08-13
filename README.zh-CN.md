@@ -24,7 +24,7 @@ IntentTrace 是一个本地优先的 Agent 可观测性工作台：它把多智�
 - **语义结论可追溯**：每条 claim 都能回到 raw event 或 artifact evidence。见 [artifact 与 evidence 契约](docs/contracts.md#artifact-and-evidence-contract)。
 - **按当时信息回放**：Graph、Gantt、Raw Events 和 Evidence 共用 ingest watermark。见[数据流](docs/architecture.md#data-flow-and-ordering)。
 - **确定性提交边界**：模型只能提出 proposal；Zod 校验与 deterministic reducer 决定是否提交 revision。见 [reducer 契约](docs/contracts.md#reducer-contract)。
-- **多种导入方式**：支持 canonical JSONL、OTLP HTTP JSON/gzip，以及显式选择文件的 Codex/Claude session 导入。见 [adapter 契约](docs/contracts.md#adapter-contract)。
+- **多种导入方式**：支持 canonical JSONL、OTLP HTTP JSON/gzip，以及显式选择字节的 Codex、Claude、OpenCode、OMP、Grok bundle。Pi 仅支持 canonical event，没有 transcript parser。见 [adapter 契约](docs/contracts.md#adapter-contract)。
 - **本地优先与故障可降级**：provider 不可用时，raw trace 和 evidence 路径仍然可用。见 [provider outage runbook](docs/operations/runbooks.md#runbook-provider-outage)。
 - **人工修订**：支持 edit、pin、feedback，并保留 immutable revision history。见 [revision 模型](docs/contracts.md#revision-model)。
 
