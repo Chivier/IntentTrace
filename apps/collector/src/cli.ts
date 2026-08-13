@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { stat, watch } from "node:fs/promises";
 import { basename, join } from "node:path";
 
@@ -11,6 +12,7 @@ import {
   IngestResultSchema,
   SessionCatalogIdSchema,
   SessionCatalogSchema,
+  SessionImportBatchOutcomeSchema,
   SessionImportOutcomeSchema,
   SessionImportSummarySchema,
   type IngestResult,
@@ -31,30 +33,35 @@ import { prepareSession, type PreparedSession } from "./session-preflight.js";
 export const HELP_TEXT = `IntentTrace Collector
 
 Usage:
-  intenttrace discover --source jsonl|otlp|codex|claude --path <path> [--limit <n>]
+  intenttrace discover --source jsonl|otlp|codex|claude|opencode|omp|grok --path <path> [--limit <n>]
                        [--max-file-mib <n>] [--include-previews]
-  intenttrace import --source jsonl|otlp|codex|claude --path <path> [--api <origin>]
+  intenttrace import --source jsonl|otlp|codex|claude|opencode|omp|grok --path <path> [--api <origin>]
                      [--session <opaque-id> ...] [--max-files <n>] [--concurrency <n>]
                      [--newest] [--max-file-mib <n>] [--dry-run] [--include-previews]
   intenttrace follow --source codex|claude --path <path> [--api <origin>]
   intenttrace --help
 
-The collector reads only the explicit path, refuses symlink boundaries, and sends normalized facts to the local API.
+The collector reads only the explicit path, refuses symlink boundaries, and sends explicit bytes to the local API.
 
-A directory --path is walked recursively (Codex stores sessions under YYYY/MM/DD, Claude under one
-directory per project), reading only ${"`.jsonl`/`.ndjson`"} regular files and never following symlinks.
-Discover returns a sanitized, recent-first catalog with opaque IDs, project hints, activity, event
-and warning counts. It sends no data. --include-previews explicitly opts into bounded visible prompt
-previews on stdout. Import --session selects catalog IDs
-and may be repeated. Every file is completely parsed and validated before its first fact is sent.
-Each file becomes its own trace, so files import concurrently while events inside one file stay ordered.
---max-files caps the batch and the skipped count is always reported, never silently dropped.
---newest keeps the most recently modified files when the cap applies; the default import order is by path.
---dry-run performs the same preflight as discover without sending anything to the API.
+Discovery and import group source-aware logical session bundles; every part is opened with O_NOFOLLOW
+and checked before and after reading. No server directory enumeration occurs. Import --session accepts
+opaque catalog IDs. Full bundle preflight completes before the API inserts any selected candidate.
+Bundle imports use application/vnd.intenttrace.session-bundle. Follow is only supported for one explicitly
+selected Codex or Claude file; a selected bundle reports follow_requires_single_file.
+--max-files caps the batch and reports skipped candidates. --dry-run performs the same local preflight
+without sending bytes.
 `;
 
 type Command = "discover" | "import" | "follow";
-const importSources = new Set<TraceSourceKind>(["jsonl", "otlp", "codex", "claude"]);
+const importSources = new Set<TraceSourceKind>([
+  "jsonl",
+  "otlp",
+  "codex",
+  "claude",
+  "opencode",
+  "omp",
+  "grok",
+]);
 const followSources = new Set<TraceSourceKind>(["codex", "claude"]);
 const DEFAULT_DISCOVER_LIMIT = 50;
 const DEFAULT_MAX_FILE_MIB = 64;
@@ -92,10 +99,12 @@ function isLoopbackHostname(hostname: string): boolean {
 }
 
 function parseSource(value: string): TraceSourceKind {
-  if (value === "jsonl" || value === "otlp" || value === "codex" || value === "claude") {
-    return value;
+  if (["jsonl", "otlp", "codex", "claude", "opencode", "omp", "grok"].includes(value)) {
+    return value as TraceSourceKind;
   }
-  throw new Error("Unsupported source; expected jsonl, otlp, codex, or claude");
+  throw new Error(
+    "Unsupported source; expected jsonl, otlp, codex, claude, opencode, omp, or grok",
+  );
 }
 
 export interface CollectorDependencies {
@@ -166,6 +175,74 @@ async function mapWithConcurrency<T>(
     }
   });
   await Promise.all(runners);
+}
+
+function collectorCandidateId(source: TraceSourceKind, prepared: PreparedSession): string {
+  return createHash("sha256")
+    .update("intenttrace-session-candidate-v2")
+    .update("\0")
+    .update(source)
+    .update("\0")
+    .update(prepared.events[0]!.traceId)
+    .update("\0")
+    .update(prepared.candidate.relativePath)
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function collectorFrame(prepared: PreparedSession, source: TraceSourceKind, candidateId: string): Blob {
+  const manifest = {
+    protocolVersion: 1,
+    source,
+    candidateIds: [candidateId],
+    parts: [
+      {
+        clientRef: prepared.candidate.id,
+        path: prepared.candidate.relativePath,
+        offset: 0,
+        byteLength: prepared.bytes.byteLength,
+        modifiedAt: prepared.candidate.modifiedAt,
+      },
+    ],
+  };
+  const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
+  const header = new ArrayBuffer(8);
+  const headerBytes = new Uint8Array(header);
+  headerBytes.set(new TextEncoder().encode("ITB1"));
+  new DataView(header).setUint32(4, manifestBytes.byteLength);
+  return new Blob([headerBytes, manifestBytes, prepared.bytes], {
+    type: "application/vnd.intenttrace.session-bundle",
+  });
+}
+
+async function uploadPreparedSession(
+  prepared: PreparedSession,
+  source: TraceSourceKind,
+  apiOrigin: string,
+  dependencies: CollectorDependencies,
+): Promise<{ inserted: number; duplicates: number; warnings: number; traceId: string }> {
+  const candidateId = collectorCandidateId(source, prepared);
+  let response: Response;
+  try {
+    response = await dependencies.fetch(new URL("/api/v1/imports/sessions", apiOrigin), {
+      method: "POST",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      body: collectorFrame(prepared, source, candidateId),
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    throw new Error("API request failed");
+  }
+  if (!response.ok) throw new Error(`API rejected event (${response.status})`);
+  let outcome;
+  try {
+    outcome = SessionImportBatchOutcomeSchema.parse(await response.json());
+  } catch {
+    throw new Error("API returned an invalid ingestion response");
+  }
+  const result = outcome.results.find((candidate) => candidate.candidateId === candidateId);
+  if (!result) throw new Error("API returned an invalid ingestion response");
+  return result;
 }
 
 async function ingestPreparedSession(
@@ -389,24 +466,22 @@ async function importPath(
   await mapWithConcurrency(discovered.candidates, options.concurrency, async (candidate) => {
     try {
       const prepared = await prepareSession(source, candidate, options.maxFileBytes);
-      const result = await ingestPreparedSession(prepared, apiOrigin, true, "import", dependencies);
+      const result = await uploadPreparedSession(prepared, source, apiOrigin, dependencies);
       totals.imported += 1;
       totals.inserted += result.inserted;
       totals.duplicates += result.duplicates;
       totals.warnings += result.warnings;
       dependencies.output(
-        JSON.stringify(
-          SessionImportOutcomeSchema.parse({
-            protocolVersion: 1,
-            level: "result",
-            command: "import",
-            sessionId: candidate.id,
-            traceId: result.traceId,
-            inserted: result.inserted,
-            duplicates: result.duplicates,
-            warnings: result.warnings,
-          }),
-        ),
+        JSON.stringify({
+          protocolVersion: 2,
+          level: "result",
+          command: "upload",
+          sessionId: candidate.id,
+          traceId: result.traceId,
+          inserted: result.inserted,
+          duplicates: result.duplicates,
+          warnings: result.warnings,
+        }),
       );
     } catch (error) {
       totals.failed += 1;
@@ -462,7 +537,9 @@ async function followPath(
   once: boolean,
   dependencies: CollectorDependencies,
 ): Promise<void> {
-  if (path.kind !== "file") throw new Error("follow requires an explicitly named regular file");
+  if (path.kind !== "file") {
+    throw new Error("follow_requires_single_file: follow requires one explicit Codex/Claude file");
+  }
   let checkpoint = await loadCheckpoint(stateRoot, source, path.realPath);
 
   const cycle = async (): Promise<void> => {

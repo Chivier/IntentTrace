@@ -1,7 +1,7 @@
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 
-import { prepareSessionBytes, type PreparedSessionWarning } from "@intenttrace/adapters";
+import { prepareSessionParts, type PreparedSessionWarning } from "@intenttrace/adapters";
 import type { RawTraceEventInput, SessionCatalogEntry, TraceSourceKind } from "@intenttrace/schema";
 
 import type { SessionFileCandidate } from "./session-discovery.js";
@@ -11,9 +11,11 @@ export type { PreparedSessionWarning };
 export interface PreparedSession {
   candidate: SessionFileCandidate;
   contentSha256: string;
+  bytes: Uint8Array;
   events: RawTraceEventInput[];
   warnings: PreparedSessionWarning[];
   descriptor: SessionDescriptor;
+  completionMarker: RawTraceEventInput;
 }
 
 export type SessionDescriptor = SessionCatalogEntry;
@@ -54,12 +56,25 @@ export async function prepareSession(
   } finally {
     await handle.close();
   }
-  // Keep the existing basename namespace stable; provider-native session IDs
-  // remain the trace identity when the source format supplies one.
-  const prepared = await prepareSessionBytes(source, bytes, candidate.normalizationIdentity, {
-    id: candidate.id,
-    byteLength: candidate.byteLength,
-    modifiedAt: candidate.modifiedAt,
-  });
-  return { candidate, ...prepared };
+  const prepared = await prepareSessionParts(
+    source,
+    [{ path: candidate.relativePath, bytes }],
+    candidate.normalizationIdentity,
+    {
+      id: candidate.id,
+      byteLength: candidate.byteLength,
+      modifiedAt: candidate.modifiedAt,
+    },
+  );
+  if (prepared.length !== 1) throw new Error("Session bundle contains multiple logical traces");
+  const trace = prepared[0]!;
+  return {
+    candidate,
+    bytes,
+    contentSha256: trace.contentSha256,
+    events: trace.events.map(({ event }) => event),
+    warnings: trace.warnings,
+    descriptor: trace.descriptor,
+    completionMarker: trace.completionMarker,
+  };
 }

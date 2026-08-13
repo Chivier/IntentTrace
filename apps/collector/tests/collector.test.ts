@@ -18,7 +18,32 @@ afterEach(async () => {
 function mockFetch() {
   let sequence = 0;
   return async (_input: string | URL | Request, init?: RequestInit) => {
-    const event = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    const request = init?.body;
+    if (request instanceof Blob) {
+      const bytes = new Uint8Array(await request.arrayBuffer());
+      expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("ITB1");
+      const manifestLength = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4);
+      const manifest = JSON.parse(
+        new TextDecoder().decode(bytes.subarray(8, 8 + manifestLength)),
+      ) as { candidateIds: string[] };
+      return new Response(
+        JSON.stringify({
+          protocolVersion: 2,
+          level: "result",
+          command: "upload",
+          results: manifest.candidateIds.map((candidateId) => ({
+            candidateId,
+            sessionId: "b".repeat(24),
+            traceId: "33333333-3333-4333-8333-333333333333",
+            inserted: 2,
+            duplicates: 0,
+            warnings: 0,
+          })),
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    const event = JSON.parse(String(request)) as Record<string, unknown>;
     delete event.workspaceName;
     delete event.projectName;
     delete event.traceTitle;
@@ -44,13 +69,73 @@ function mockFetch() {
 describe("collector path boundary", () => {
   it("documents the fixed command surface", () => {
     expect(HELP_TEXT).toContain(
-      "intenttrace discover --source jsonl|otlp|codex|claude --path <path>",
+      "intenttrace discover --source jsonl|otlp|codex|claude|opencode|omp|grok --path <path>",
     );
     expect(HELP_TEXT).toContain(
-      "intenttrace import --source jsonl|otlp|codex|claude --path <path>",
+      "intenttrace import --source jsonl|otlp|codex|claude|opencode|omp|grok --path <path>",
     );
     expect(HELP_TEXT).toContain("[--session <opaque-id> ...]");
     expect(HELP_TEXT).toContain("intenttrace follow --source codex|claude --path <path>");
+    expect(HELP_TEXT).toContain("follow_requires_single_file");
+  });
+
+  it("sends an import as one framed bundle request", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "intenttrace-collector-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "session.jsonl");
+    await writeFile(path, '{"type":"session_meta","payload":{"id":"session-1"}}\n');
+    const requests: Array<{ url: string; contentType: string | null }> = [];
+    await expect(
+      runCollector(["import", "--source", "codex", "--path", path], {
+        fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+          requests.push({
+            url: String(input),
+            contentType: new Headers(init?.headers).get("content-type"),
+          });
+          const body = init?.body as Blob;
+          const bytes = new Uint8Array(await body.arrayBuffer());
+          const manifestLength = new DataView(bytes.buffer).getUint32(4);
+          const manifest = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + manifestLength))) as { candidateIds: string[] };
+          return new Response(
+            JSON.stringify({
+              protocolVersion: 2,
+              level: "result",
+              command: "upload",
+              results: manifest.candidateIds.map((id) => ({
+                candidateId: id,
+                sessionId: "b".repeat(24),
+                traceId: "33333333-3333-4333-8333-333333333333",
+                inserted: 2,
+                duplicates: 0,
+                warnings: 0,
+              })),
+            }),
+            { status: 200, headers: { "content-type": "application/json" } },
+          );
+        }) as typeof fetch,
+        output: () => {},
+        environment: {},
+      }),
+    ).resolves.toBe(0);
+    expect(requests).toEqual([
+      {
+        url: "http://127.0.0.1:3001/api/v1/imports/sessions",
+        contentType: "application/vnd.intenttrace.session-bundle",
+      },
+    ]);
+  });
+
+  it("reports bundle follow rejection visibly", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "intenttrace-collector-"));
+    temporaryDirectories.push(directory);
+    await writeFile(join(directory, "session.jsonl"), '{"type":"session_meta","payload":{"id":"session-1"}}\n');
+    await expect(
+      runCollector(["follow", "--source", "codex", "--path", directory, "--once"], {
+        fetch: mockFetch() as typeof fetch,
+        output: () => {},
+        environment: {},
+      }),
+    ).rejects.toThrow("follow_requires_single_file");
   });
 
   it("redacts absolute paths from fatal filesystem diagnostics", () => {
@@ -147,28 +232,19 @@ describe("collector path boundary", () => {
     );
     const output: string[] = [];
     const repositoryWarningFetch = async (
-      _input: string | URL | Request,
+      input: string | URL | Request,
       init?: RequestInit,
     ) => {
-      const event = JSON.parse(String(init?.body)) as Record<string, unknown>;
-      delete event.workspaceName;
-      delete event.projectName;
-      delete event.traceTitle;
-      delete event.payload;
-      return new Response(
-        JSON.stringify({
-          event: {
-            ...event,
-            id: "00000000-0000-4000-8000-000000000001",
-            ingestSeq: "1",
-            ingestedAt: "2026-08-03T00:00:00.000Z",
-          },
-          duplicate: false,
-          traceStale: false,
-          warnings: [{ code: "causation_source_event_unresolved", sourceEventId: "parent" }],
-        }),
-        { status: 201, headers: { "content-type": "application/json" } },
-      );
+      const receiver = mockFetch();
+      const response = await receiver(input, init);
+      const body = (await response.json()) as {
+        results: Array<{ warnings: number }>;
+      };
+      for (const result of body.results) result.warnings = 2;
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
     };
 
     await expect(
@@ -298,11 +374,11 @@ describe("collector path boundary", () => {
         environment: {},
       }),
     ).resolves.toBe(0);
-    expect(sent).toBe(2);
+    expect(sent).toBe(1);
     const result = output.map((line) => JSON.parse(line)).find((line) => line.level === "result");
     expect(result).toMatchObject({
-      protocolVersion: 1,
-      command: "import",
+      protocolVersion: 2,
+      command: "upload",
       sessionId: selected.id,
       inserted: 2,
       duplicates: 0,
