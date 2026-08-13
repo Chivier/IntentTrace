@@ -138,6 +138,21 @@ describe("browser bundle transport", () => {
     expect(ranked.skippedByLimit).toBe(1);
   });
 
+  it("retains OMP same-stem children only for windowed roots", () => {
+    const roots = Array.from({ length: CANDIDATE_WINDOW + 1 }, (_, index) => {
+      const root = file(`root-${index}.jsonl`, 100 - index);
+      Object.defineProperty(root, "webkitRelativePath", { value: `root-${index}.jsonl` });
+      return root;
+    });
+    const selectedChild = file("child.jsonl", 0);
+    Object.defineProperty(selectedChild, "webkitRelativePath", { value: "root-0/child.jsonl" });
+    const skippedChild = file("child.jsonl", 0);
+    Object.defineProperty(skippedChild, "webkitRelativePath", { value: `root-${CANDIDATE_WINDOW}/child.jsonl` });
+    const ranked = rankCandidates([...roots, selectedChild, skippedChild], "folder");
+    expect(ranked.window).toContain(selectedChild);
+    expect(ranked.window).not.toContain(skippedChild);
+  });
+
   it("creates distinct rows when one part yields several logical traces", () => {
     const source = row({ clientRef: "c1" });
     const candidates = candidateRowsFromResponse([source], [

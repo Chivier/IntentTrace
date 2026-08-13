@@ -503,4 +503,27 @@ describe("browser session import routes", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().candidates).toHaveLength(50);
   });
+
+  it("keeps mixed-source companions scoped to their detected roots", async () => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const codex = await codexFixture();
+    const claude = await claudeFixture();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      payload: {
+        protocolVersion: 2,
+        includePreviews: false,
+        parts: [
+          { clientRef: "codex", path: "codex.jsonl", byteLength: codex.byteLength, modifiedAt: "2026-08-01T00:00:00.000Z", headBase64: codex.toString("base64"), complete: true },
+          { clientRef: "claude", path: "claude.jsonl", byteLength: claude.byteLength, modifiedAt: "2026-08-01T00:00:00.000Z", headBase64: claude.toString("base64"), complete: true },
+          { clientRef: "claude-meta", path: "subagents/agent.meta.json", byteLength: 22, modifiedAt: "2026-08-01T00:00:00.000Z", headBase64: Buffer.from('{"sessionId":"session-1"}').toString("base64"), complete: true },
+        ],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    const candidates = response.json().candidates as Array<{ source: string; partRefs: string[] }>;
+    expect(candidates.find((candidate) => candidate.source === "codex")?.partRefs).toEqual(["codex"]);
+  });
 });

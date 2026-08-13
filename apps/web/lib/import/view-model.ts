@@ -230,8 +230,9 @@ export function rankCandidates(files: readonly File[], mode: "folder" | "files")
       ? left.name.localeCompare(right.name)
       : right.lastModified - left.lastModified,
   );
-  const isCompanion = (file: File) => {
-    const path = file.webkitRelativePath || file.name;
+  const pathOf = (file: File) => file.webkitRelativePath || file.name;
+  const isExplicitCompanion = (file: File) => {
+    const path = pathOf(file);
     return (
       path.includes("/subagents/") ||
       file.name.endsWith(".meta.json") ||
@@ -239,9 +240,24 @@ export function rankCandidates(files: readonly File[], mode: "folder" | "files")
       file.name.endsWith("-shm")
     );
   };
-  const roots = kept.filter((file) => !isCompanion(file));
-  const companions = kept.filter(isCompanion);
+  const isNestedJson = (file: File) => {
+    const path = pathOf(file);
+    return path.includes("/") && /\.(?:jsonl|ndjson)$/iu.test(file.name);
+  };
+  const roots = kept.filter((file) => !isExplicitCompanion(file) && !isNestedJson(file));
   const selectedRoots = roots.slice(0, CANDIDATE_WINDOW);
+  const selectedStems = new Set(
+    selectedRoots.map((file) => {
+      const path = pathOf(file);
+      return path.slice(0, -file.name.slice(file.name.lastIndexOf(".")).length);
+    }),
+  );
+  const companions = kept.filter((file) => {
+    if (isExplicitCompanion(file)) return true;
+    if (!isNestedJson(file)) return false;
+    const path = pathOf(file);
+    return [...selectedStems].some((stem) => path.startsWith(`${stem}/`));
+  });
   return {
     window: [...selectedRoots, ...companions],
     skippedByLimit: Math.max(0, roots.length - CANDIDATE_WINDOW),

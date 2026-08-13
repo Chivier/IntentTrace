@@ -172,14 +172,13 @@ interface ImportCandidate {
   failureMessage: string | null;
 }
 
-function isCompanionPart(path: string): boolean {
-  return (
-    path.includes("/subagents/") ||
-    path.startsWith("subagents/") ||
-    path.endsWith(".meta.json") ||
-    path.endsWith("-wal") ||
-    path.endsWith("-shm")
-  );
+function companionMayBelongToSource(path: string, source: ImportSourceKind): boolean {
+  if (source === "claude") {
+    return path.includes("/subagents/") || path.startsWith("subagents/") || path.endsWith(".meta.json");
+  }
+  if (source === "opencode") return path.endsWith("-wal") || path.endsWith("-shm");
+  if (source === "omp") return /\/(?:[^/]+)\.(?:jsonl|ndjson)$/iu.test(path);
+  return false;
 }
 
 async function discoverCandidates(
@@ -225,11 +224,17 @@ async function discoverCandidates(
         .map(([ref]) => ref),
     );
     const sourceParts = parts
-      .filter((part) => sourceHint !== "auto" || rootRefs.has(part.clientRef) || isCompanionPart(part.path))
+      .filter(
+        (part) =>
+          sourceHint !== "auto" ||
+          rootRefs.has(part.clientRef) ||
+          companionMayBelongToSource(part.path, source),
+      )
       .map((part) => ({ ...part, byteLength: part.bytes.byteLength }));
     const discovered = await discoverSessionCandidates(source, sourceParts, remainingRoots);
     remainingRoots -= discovered.length;
     for (const candidate of discovered) {
+      if (candidates.length >= 50) break;
       const selectedParts = sourceParts.filter((part) => candidate.partRefs.includes(part.clientRef));
       if (candidate.failureCode) {
         candidates.push({
@@ -253,6 +258,7 @@ async function discoverCandidates(
           modifiedAt: selectedParts.map((part) => part.modifiedAt).sort().at(-1)!,
         });
         for (const [bundleIndex, prepared] of bundles.entries()) {
+          if (candidates.length >= 50) break;
           candidates.push({
             clientRef:
               bundles.length === 1
@@ -285,7 +291,7 @@ async function discoverCandidates(
       }
     }
   }
-  return candidates;
+  return candidates.slice(0, 50);
 }
 
 async function persistPreparedBundle(
