@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { RawTraceEventInput, SemanticEdgeVersion } from "@intenttrace/schema";
+import type {
+  RawTraceEventInput,
+  SemanticEdgeVersion,
+  TopologyCapability,
+} from "@intenttrace/schema";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
@@ -16,6 +20,15 @@ import {
 
 const databaseUrl = process.env.DATABASE_URL;
 const migrationsFolder = resolve(dirname(fileURLToPath(import.meta.url)), "../migrations");
+
+const passthroughTopology: TopologyCapability = {
+  spawn: "passthrough",
+  join: "passthrough",
+  peerMessages: "passthrough",
+  input: "single-file",
+  laneKey: "agentId",
+  limits: [],
+};
 
 /**
  * These cases exercise real committed migrations, so they only run when an
@@ -37,7 +50,9 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
       await migrationSql.end();
     }
     sql = postgres(databaseUrl!, { max: 1 });
-    repository = new IntentTraceRepository(sql);
+    repository = new IntentTraceRepository(sql, {
+      lookupTopologyCapability: () => passthroughTopology,
+    });
   });
 
   afterAll(async () => {
@@ -223,7 +238,11 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
       const revisionId = await repository.commitSummaryJob(job!.id, {
         state: {
           nodes: [
-            node(sourceNodeId, "Parent dispatch", "parent", parent.event.id),
+            {
+              ...node(sourceNodeId, "Parent dispatch", "parent", parent.event.id),
+              pinnedByHuman: true,
+              layout: { x: 12, y: 34 },
+            },
             node(targetNodeId, "Child work", "child", child.event.id),
           ],
           edges: [
@@ -285,6 +304,128 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
       expect(withLegacy?.edges[0]?.logicalEdgeId).toBe(logicalEdgeId);
       const withLegacyTopology = await repository.getObservedTopology(ids.traceId, revisionId);
       expect(withLegacyTopology.observed.spawnEdges).toBe(1);
+
+      const providerCallsBefore = await repository.listProviderCalls(ids.traceId);
+      const revisionCountBefore = (await repository.listRevisions(ids.traceId, 100)).length;
+      await sql`update traces set status = 'completed' where id = ${ids.traceId}`;
+
+      const rebuiltRevisionId = await repository.rederiveTopology(ids.traceId, revisionId);
+      expect(rebuiltRevisionId).toMatch(/^[0-9a-f-]{36}$/u);
+      const rebuilt = await repository.getGraph(ids.traceId, rebuiltRevisionId!);
+      expect(rebuilt?.revision).toMatchObject({
+        id: rebuiltRevisionId,
+        parentRevisionId: revisionId,
+        branchKind: "final",
+        eventWatermark: graph?.revision.eventWatermark,
+        sourceJobId: null,
+      });
+      expect(rebuilt?.edges.filter((edge) => !edge.retired)).toMatchObject([
+        {
+          kind: "decomposes_to",
+          sourceNodeId,
+          targetNodeId,
+          evidenceEventIds: [parent.event.id, child.event.id].sort(),
+          provenance: "stated",
+        },
+      ]);
+      expect(rebuilt?.nodes.find((node) => node.logicalNodeId === sourceNodeId)).toMatchObject({
+        id: graph?.nodes.find((node) => node.logicalNodeId === sourceNodeId)?.id,
+        primaryParentId: null,
+        pinnedByHuman: true,
+        layout: { x: 12, y: 34 },
+      });
+      expect(await repository.listProviderCalls(ids.traceId)).toEqual(providerCallsBefore);
+      expect(await repository.listRevisions(ids.traceId, 100)).toHaveLength(
+        revisionCountBefore + 1,
+      );
+      const rebuildEvents = await sql<Array<{ payload: Record<string, unknown> }>>`
+        select payload from stream_events
+        where trace_id = ${ids.traceId} and revision_id = ${rebuiltRevisionId}
+          and type = 'semantic_revision.created'
+      `;
+      expect(rebuildEvents[0]?.payload).toMatchObject({
+        revisionId: rebuiltRevisionId,
+        provider: "deterministic-topology-rebuild",
+      });
+
+      expect(await repository.rederiveTopology(ids.traceId, rebuiltRevisionId!)).toBeNull();
+      expect(await repository.listRevisions(ids.traceId, 100)).toHaveLength(
+        revisionCountBefore + 1,
+      );
+    } finally {
+      await discard(ids.traceId);
+    }
+  });
+
+  it("rejects new semantic edge versions without valid audit evidence", async () => {
+    const ids = scope();
+    try {
+      const inserted = await repository.ingest(event(ids, "evt-invalid-edge"));
+      const jobRows = await sql<Array<{ id: string }>>`
+        select id from summary_jobs where trace_id = ${ids.traceId} order by created_at, id limit 1
+      `;
+      const job = await repository.claimSummaryJob(jobRows[0]!.id);
+      const sourceNodeId = randomUUID();
+      const targetNodeId = randomUUID();
+      const versionId = randomUUID();
+      const node = (logicalNodeId: string, title: string) => ({
+        logicalNodeId,
+        versionId: randomUUID(),
+        kind: "work" as const,
+        status: "active" as const,
+        title,
+        claims: [{
+          kind: "action" as const,
+          text: `${title} evidence`,
+          provenance: "stated" as const,
+          confidence: "high" as const,
+          evidenceEventIds: [inserted.event.id],
+        }],
+        primaryParentId: null,
+        primaryAgentId: null,
+        participantAgentIds: [],
+        artifactIds: [],
+        pinnedByHuman: false,
+        startedAt: null,
+        endedAt: null,
+        layout: null,
+      });
+      const commit = (evidenceEventIds: string[], provenance: string) =>
+        repository.commitSummaryJob(job!.id, {
+          state: {
+            nodes: [node(sourceNodeId, "Source work"), node(targetNodeId, "Target work")],
+            edges: [{
+              logicalEdgeId: randomUUID(),
+              versionId,
+              sourceNodeId,
+              targetNodeId,
+              kind: "depends_on",
+              retired: false,
+              evidenceEventIds,
+              provenance,
+            }],
+          } as Parameters<IntentTraceRepository["commitSummaryJob"]>[1]["state"],
+          changedNodeIds: [sourceNodeId, targetNodeId],
+          changedEdgeIds: [],
+          provider: "contract-test",
+          model: "contract-test",
+          requestHash: "a".repeat(64),
+          responseHash: "b".repeat(64),
+          diagnostics: [],
+          egress: "none",
+        });
+
+      await expect(commit([], "stated")).rejects.toThrow("semantic edge audit metadata");
+      await expect(commit(["not-a-uuid"], "stated")).rejects.toThrow(
+        "semantic edge audit metadata",
+      );
+      await expect(commit([inserted.event.id], "fabricated")).rejects.toThrow(
+        "semantic edge audit metadata",
+      );
+      const rows = await sql<Array<{ count: number }>>`
+        select count(*)::int as count from semantic_edge_versions where trace_id = ${ids.traceId}
+      `;
+      expect(rows[0]?.count).toBe(0);
     } finally {
       await discard(ids.traceId);
     }

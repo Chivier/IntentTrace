@@ -1,16 +1,23 @@
 import { randomUUID } from "node:crypto";
 
 import { payloadHash } from "@intenttrace/ingest";
-import type { ReducerGraphState, ReducerRawFact } from "@intenttrace/intent-reducer";
+import {
+  deriveTopology,
+  topologyCapabilityKey,
+  type ReducerGraphState,
+  type ReducerRawFact,
+} from "@intenttrace/intent-reducer";
 import {
   RawTraceEventInputSchema,
-  type IngestResult,
+  UuidSchema,
   type HumanNodeEdit,
+  type IngestResult,
   type Provenance,
   type RawTraceEvent,
   type RawTraceEventInput,
   type SemanticGraphSnapshot,
   type SemanticRevision,
+  type TopologyCapability,
   type TraceSourceKind,
   type TraceSummary,
   type TraceTopology,
@@ -179,6 +186,76 @@ function causationWarnings(attributes: Record<string, unknown>): IngestWarning[]
   });
 }
 
+function mapReducerRawFact(row: RawEventRow): ReducerRawFact {
+  const attributes = row.attributes ?? {};
+  const stringAttribute = (key: string): string | undefined =>
+    typeof attributes[key] === "string" ? attributes[key] : undefined;
+  const stringArrayAttribute = (key: string): string[] | undefined => {
+    const value = attributes[key];
+    return Array.isArray(value) && value.every((item) => typeof item === "string")
+      ? [...value]
+      : undefined;
+  };
+  const parentAgentId = stringAttribute("parentAgentId");
+  const spawnedAgentIds = stringArrayAttribute("spawnedAgentIds");
+  const joinedAgentIds = stringArrayAttribute("joinedAgentIds");
+  const joinedBy = stringAttribute("joinedBy");
+  const senderAgentId = stringAttribute("senderAgentId");
+  const recipientAgentId = stringAttribute("recipientAgentId");
+  const messageId = stringAttribute("messageId");
+  const onBehalfOf = stringAttribute("onBehalfOf");
+  const assignedBy = stringAttribute("assignedBy");
+  const topologyProvenance = stringAttribute("topologyProvenance");
+  return {
+    eventId: row.id,
+    sourceKind: row.source_kind,
+    adapterVersion: row.adapter_version,
+    sourceEventId: row.source_event_id,
+    ingestSeq: String(row.ingest_seq),
+    kind: row.kind,
+    status: row.status,
+    agentId: row.agent_id,
+    spanId: row.span_id,
+    parentSpanId: row.parent_span_id,
+    causationEventId: row.causation_event_id,
+    artifactRefs: [
+      ...new Set([
+        ...(row.payload_ref ? [row.payload_ref] : []),
+        ...(row.artifact_refs ?? []),
+      ]),
+    ],
+    ...(parentAgentId ? { parentAgentId } : {}),
+    ...(spawnedAgentIds ? { spawnedAgentIds } : {}),
+    ...(joinedAgentIds ? { joinedAgentIds } : {}),
+    ...(joinedBy ? { joinedBy } : {}),
+    ...(senderAgentId ? { senderAgentId } : {}),
+    ...(recipientAgentId ? { recipientAgentId } : {}),
+    ...(messageId ? { messageId } : {}),
+    ...(onBehalfOf ? { onBehalfOf } : {}),
+    ...(assignedBy ? { assignedBy } : {}),
+    ...(topologyProvenance === "stated" || topologyProvenance === "inferred"
+      ? { topologyProvenance }
+      : {}),
+  };
+}
+
+function assertAuditedEdges(state: ReducerGraphState): void {
+  for (const edge of state.edges) {
+    const validEvidence =
+      edge.evidenceEventIds.length > 0 &&
+      edge.evidenceEventIds.length <= 64 &&
+      edge.evidenceEventIds.every((eventId) => UuidSchema.safeParse(eventId).success);
+    if (
+      !validEvidence ||
+      (edge.provenance !== "stated" &&
+        edge.provenance !== "inferred" &&
+        edge.provenance !== "mixed")
+    ) {
+      throw new Error("semantic edge audit metadata is invalid");
+    }
+  }
+}
+
 export interface StreamEventRecord {
   id: string;
   traceId: string;
@@ -245,8 +322,18 @@ export interface SummaryCommitInput {
   costUsd?: number;
 }
 
+export interface RepositoryTopologyDependencies {
+  lookupTopologyCapability(
+    sourceKind: TraceSourceKind,
+    adapterVersion: string,
+  ): TopologyCapability;
+}
+
 export class IntentTraceRepository {
-  constructor(private readonly sql: Sql) {}
+  constructor(
+    private readonly sql: Sql,
+    private readonly topology?: RepositoryTopologyDependencies,
+  ) {}
 
   async ensureTrace(rawInput: RawTraceEventInput): Promise<void> {
     const input = RawTraceEventInputSchema.parse(rawInput);
@@ -1028,58 +1115,7 @@ export class IntentTraceRepository {
           ],
         }),
       ),
-      reducerFacts: reducerRows.map((row): ReducerRawFact => {
-        const attributes = row.attributes ?? {};
-        const stringAttribute = (key: string): string | undefined =>
-          typeof attributes[key] === "string" ? attributes[key] : undefined;
-        const stringArrayAttribute = (key: string): string[] | undefined => {
-          const value = attributes[key];
-          return Array.isArray(value) && value.every((item) => typeof item === "string")
-            ? value
-            : undefined;
-        };
-        const parentAgentId = stringAttribute("parentAgentId");
-        const spawnedAgentIds = stringArrayAttribute("spawnedAgentIds");
-        const joinedAgentIds = stringArrayAttribute("joinedAgentIds");
-        const joinedBy = stringAttribute("joinedBy");
-        const senderAgentId = stringAttribute("senderAgentId");
-        const recipientAgentId = stringAttribute("recipientAgentId");
-        const messageId = stringAttribute("messageId");
-        const onBehalfOf = stringAttribute("onBehalfOf");
-        const assignedBy = stringAttribute("assignedBy");
-        const topologyProvenance = stringAttribute("topologyProvenance");
-        return {
-          eventId: row.id,
-          sourceKind: row.source_kind,
-          adapterVersion: row.adapter_version,
-          sourceEventId: row.source_event_id,
-          ingestSeq: String(row.ingest_seq),
-          kind: row.kind,
-          status: row.status,
-          agentId: row.agent_id,
-          spanId: row.span_id,
-          parentSpanId: row.parent_span_id,
-          causationEventId: row.causation_event_id,
-          artifactRefs: [
-            ...new Set([
-              ...(row.payload_ref ? [row.payload_ref] : []),
-              ...(row.artifact_refs ?? []),
-            ]),
-          ],
-          ...(parentAgentId ? { parentAgentId } : {}),
-          ...(spawnedAgentIds ? { spawnedAgentIds } : {}),
-          ...(joinedAgentIds ? { joinedAgentIds } : {}),
-          ...(joinedBy ? { joinedBy } : {}),
-          ...(senderAgentId ? { senderAgentId } : {}),
-          ...(recipientAgentId ? { recipientAgentId } : {}),
-          ...(messageId ? { messageId } : {}),
-          ...(onBehalfOf ? { onBehalfOf } : {}),
-          ...(assignedBy ? { assignedBy } : {}),
-          ...(topologyProvenance === "stated" || topologyProvenance === "inferred"
-            ? { topologyProvenance }
-            : {}),
-        };
-      }),
+      reducerFacts: reducerRows.map(mapReducerRawFact),
       registeredArtifactIds: artifactRows.map((row) => row.id),
       graph: {
         nodes: snapshot.nodes.map((node) => ({
@@ -1133,6 +1169,7 @@ export class IntentTraceRepository {
   }
 
   async commitSummaryJob(jobId: string, input: SummaryCommitInput): Promise<string> {
+    assertAuditedEdges(input.state);
     const committed = await this.sql.begin(async (tx): Promise<string | null> => {
       const jobs = await tx<
         Array<{
@@ -1280,6 +1317,169 @@ export class IntentTraceRepository {
     });
     if (!committed) throw new StaleSummaryJobError();
     return committed;
+  }
+
+  async rederiveTopology(traceId: string, revisionId?: string): Promise<string | null> {
+    if (!this.topology) {
+      throw new Error("topology capability lookup is required for topology rebuild");
+    }
+    const base = await this.getGraph(traceId, revisionId);
+    if (!base) throw new RepositoryNotFoundError("semantic revision");
+    const eventWatermark = base.revision.eventWatermark;
+    const [traceRows, factRows, artifactRows] = await Promise.all([
+      this.sql<Array<{ status: TraceSummary["status"] }>>`
+        select status from traces where id = ${traceId}
+      `,
+      this.sql<RawEventRow[]>`
+        select re.*, p.workspace_id, t.project_id
+        from raw_events re
+        join traces t on t.id = re.trace_id
+        join projects p on p.id = t.project_id
+        where re.trace_id = ${traceId} and re.ingest_seq <= ${eventWatermark}
+        order by re.ingest_seq, re.id
+      `,
+      this.sql<Array<{ id: string }>>`
+        select id from artifacts where trace_id = ${traceId} order by id
+      `,
+    ]);
+    const trace = traceRows[0];
+    if (!trace) throw new RepositoryNotFoundError("trace");
+    const facts = factRows.map(mapReducerRawFact);
+    const capabilities = new Map<string, TopologyCapability>();
+    for (const fact of facts) {
+      const key = topologyCapabilityKey(fact.sourceKind, fact.adapterVersion);
+      if (capabilities.has(key)) continue;
+      capabilities.set(
+        key,
+        this.topology.lookupTopologyCapability(fact.sourceKind, fact.adapterVersion),
+      );
+    }
+    const state: ReducerGraphState = {
+      nodes: base.nodes.map((node) => ({
+        logicalNodeId: node.logicalNodeId,
+        versionId: node.id,
+        kind: node.kind,
+        status: node.status,
+        title: node.title,
+        claims: node.claims.map((claim) => ({
+          ...claim,
+          evidenceEventIds: [...claim.evidenceEventIds],
+        })),
+        primaryParentId: node.primaryParentId,
+        primaryAgentId: node.primaryAgentId,
+        participantAgentIds: [...node.participantAgentIds],
+        artifactIds: [...node.artifactIds],
+        pinnedByHuman: node.pinnedByHuman,
+        startedAt: node.startedAt,
+        endedAt: node.endedAt,
+        layout: node.layout ? { ...node.layout } : null,
+      })),
+      edges: base.edges.map((edge) => ({
+        logicalEdgeId: edge.logicalEdgeId,
+        versionId: edge.id,
+        sourceNodeId: edge.sourceNodeId,
+        targetNodeId: edge.targetNodeId,
+        kind: edge.kind,
+        retired: edge.retired,
+        evidenceEventIds: [...edge.evidenceEventIds],
+        provenance: edge.provenance,
+      })),
+    };
+    const derived = deriveTopology(state, {
+      traceId,
+      eventWatermark,
+      facts,
+      capabilities,
+      registeredArtifactIds: new Set(artifactRows.map((row) => row.id)),
+    });
+    if (derived.changedNodeIds.length === 0 && derived.changedEdgeIds.length === 0) return null;
+    assertAuditedEdges(derived.state);
+
+    return this.sql.begin(async (tx) => {
+      const latestRows = await tx<Array<{ id: string }>>`
+        select id from semantic_revisions where trace_id = ${traceId}
+        order by created_at desc, id desc limit 1 for update
+      `;
+      if (latestRows[0]?.id !== base.revision.id) throw new StaleSummaryJobError();
+      const branchKind = trace.status === "completed" ? "final" : "live";
+      const sequenceRows = await tx<Array<{ value: number }>>`
+        select coalesce(max(branch_sequence), -1)::int + 1 as value
+        from semantic_revisions where trace_id = ${traceId} and branch_kind = ${branchKind}
+      `;
+      const rebuiltRevisionId = randomUUID();
+      await tx`
+        insert into semantic_revisions (
+          id, trace_id, parent_revision_id, branch_kind, branch_sequence,
+          event_watermark, source_job_id, stale
+        ) values (
+          ${rebuiltRevisionId}, ${traceId}, ${base.revision.id}, ${branchKind},
+          ${sequenceRows[0]?.value ?? 0}, ${eventWatermark}, null, false
+        )
+      `;
+      for (const node of derived.state.nodes) {
+        const prior = state.nodes.find((candidate) => candidate.logicalNodeId === node.logicalNodeId);
+        if (!prior || prior.versionId !== node.versionId) {
+          await tx`
+            insert into semantic_node_versions (
+              id, logical_node_id, trace_id, kind, status, title, primary_parent_id,
+              primary_agent_id, participant_agent_ids, artifact_ids, pinned_by_human,
+              started_at, ended_at, layout
+            ) values (
+              ${node.versionId}, ${node.logicalNodeId}, ${traceId}, ${node.kind}, ${node.status},
+              ${node.title}, ${node.primaryParentId}, ${node.primaryAgentId},
+              ${tx.json(node.participantAgentIds)}, ${tx.json(node.artifactIds)},
+              ${node.pinnedByHuman}, ${node.startedAt}, ${node.endedAt},
+              ${node.layout ? tx.json(node.layout) : null}
+            ) on conflict (id) do nothing
+          `;
+          for (const [ordinal, claim] of node.claims.entries()) {
+            const claimId = randomUUID();
+            await tx`
+              insert into node_claims (id, node_version_id, kind, text, provenance, confidence, ordinal)
+              values (${claimId}, ${node.versionId}, ${claim.kind}, ${claim.text},
+                ${claim.provenance}, ${claim.confidence}, ${ordinal})
+            `;
+            for (const eventId of claim.evidenceEventIds) {
+              await tx`insert into claim_evidence (claim_id, event_id) values (${claimId}, ${eventId})`;
+            }
+          }
+        }
+        await tx`
+          insert into revision_node_members (revision_id, logical_node_id, node_version_id)
+          values (${rebuiltRevisionId}, ${node.logicalNodeId}, ${node.versionId})
+        `;
+      }
+      for (const edge of derived.state.edges) {
+        const prior = state.edges.find((candidate) => candidate.logicalEdgeId === edge.logicalEdgeId);
+        if (!prior || prior.versionId !== edge.versionId) {
+          await tx`
+            insert into semantic_edge_versions (
+              id, logical_edge_id, trace_id, source_node_id, target_node_id, kind, retired,
+              evidence_event_ids, provenance
+            ) values (
+              ${edge.versionId}, ${edge.logicalEdgeId}, ${traceId}, ${edge.sourceNodeId},
+              ${edge.targetNodeId}, ${edge.kind}, ${edge.retired},
+              ${tx.json(edge.evidenceEventIds)}, ${edge.provenance}
+            ) on conflict (id) do nothing
+          `;
+        }
+        await tx`
+          insert into revision_edge_members (revision_id, logical_edge_id, edge_version_id)
+          values (${rebuiltRevisionId}, ${edge.logicalEdgeId}, ${edge.versionId})
+        `;
+      }
+      await tx`
+        insert into stream_events (trace_id, revision_id, type, payload)
+        values (${traceId}, ${rebuiltRevisionId}, 'semantic_revision.created', ${tx.json({
+          revisionId: rebuiltRevisionId,
+          eventWatermark,
+          changedNodeIds: derived.changedNodeIds,
+          changedEdgeIds: derived.changedEdgeIds,
+          provider: "deterministic-topology-rebuild",
+        })})
+      `;
+      return rebuiltRevisionId;
+    });
   }
 
   async editSemanticNode(

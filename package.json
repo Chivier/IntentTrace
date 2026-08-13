@@ -38,7 +38,8 @@
     "schema:generate": "pnpm --filter @intenttrace/schema generate && pnpm --filter @intenttrace/api openapi:generate",
     "schema:check": "pnpm --filter @intenttrace/schema generate -- --check && pnpm --filter @intenttrace/api openapi:generate -- --check && pnpm --filter @intenttrace/db schema:check",
     "db:generate": "pnpm --filter @intenttrace/db generate",
-    "db:migrate": "pnpm --filter @intenttrace/config build && pnpm --filter @intenttrace/db migrate"
+    "db:migrate": "pnpm --filter @intenttrace/config build && pnpm --filter @intenttrace/db migrate",
+    "topology:rebuild": "pnpm --filter @intenttrace/config build && tsx scripts/rebuild-topology.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
