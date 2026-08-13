@@ -28,8 +28,15 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
   let repository: IntentTraceRepository;
 
   beforeAll(async () => {
+    // Drizzle's postgres-js driver replaces the json/jsonb serializers on the
+    // client it wraps, so migrations run on their own short-lived connection.
+    const migrationSql = postgres(databaseUrl!, { max: 1 });
+    try {
+      await migrate(drizzle(migrationSql), { migrationsFolder });
+    } finally {
+      await migrationSql.end();
+    }
     sql = postgres(databaseUrl!, { max: 1 });
-    await migrate(drizzle(sql), { migrationsFolder });
     repository = new IntentTraceRepository(sql);
   });
 
