@@ -7,7 +7,7 @@ import type { TraceSourceKind } from "@intenttrace/schema";
 
 import type { ValidatedExplicitPath } from "./path-policy.js";
 
-const SESSION_EXTENSIONS = new Set([".jsonl", ".ndjson"]);
+const TEXT_SESSION_EXTENSIONS = new Set([".jsonl", ".ndjson"]);
 
 export interface SessionFileCandidate {
   id: string;
@@ -70,7 +70,11 @@ export function sessionCatalogId(
     .slice(0, 24);
 }
 
-async function walkSessionFiles(directory: string, onUnreadable: () => void): Promise<string[]> {
+async function walkSessionFiles(
+  source: TraceSourceKind,
+  directory: string,
+  onUnreadable: () => void,
+): Promise<string[]> {
   let entries: Dirent[];
   try {
     entries = await readdir(directory, { withFileTypes: true });
@@ -84,10 +88,23 @@ async function walkSessionFiles(directory: string, onUnreadable: () => void): Pr
     if (entry.isSymbolicLink()) continue;
     const child = join(directory, entry.name);
     if (entry.isDirectory()) {
-      files.push(...(await walkSessionFiles(child, onUnreadable)));
+      files.push(...(await walkSessionFiles(source, child, onUnreadable)));
       continue;
     }
-    if (entry.isFile() && SESSION_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
+    const extension = extname(entry.name).toLowerCase();
+    const accepted =
+      source === "opencode"
+        ? extension === ".db" || entry.name.endsWith("-wal") || entry.name.endsWith("-shm") || extension === ".json"
+        : source === "grok"
+          ? extension === ".json" || TEXT_SESSION_EXTENSIONS.has(extension)
+          : source === "omp"
+            ? TEXT_SESSION_EXTENSIONS.has(extension) || extension === ".json"
+            : source === "claude"
+              ? TEXT_SESSION_EXTENSIONS.has(extension) || entry.name.endsWith(".meta.json")
+              : source === "otlp"
+                ? extension === ".json"
+                : TEXT_SESSION_EXTENSIONS.has(extension);
+    if (entry.isFile() && accepted) {
       files.push(child);
     }
   }
@@ -106,7 +123,7 @@ export async function discoverSessionFiles(input: {
   const files =
     input.root.kind === "file"
       ? [input.root.realPath]
-      : await walkSessionFiles(input.root.realPath, () => {
+      : await walkSessionFiles(input.source, input.root.realPath, () => {
           unreadableDirectories += 1;
         });
 

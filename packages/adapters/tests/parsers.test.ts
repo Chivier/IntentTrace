@@ -9,6 +9,7 @@ import {
   ClaudeSessionAdapter,
   CodexSessionAdapter,
   detectSourceKind,
+  discoverSessionCandidates,
   MalformedAdapterInputError,
   OtlpHttpJsonAdapter,
   prepareSessionParts,
@@ -291,5 +292,63 @@ describe("session bundle preparation", () => {
         new BrokenArtifactAdapter(),
       ),
     ).rejects.toThrow(mode === "missing" ? "Missing referenced artifact key" : "Duplicate artifact key");
+  });
+});
+
+describe("session candidate discovery", () => {
+  const part = (path: string, text: string, complete = true) => ({
+    clientRef: path,
+    path,
+    byteLength: Buffer.byteLength(text),
+    modifiedAt: "2026-08-01T00:00:00.000Z",
+    bytes: Buffer.from(text),
+    complete,
+  });
+
+  it("keeps JSONL and OTLP candidates to one part", async () => {
+    const jsonl = await fixture("jsonl", "valid.jsonl");
+    const candidates = await discoverSessionCandidates("jsonl", [
+      { ...part("a.jsonl", ""), bytes: jsonl, byteLength: jsonl.byteLength },
+      { ...part("b.jsonl", ""), bytes: jsonl, byteLength: jsonl.byteLength },
+    ]);
+    expect(candidates.map((candidate) => candidate.partRefs)).toEqual([["a.jsonl"], ["b.jsonl"]]);
+  });
+
+  it("groups Claude roots with matching subagents and metadata", async () => {
+    const candidates = await discoverSessionCandidates("claude", [
+      part("root.jsonl", '{"type":"user","sessionId":"root","message":{"role":"user","content":"x"}}\n'),
+      part("subagents/agent-child.jsonl", '{"type":"assistant","sessionId":"root","agentId":"child","message":{"role":"assistant","content":"x"}}\n'),
+      part("subagents/agent-child.meta.json", '{"sessionId":"root"}'),
+    ]);
+    expect(candidates[0]?.partRefs).toEqual([
+      "root.jsonl",
+      "subagents/agent-child.jsonl",
+      "subagents/agent-child.meta.json",
+    ]);
+  });
+
+  it("returns preflight_failed instead of guessing incomplete OpenCode heads", async () => {
+    const candidates = await discoverSessionCandidates("opencode", [
+      part("opencode.db", "SQLite format 3", false),
+      part("opencode.db-wal", "wal", false),
+    ]);
+    expect(candidates).toEqual([
+      expect.objectContaining({
+        source: "opencode",
+        failureCode: "preflight_failed",
+        partRefs: ["opencode.db", "opencode.db-wal"],
+      }),
+    ]);
+  });
+
+  it("returns preflight_failed when an OMP companion directory is absent", async () => {
+    const candidates = await discoverSessionCandidates("omp", [
+      part("root.jsonl", '{"id":"root","details":{"progress":[{"id":"child"}]}}\n'),
+    ]);
+    expect(candidates[0]).toMatchObject({
+      source: "omp",
+      failureCode: "preflight_failed",
+      partRefs: ["root.jsonl"],
+    });
   });
 });

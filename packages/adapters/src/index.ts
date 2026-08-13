@@ -6,3 +6,4 @@ export * from "./codex.js";
 export * from "./claude.js";
 export * from "./registry.js";
 export * from "./session.js";
+export * from "./discovery.js";

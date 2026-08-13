@@ -4,9 +4,10 @@
   "properties": {
     "protocolVersion": {
       "type": "number",
-      "const": 1
+      "const": 2
     },
     "candidates": {
+      "maxItems": 50,
       "type": "array",
       "items": {
         "type": "object",
@@ -15,6 +16,20 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 64
+          },
+          "candidateId": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{24}$"
+          },
+          "partRefs": {
+            "minItems": 1,
+            "maxItems": 5000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
           },
           "source": {
             "anyOf": [
@@ -145,6 +160,8 @@
         },
         "required": [
           "clientRef",
+          "candidateId",
+          "partRefs",
           "source",
           "title",
           "projectHint",

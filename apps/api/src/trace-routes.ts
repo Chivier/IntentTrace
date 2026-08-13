@@ -6,6 +6,7 @@ import {
   buildCompletionMarker,
   classifySessionFailure,
   detectSourceKind,
+  discoverSessionCandidates,
   OtlpHttpJsonAdapter,
   prepareSessionParts,
   redactCatalogEntry,
@@ -169,43 +170,78 @@ interface ImportCandidate {
   candidateId: string;
   partRefs: string[];
   source: TraceSourceKind;
-  prepared: PreparedTraceBundle;
+  prepared: PreparedTraceBundle | null;
   partialHead: boolean;
+  failureCode: "preflight_failed" | null;
+  failureMessage: string | null;
 }
 
 async function discoverCandidates(
   sourceHint: TraceSourceKind | "auto",
   parts: readonly { clientRef: string; path: string; bytes: Uint8Array; modifiedAt: string; complete: boolean }[],
 ): Promise<ImportCandidate[]> {
+  const detected = sourceHint === "auto"
+    ? await Promise.all(
+        parts.map(async (part) => ({
+          part,
+          source: await detectSourceKind({
+            parts: [{ path: part.path, bytes: part.bytes }],
+            sourceIdentity: bundleSourceIdentity([{ path: part.path, bytes: part.bytes }]),
+          }),
+        })),
+      )
+    : parts.map((part) => ({ part, source: sourceHint }));
   const candidates: ImportCandidate[] = [];
-  for (const part of [...parts].sort((left, right) => left.path.localeCompare(right.path))) {
-    const adapterParts = [{ path: part.path, bytes: part.bytes }];
-    const sourceIdentity = bundleSourceIdentity(adapterParts);
-    const source =
-      sourceHint === "auto"
-        ? await detectSourceKind({ parts: adapterParts, sourceIdentity })
-        : sourceHint;
-    if (!source) continue;
-    if (source === "opencode" && !part.complete) continue;
-    try {
-      const bundles = await prepareSessionParts(source, adapterParts, sourceIdentity, {
-        id: uploadSessionKey(source, sessionBundleContentSha256(adapterParts)),
-        byteLength: part.bytes.byteLength,
-        modifiedAt: part.modifiedAt,
-      });
-      for (const prepared of bundles) {
-        const partRefs = [part.clientRef];
+  for (const source of [...new Set(detected.map(({ source }) => source).filter((value): value is TraceSourceKind => value !== null))]) {
+    const sourceParts = detected.filter((entry) => entry.source === source).map(({ part }) => part);
+    const discovered = await discoverSessionCandidates(source, sourceParts);
+    for (const candidate of discovered) {
+      const selectedParts = sourceParts.filter((part) => candidate.partRefs.includes(part.clientRef));
+      if (candidate.failureCode) {
         candidates.push({
-          clientRef: part.clientRef,
-          candidateId: sessionCandidateId(source, prepared.events[0]!.event.traceId, [part.path]),
-          partRefs,
+          clientRef: candidate.clientRef,
+          candidateId: candidate.candidateId,
+          partRefs: candidate.partRefs,
           source,
-          prepared,
-          partialHead: !part.complete,
+          prepared: null,
+          partialHead: selectedParts.some((part) => !part.complete),
+          failureCode: candidate.failureCode,
+          failureMessage: candidate.failureMessage,
+        });
+        continue;
+      }
+      const adapterParts = selectedParts.map((part) => ({ path: part.path, bytes: part.bytes }));
+      const sourceIdentity = bundleSourceIdentity(adapterParts);
+      try {
+        const bundles = await prepareSessionParts(source, adapterParts, sourceIdentity, {
+          id: uploadSessionKey(source, sessionBundleContentSha256(adapterParts)),
+          byteLength: selectedParts.reduce((total, part) => total + part.bytes.byteLength, 0),
+          modifiedAt: selectedParts.map((part) => part.modifiedAt).sort().at(-1)!,
+        });
+        for (const prepared of bundles) {
+          candidates.push({
+            clientRef: candidate.clientRef,
+            candidateId: sessionCandidateId(source, prepared.events[0]!.event.traceId, adapterParts.map((part) => part.path)),
+            partRefs: candidate.partRefs,
+            source,
+            prepared,
+            partialHead: selectedParts.some((part) => !part.complete),
+            failureCode: null,
+            failureMessage: null,
+          });
+        }
+      } catch {
+        candidates.push({
+          clientRef: candidate.clientRef,
+          candidateId: candidate.candidateId,
+          partRefs: candidate.partRefs,
+          source,
+          prepared: null,
+          partialHead: selectedParts.some((part) => !part.complete),
+          failureCode: "preflight_failed",
+          failureMessage: "Session preflight failed; no events were imported",
         });
       }
-    } catch {
-      continue;
     }
   }
   return candidates.slice(0, 50);
@@ -368,44 +404,58 @@ export async function registerTraceRoutes(
       } else {
         const body = SessionUploadCandidateRequestSchema.parse(request.body);
         includePreviews = body.includePreviews;
-        const decodedParts = body.parts.map((part) => ({
-          clientRef: part.clientRef,
-          path: part.path,
-          bytes: part.headBase64 === undefined ? Buffer.alloc(0) : Buffer.from(part.headBase64, "base64"),
-          modifiedAt: part.modifiedAt,
-          complete: part.complete,
-        }));
-        candidates = await discoverCandidates("auto", decodedParts);
+        candidates = await discoverCandidates(
+          "auto",
+          body.parts.map((part) => ({
+            clientRef: part.clientRef,
+            path: part.path,
+            bytes:
+              part.headBase64 === undefined
+                ? Buffer.alloc(0)
+                : Buffer.from(part.headBase64, "base64"),
+            modifiedAt: part.modifiedAt,
+            complete: part.complete,
+          })),
+        );
       }
-      const traceIds = [...new Set(candidates.map((candidate) => candidate.prepared.events[0]!.event.traceId))];
+      const traceIds = [
+        ...new Set(
+          candidates.flatMap((candidate) =>
+            candidate.prepared ? [candidate.prepared.events[0]!.event.traceId] : [],
+          ),
+        ),
+      ];
       const known = new Map(
         (await services.repository.listTracesByIds(traceIds)).map((trace) => [trace.id, trace.eventCount]),
       );
       let alreadyImportedCount = 0;
+      const responseCandidates = candidates.map((candidate) => {
+        const traceId = candidate.prepared?.events[0]?.event.traceId ?? null;
+        const importedEventCount = traceId === null ? null : (known.get(traceId) ?? null);
+        if (importedEventCount !== null) alreadyImportedCount += 1;
+        const descriptor = candidate.prepared
+          ? redactCatalogEntry(candidate.prepared.descriptor, includePreviews)
+          : null;
+        return {
+          clientRef: candidate.clientRef,
+          candidateId: candidate.candidateId,
+          partRefs: candidate.partRefs,
+          source: candidate.source,
+          title: descriptor?.title ?? null,
+          projectHint: descriptor?.projectHint ?? null,
+          firstPromptPreview: descriptor?.firstPromptPreview ?? null,
+          lastPromptPreview: descriptor?.lastPromptPreview ?? null,
+          partialHead: candidate.partialHead,
+          traceId,
+          imported: importedEventCount !== null,
+          importedEventCount,
+          failureCode: candidate.failureCode,
+          failureMessage: candidate.failureMessage,
+        };
+      });
       return reply.status(200).send({
         protocolVersion: 2,
-        candidates: candidates.map((candidate) => {
-          const traceId = candidate.prepared.events[0]!.event.traceId;
-          const importedEventCount = known.get(traceId) ?? null;
-          if (importedEventCount !== null) alreadyImportedCount += 1;
-          const descriptor = redactCatalogEntry(candidate.prepared.descriptor, includePreviews);
-          return {
-            clientRef: candidate.clientRef,
-            candidateId: candidate.candidateId,
-            partRefs: candidate.partRefs,
-            source: candidate.source,
-            title: descriptor.title,
-            projectHint: descriptor.projectHint,
-            firstPromptPreview: descriptor.firstPromptPreview,
-            lastPromptPreview: descriptor.lastPromptPreview,
-            partialHead: candidate.partialHead,
-            traceId,
-            imported: importedEventCount !== null,
-            importedEventCount,
-            failureCode: null,
-            failureMessage: null,
-          };
-        }),
+        candidates: responseCandidates,
         alreadyImportedCount,
       });
     },
@@ -443,17 +493,23 @@ export async function registerTraceRoutes(
         return problem(reply, request, 422, "unknown_source_format", "Unable to determine the session format");
       }
       const byId = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
-      if (frame.candidateIds.some((id) => !byId.has(id))) {
+      if (
+        frame.candidateIds.some((id) => {
+          const candidate = byId.get(id);
+          return candidate === undefined || candidate.prepared === null;
+        })
+      ) {
         return problem(reply, request, 409, "stale_session", "Session changed after inspection; inspect again");
       }
       try {
         const results = [];
         for (const id of frame.candidateIds) {
           const candidate = byId.get(id)!;
-          const result = await persistPreparedBundle(services, candidate.prepared);
+          const prepared = candidate.prepared!;
+          const result = await persistPreparedBundle(services, prepared);
           results.push({
             candidateId: id,
-            sessionId: candidate.prepared.descriptor.id,
+            sessionId: prepared.descriptor.id,
             ...result,
           });
         }

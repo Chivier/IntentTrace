@@ -749,61 +749,8 @@ paths:
   /api/v1/imports/candidates:
     post:
       operationId: inspectImportCandidates
-      summary: Inspect bounded session heads for source, preview, and import status
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                protocolVersion:
-                  type: number
-                  enum:
-                    - 1
-                includePreviews:
-                  type: boolean
-                candidates:
-                  minItems: 1
-                  maxItems: 50
-                  type: array
-                  items:
-                    type: object
-                    properties:
-                      clientRef:
-                        type: string
-                        minLength: 1
-                        maxLength: 64
-                      fileName:
-                        type: string
-                        minLength: 1
-                        maxLength: 255
-                      byteLength:
-                        type: integer
-                        minimum: 0
-                        maximum: 9007199254740991
-                      modifiedAt:
-                        type: string
-                        format: date-time
-                        pattern: ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
-                      headBase64:
-                        type: string
-                        maxLength: 131072
-                      complete:
-                        type: boolean
-                    required:
-                      - clientRef
-                      - fileName
-                      - byteLength
-                      - modifiedAt
-                      - headBase64
-                      - complete
-                    additionalProperties: false
-              required:
-                - protocolVersion
-                - includePreviews
-                - candidates
-              additionalProperties: false
+      summary: Inspect session bundle metadata or
+        application/vnd.intenttrace.session-bundle bytes
       responses:
         "200":
           description: Default Response
@@ -815,8 +762,9 @@ paths:
                   protocolVersion:
                     type: number
                     enum:
-                      - 1
+                      - 2
                   candidates:
+                    maxItems: 50
                     type: array
                     items:
                       type: object
@@ -825,6 +773,17 @@ paths:
                           type: string
                           minLength: 1
                           maxLength: 64
+                        candidateId:
+                          type: string
+                          pattern: ^[a-f0-9]{24}$
+                        partRefs:
+                          minItems: 1
+                          maxItems: 5000
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 64
                         source:
                           anyOf:
                             - type: string
@@ -895,6 +854,8 @@ paths:
                             - type: "null"
                       required:
                         - clientRef
+                        - candidateId
+                        - partRefs
                         - source
                         - title
                         - projectHint
@@ -919,27 +880,8 @@ paths:
   /api/v1/imports/sessions:
     post:
       operationId: importUploadedSession
-      summary: Import one uploaded agent session file (application/octet-stream body)
-      parameters:
-        - schema:
-            default: auto
-            type: string
-            enum:
-              - auto
-              - jsonl
-              - otlp
-              - codex
-              - claude
-          in: query
-          name: source
-          required: false
-        - schema:
-            type: string
-            minLength: 1
-            maxLength: 255
-          in: query
-          name: fileName
-          required: true
+      summary: Import selected logical traces from
+        application/vnd.intenttrace.session-bundle
       responses:
         "200":
           description: Default Response
@@ -951,7 +893,7 @@ paths:
                   protocolVersion:
                     type: number
                     enum:
-                      - 1
+                      - 2
                   level:
                     type: string
                     enum:
@@ -959,37 +901,49 @@ paths:
                   command:
                     type: string
                     enum:
-                      - import
-                      - follow
                       - upload
-                  sessionId:
-                    type: string
-                    pattern: ^[a-f0-9]{24}$
-                  traceId:
-                    type: string
-                    format: uuid
-                    pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
-                  inserted:
-                    type: integer
-                    minimum: 0
-                    maximum: 9007199254740991
-                  duplicates:
-                    type: integer
-                    minimum: 0
-                    maximum: 9007199254740991
-                  warnings:
-                    type: integer
-                    minimum: 0
-                    maximum: 9007199254740991
+                  results:
+                    minItems: 1
+                    maxItems: 50
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        candidateId:
+                          type: string
+                          pattern: ^[a-f0-9]{24}$
+                        sessionId:
+                          type: string
+                          pattern: ^[a-f0-9]{24}$
+                        traceId:
+                          type: string
+                          format: uuid
+                          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                        inserted:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        duplicates:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                        warnings:
+                          type: integer
+                          minimum: 0
+                          maximum: 9007199254740991
+                      required:
+                        - candidateId
+                        - sessionId
+                        - traceId
+                        - inserted
+                        - duplicates
+                        - warnings
+                      additionalProperties: false
                 required:
                   - protocolVersion
                   - level
                   - command
-                  - sessionId
-                  - traceId
-                  - inserted
-                  - duplicates
-                  - warnings
+                  - results
                 additionalProperties: false
   /api/v1/traces:
     get:
