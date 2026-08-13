@@ -445,6 +445,30 @@ describe("implemented trace adapters", () => {
           record.event.attributes.recipientAgentId === "Child",
       ),
     ).toBe(true);
+    const peerFacts = events.filter(
+      (record) => record.event.attributes.senderAgentId !== undefined,
+    );
+    expect(peerFacts).toHaveLength(1);
+    expect(peerFacts[0]?.event.source.sourceEventId).toBe("peer");
+    expect(peerFacts[0]?.event.attributes).toMatchObject({
+      senderAgentId: "Sibling",
+      recipientAgentId: "Child",
+      messageId: "msg-1",
+    });
+    // Peer fidelity comes from the manifest; the fact must not stamp an upgrade.
+    expect(peerFacts[0]?.event.attributes.topologyProvenance).toBeUndefined();
+    const participatingLaneEvents = events.filter(
+      (record) => record.event.agentId === "Sibling" || record.event.agentId === "Child",
+    );
+    expect(participatingLaneEvents).not.toHaveLength(0);
+    expect(
+      participatingLaneEvents.every(
+        (record) =>
+          record.event.attributes.senderAgentId === undefined &&
+          record.event.attributes.recipientAgentId === undefined &&
+          record.event.attributes.messageId === undefined,
+      ),
+    ).toBe(true);
     const serialized = records
       .map((record) =>
         record.type === "artifact"

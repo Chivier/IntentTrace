@@ -116,7 +116,7 @@ export class OmpSessionAdapter implements TraceAdapter {
     );
     const spawnedLanes = new Set<string>();
     const joins = new Set<string>();
-    const peers = new Map<string, { from: string; to: string }>();
+    const peers = new Map<string, { from: string; to: string; messageId: string }>();
     for (const part of parts) {
       for (const record of part.records) {
         const object = objectRecord(record.value);
@@ -140,7 +140,13 @@ export class OmpSessionAdapter implements TraceAdapter {
         const waited = objectRecord(details.waited);
         const from = str(waited?.from);
         const to = str(waited?.to);
-        if (from && to) peers.set(str(waited?.id) ?? `${from}-${to}-${record.line}`, { from, to });
+        if (from && to) {
+          peers.set(`${part.path}:${record.line}`, {
+            from,
+            to,
+            messageId: str(waited?.id) ?? `${from}-${to}-${record.line}`,
+          });
+        }
       }
     }
 
@@ -188,13 +194,14 @@ export class OmpSessionAdapter implements TraceAdapter {
         if (part.lane === "Main" && jobIds.length > 0) {
           attributes.joinedAgentIds = [...new Set(jobIds)].sort();
         }
-        const peer = [...peers.entries()].find(
-          ([, value]) => value.from === part.lane || value.to === part.lane,
-        );
+        // Peer fidelity is `stated` in the OMP capability declaration, so the
+        // record carries no fact-level provenance: `topologyProvenance` is only
+        // ever a downgrade and must not overwrite an inferred spawn fact.
+        const peer = peers.get(`${part.path}:${record.line}`);
         if (peer) {
-          attributes.senderAgentId = peer[1].from;
-          attributes.recipientAgentId = peer[1].to;
-          attributes.messageId = peer[0];
+          attributes.senderAgentId = peer.from;
+          attributes.recipientAgentId = peer.to;
+          attributes.messageId = peer.messageId;
         }
         yield {
           type: "event",
