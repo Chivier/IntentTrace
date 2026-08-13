@@ -64,6 +64,28 @@ describe("implemented trace adapters", () => {
     const unknown = await parse(adapter, await fixture("codex", "unknown-record.jsonl"));
     expect(unknown.some((record) => record.type === "warning")).toBe(true);
   });
+  it("maps Codex bundle lanes, parent spans, joins, and mirrored-message privacy", async () => {
+    const root = await fixture("codex", "topology/parent.jsonl");
+    const child = await fixture("codex", "topology/child.jsonl");
+    const records: AdapterRecord[] = [];
+    for await (const record of new CodexSessionAdapter().parse({
+      parts: [{ path: "parent.jsonl", bytes: root }, { path: "child.jsonl", bytes: child }],
+      sourceIdentity: "anonymous-fixture",
+    })) records.push(record);
+    const events = records.filter((record) => record.type === "event");
+    expect(new Set(events.map((record) => record.event.traceId))).toHaveLength(1);
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(
+      new Set(["codex-root", "codex-child"]),
+    );
+    const childStart = events.find(
+      (record) => record.event.kind === "agent_start" && record.event.agentId === "codex-child" && record.event.attributes.parentAgentId,
+    );
+    expect(childStart?.event.parentSpanId).toBe("call-spawn-1");
+    expect(childStart?.event.attributes.topologyProvenance).toBe("stated");
+    expect(events.some((record) => record.event.attributes.joinedBy === "codex-child")).toBe(true);
+    expect(events.some((record) => record.event.attributes.senderAgentId === "codex-child")).toBe(true);
+    expect(records.filter((record) => record.type === "warning" && (record.code === "sensitive_content_omitted" || record.code === "sensitive_reasoning_omitted")).length).toBeGreaterThan(0);
+  });
 
   it("omits Codex reasoning, encrypted blocks, and world state from events and artifacts", async () => {
     const records = await parse(new CodexSessionAdapter(), await fixture("codex", "privacy.jsonl"));
@@ -76,7 +98,7 @@ describe("implemented trace adapters", () => {
       true,
     );
     expect(new Set(events.map((record) => record.event.traceId))).toHaveLength(1);
-    expect(events[0]?.event.source.adapterVersion).toBe("2.0.0");
+    expect(events[0]?.event.source.adapterVersion).toBe("3.0.0");
     expect(
       records.filter(
         (record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted",
@@ -111,7 +133,7 @@ describe("implemented trace adapters", () => {
     const events = records.filter((record) => record.type === "event");
     expect(events.some((record) => record.event.name.includes("Visible request"))).toBe(true);
     expect(events.some((record) => record.event.name.includes("Visible answer"))).toBe(true);
-    expect(events[0]?.event.source.adapterVersion).toBe("2.0.0");
+    expect(events[0]?.event.source.adapterVersion).toBe("3.0.0");
     expect(
       records.filter(
         (record) => record.type === "warning" && record.code === "sensitive_reasoning_omitted",
