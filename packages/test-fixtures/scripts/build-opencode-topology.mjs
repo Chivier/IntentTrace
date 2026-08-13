@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 const output = resolve(import.meta.dirname, "../fixtures/opencode/topology/opencode.db");
@@ -19,4 +19,6 @@ const addPart = db.prepare("INSERT INTO part VALUES (?,?,?,?,?)");
 addPart.run("prt-modern", "msg-root", "ses-root", 1200, JSON.stringify({ type: "tool", tool: "task", callID: "call-task-1", state: { status: "completed", input: { description: "Child" }, output: '<task id="ses-child" state="completed"><task_result>done</task_result></task>', metadata: { parentSessionId: "ses-root", sessionId: "ses-child" } } }));
 addPart.run("prt-legacy", "msg-root", "ses-root", 1300, JSON.stringify({ type: "tool", tool: "task", callID: "call-task-legacy", state: { status: "completed", input: { description: "Legacy" }, output: "task_id: ses-legacy (for resuming to continue this task if needed)\n\n<task_result>done</task_result>", metadata: { sessionId: "ses-legacy" } } }));
 addPart.run("prt-truncated", "msg-child", "ses-child", 2200, JSON.stringify({ type: "tool", tool: "task", callID: "call-task-truncated", state: { status: "completed", input: { description: "Truncated" }, output: "[Session persistence truncated large content]", metadata: { truncated: true, outputPath: "tool-output/tool-truncated", sessionId: "ses-legacy" } } }));
+addPart.run("prt-text", "msg-child", "ses-child", 2300, JSON.stringify({ type: "text", text: "Visible answer", reasoning: "must-not-persist-opencode", metadata: { directory: "/home/analyst/Projects/demo" } }));
 db.close();
+writeFileSync(resolve(dirname(output), "opencode.db-wal"), "deterministic WAL companion placeholder\n");

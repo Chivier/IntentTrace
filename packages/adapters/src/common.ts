@@ -226,3 +226,98 @@ export function displayName(label: string, value?: unknown): string {
   const preview = value === undefined ? "" : displayPreview(value);
   return preview ? `${label} · ${preview}` : label;
 }
+
+const reasoningKeys = new Set([
+  "reasoning",
+  "thinking",
+  "thinkingSignature",
+  "thinking_signature",
+  "signature",
+  "redacted_thinking",
+  "agent_thought_chunk",
+]);
+const confidentialKeys = new Set([
+  "encrypted_content",
+  "base_instructions",
+  "systemPrompt",
+  "system_prompt",
+  "prompt_body",
+  "cwd",
+  "child_cwd",
+  "grok_home",
+  "directory",
+  "homeDir",
+]);
+const reasoningBlockTypes = new Set(["thinking", "redacted_thinking", "agent_thought_chunk"]);
+const confidentialBlockTypes = new Set(["encrypted_content"]);
+const hostPathPattern = /(?:\/home\/[^\s"'\\/]+|\/Users\/[^\s"'\\/]+)/gu;
+const ciphertextPattern = /gAAAA[A-Za-z0-9_=-]{4,}/gu;
+
+export interface VendorSanitizeResult {
+  value: unknown;
+  reasoning: number;
+  confidential: number;
+}
+
+/** Shared vendor-record redaction: hidden reasoning, encrypted bodies, and host paths. */
+export function sanitizeVendorValue(value: unknown): VendorSanitizeResult {
+  if (typeof value === "string") {
+    let confidential = 0;
+    let output = value;
+    if (ciphertextPattern.test(output)) {
+      ciphertextPattern.lastIndex = 0;
+      output = output.replaceAll(ciphertextPattern, "[encrypted content omitted]");
+      confidential += 1;
+    }
+    ciphertextPattern.lastIndex = 0;
+    if (hostPathPattern.test(output)) {
+      hostPathPattern.lastIndex = 0;
+      output = output.replaceAll(hostPathPattern, "~");
+      confidential += 1;
+    }
+    hostPathPattern.lastIndex = 0;
+    return { value: output, reasoning: 0, confidential };
+  }
+  if (Array.isArray(value)) {
+    const output: unknown[] = [];
+    let reasoning = 0;
+    let confidential = 0;
+    for (const item of value) {
+      const object = objectRecord(item);
+      const blockType = object ? String(object.type ?? "") : "";
+      if (reasoningBlockTypes.has(blockType)) {
+        reasoning += 1;
+        continue;
+      }
+      if (confidentialBlockTypes.has(blockType)) {
+        confidential += 1;
+        continue;
+      }
+      const sanitized = sanitizeVendorValue(item);
+      output.push(sanitized.value);
+      reasoning += sanitized.reasoning;
+      confidential += sanitized.confidential;
+    }
+    return { value: output, reasoning, confidential };
+  }
+  const object = objectRecord(value);
+  if (!object) return { value, reasoning: 0, confidential: 0 };
+  const output: Record<string, unknown> = {};
+  let reasoning = 0;
+  let confidential = 0;
+  for (const [key, item] of Object.entries(object)) {
+    if (reasoningKeys.has(key)) {
+      reasoning += 1;
+      continue;
+    }
+    if (confidentialKeys.has(key)) {
+      confidential += 1;
+      continue;
+    }
+    const sanitized = sanitizeVendorValue(item);
+    output[key] = sanitized.value;
+    reasoning += sanitized.reasoning;
+    confidential += sanitized.confidential;
+  }
+  return { value: output, reasoning, confidential };
+}

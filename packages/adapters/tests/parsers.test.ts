@@ -67,27 +67,38 @@ describe("implemented trace adapters", () => {
     const unknown = await parse(adapter, await fixture("codex", "unknown-record.jsonl"));
     expect(unknown.some((record) => record.type === "warning")).toBe(true);
   });
-  it("maps Codex bundle lanes, parent spans, joins, and mirrored-message privacy", async () => {
-    const root = await fixture("codex", "topology/parent.jsonl");
-    const child = await fixture("codex", "topology/child.jsonl");
+  it("maps Codex bundle lanes, parent spans, joins, fork dedup, and paginated downgrade", async () => {
     const records: AdapterRecord[] = [];
     for await (const record of new CodexSessionAdapter().parse({
-      parts: [{ path: "parent.jsonl", bytes: root }, { path: "child.jsonl", bytes: child }],
+      parts: [
+        { path: "parent.jsonl", bytes: await fixture("codex", "topology/parent.jsonl") },
+        { path: "child.jsonl", bytes: await fixture("codex", "topology/child.jsonl") },
+        { path: "fork.jsonl", bytes: await fixture("codex", "topology/fork.jsonl") },
+        { path: "paginated.jsonl", bytes: await fixture("codex", "topology/paginated.jsonl") },
+      ],
       sourceIdentity: "anonymous-fixture",
     })) records.push(record);
     const events = records.filter((record) => record.type === "event");
     expect(new Set(events.map((record) => record.event.traceId))).toHaveLength(1);
     expect(new Set(events.map((record) => record.event.agentId))).toEqual(
-      new Set(["codex-root", "codex-child"]),
+      new Set(["codex-root", "codex-child", "codex-fork", "codex-paginated"]),
     );
     const childStart = events.find(
-      (record) => record.event.kind === "agent_start" && record.event.agentId === "codex-child" && record.event.attributes.parentAgentId,
+      (record) => record.event.agentId === "codex-child" && record.event.attributes.parentAgentId === "codex-root",
     );
+    expect(childStart?.event.kind).toBe("agent_start");
     expect(childStart?.event.parentSpanId).toBe("call-spawn-1");
     expect(childStart?.event.attributes.topologyProvenance).toBe("stated");
+    const paginatedStart = events.find((record) => record.event.agentId === "codex-paginated" && record.event.kind === "agent_start");
+    expect(paginatedStart?.event.attributes.parentAgentId).toBe("codex-root");
+    expect(paginatedStart?.event.attributes.topologyProvenance).toBe("inferred");
+    expect(paginatedStart?.event.parentSpanId).toBeUndefined();
+    expect(events.filter((record) => record.event.source.sourceEventId === "spawn-item")).toHaveLength(1);
     expect(events.some((record) => record.event.attributes.joinedBy === "codex-child")).toBe(true);
-    expect(events.some((record) => record.event.attributes.senderAgentId === "codex-child")).toBe(true);
-    expect(records.filter((record) => record.type === "warning" && (record.code === "sensitive_content_omitted" || record.code === "sensitive_reasoning_omitted")).length).toBeGreaterThan(0);
+    expect(events.filter((record) => record.event.attributes.senderAgentId === "codex-child")).toHaveLength(1);
+    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(serialized).not.toMatch(/gAAAA/u);
+    expect(serialized).not.toMatch(/\/home\//u);
   });
 
   it("omits Codex reasoning, encrypted blocks, and world state from events and artifacts", async () => {
@@ -124,22 +135,34 @@ describe("implemented trace adapters", () => {
     const event = records.find((record) => record.type === "event");
     expect(event?.type === "event" ? event.event.status : null).toBe("error");
   });
-  it("maps Claude bundle child lanes, sidecar parentage, joins, and inferred peers", async () => {
+  it("maps Claude sidecar spawn endpoints, joins, paired peers, and workflow lanes", async () => {
     const parts = [
       { path: "root.jsonl", bytes: await fixture("claude", "topology/root.jsonl") },
+      { path: "async-duplicate.jsonl", bytes: await fixture("claude", "topology/async-duplicate.jsonl") },
       { path: "subagents/agent-child.jsonl", bytes: await fixture("claude", "topology/subagents/agent-child.jsonl") },
       { path: "subagents/agent-child.meta.json", bytes: await fixture("claude", "topology/subagents/agent-child.meta.json") },
+      { path: "subagents/agent-workflow-agent.jsonl", bytes: await fixture("claude", "topology/subagents/agent-workflow-agent.jsonl") },
+      { path: "subagents/agent-workflow-agent.meta.json", bytes: await fixture("claude", "topology/subagents/agent-workflow-agent.meta.json") },
     ];
     const records: AdapterRecord[] = [];
     for await (const record of new ClaudeSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
     const events = records.filter((record) => record.type === "event");
-    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["claude-root", "child-agent"]));
-    const child = events.find((record) => record.event.agentId === "child-agent");
-    expect(child?.event.attributes.parentAgentId).toBe("claude-root");
-    expect(child?.event.parentSpanId).toBe("toolu-child-1");
-    expect(child?.event.attributes.topologyProvenance).toBe("stated");
-    expect(events.some((record) => record.event.attributes.joinedBy === "child-agent")).toBe(true);
-    expect(events.some((record) => record.event.attributes.senderAgentId === "claude-root" && record.event.attributes.recipientAgentId === "child-agent")).toBe(true);
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["claude-root", "child-agent", "workflow-agent"]));
+    const childStart = events.find((record) => record.event.kind === "agent_start" && record.event.agentId === "child-agent");
+    expect(childStart?.event.source.sourceEventId).toBe("agent-start-child-agent");
+    expect(childStart?.event.attributes.parentAgentId).toBe("claude-root");
+    expect(childStart?.event.parentSpanId).toBe("toolu-child-1");
+    expect(childStart?.event.attributes.topologyProvenance).toBe("stated");
+    expect(events.some((record) => record.event.agentId === "workflow-agent" && record.event.attributes.parentAgentId !== undefined)).toBe(false);
+    const dispatch = events.find((record) => record.event.source.sourceEventId === "root-tool");
+    expect(dispatch?.event.spanId).toBe("toolu-child-1");
+    expect(events.filter((record) => record.event.attributes.joinedBy === "child-agent")).toHaveLength(2);
+    expect(records.filter((record) => record.type === "warning" && record.code === "duplicate_async_join_omitted")).toHaveLength(1);
+    const peers = events.filter((record) => record.event.attributes.senderAgentId !== undefined);
+    expect(peers).toHaveLength(1);
+    expect(peers[0]?.event.attributes).toMatchObject({ senderAgentId: "claude-root", recipientAgentId: "child-agent", topologyProvenance: "inferred" });
+    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(serialized).not.toContain("must-not-persist");
   });
 
   it("accepts Claude client versions while omitting thinking and file snapshots", async () => {
@@ -170,7 +193,7 @@ describe("implemented trace adapters", () => {
     expect(serialized).not.toContain("must-not-persist");
   });
 
-  it("maps OpenCode SQLite topology and both join envelopes", async () => {
+  it("maps OpenCode SQLite topology, both join envelopes, and recovered overflow", async () => {
     const parts = [
       { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
       { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
@@ -181,8 +204,14 @@ describe("implemented trace adapters", () => {
     const events = records.filter((record) => record.type === "event");
     expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["ses-root", "ses-child", "ses-legacy"]));
     expect(events.some((record) => record.event.attributes.parentAgentId === "ses-root" && record.event.parentSpanId === "call-task-1")).toBe(true);
-    expect(events.some((record) => { const joined = record.event.attributes.joinedAgentIds; return Array.isArray(joined) && (joined.includes("ses-child") || joined.includes("ses-legacy")); })).toBe(true);
+    expect(events.some((record) => { const joined = record.event.attributes.joinedAgentIds; return Array.isArray(joined) && joined.includes("ses-child"); })).toBe(true);
+    expect(events.some((record) => { const joined = record.event.attributes.joinedAgentIds; return Array.isArray(joined) && joined.includes("ses-legacy"); })).toBe(true);
+    const recovered = events.find((record) => record.event.attributes.overflowRecovered === true);
+    expect(recovered?.event.attributes.recoveredResultPreview).toContain("recovered overflow answer");
     expect(records.some((record) => record.type === "warning" && record.code === "truncated_output_overflow_used")).toBe(true);
+    const serialized = records.map((record) => (record.type === "artifact" ? new TextDecoder().decode(record.bytes) : JSON.stringify(record))).join("\n");
+    expect(serialized).not.toContain("must-not-persist");
+    expect(serialized).not.toMatch(/\/home\//u);
   });
   it.each([
     [new CanonicalJsonlAdapter(), "jsonl", "unsupported.jsonl"],
