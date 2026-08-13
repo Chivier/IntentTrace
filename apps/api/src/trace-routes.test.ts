@@ -250,4 +250,87 @@ describe("trace API integration boundary", () => {
       provenance: "stated",
     });
   });
+
+  it("returns the recorded demo fan-out, fan-in, edge evidence, and observed topology", async () => {
+    const dispatchNode = "99999999-9999-4999-8999-999999999901";
+    const convergenceNode = "99999999-9999-4999-8999-999999999902";
+    const graph: SemanticGraphSnapshot = {
+      revision: {
+        id: "99999999-9999-4999-8999-999999999903",
+        traceId,
+        parentRevisionId: null,
+        branchKind: "final",
+        eventWatermark: "691",
+        createdAt: "2026-08-12T14:40:00.000Z",
+        sourceJobId: null,
+        stale: false,
+      },
+      nodes: [],
+      edges: [
+        ...[1, 2].map((index) => ({
+          id: `99999999-9999-4999-8999-9999999999${String(index).padStart(2, "0")}`,
+          logicalEdgeId: `88888888-8888-4888-8888-8888888888${String(index).padStart(2, "0")}`,
+          traceId,
+          sourceNodeId: dispatchNode,
+          targetNodeId: `77777777-7777-4777-8777-7777777777${String(index).padStart(2, "0")}`,
+          kind: "decomposes_to" as const,
+          retired: false,
+          evidenceEventIds: [`66666666-6666-4666-8666-6666666666${String(index).padStart(2, "0")}`],
+          provenance: "stated" as const,
+        })),
+        ...[3, 4].map((index) => ({
+          id: `99999999-9999-4999-8999-9999999999${String(index).padStart(2, "0")}`,
+          logicalEdgeId: `88888888-8888-4888-8888-8888888888${String(index).padStart(2, "0")}`,
+          traceId,
+          sourceNodeId: `77777777-7777-4777-8777-7777777777${String(index).padStart(2, "0")}`,
+          targetNodeId: convergenceNode,
+          kind: "hands_off_to" as const,
+          retired: false,
+          evidenceEventIds: [`66666666-6666-4666-8666-6666666666${String(index).padStart(2, "0")}`],
+          provenance: "stated" as const,
+        })),
+      ],
+    };
+    const app = buildApp({
+      services: services([], {
+        getTrace: async () => ({
+          id: traceId,
+          projectId,
+          title: "IMO 2025 P1 solved by eight parallel agents",
+          status: "completed",
+          eventCount: "691",
+          latestIngestSeq: "691",
+          latestRevisionId: graph.revision.id,
+          createdAt: "2026-08-12T14:15:39.264Z",
+          updatedAt: "2026-08-12T14:40:00.000Z",
+        }),
+        getGraph: async () => graph,
+        getObservedTopology: async () => ({
+          observed: { lanes: 9, lanesWithParent: 8, spawnEdges: 8, peerEdges: 0 },
+          sources: [{ sourceKind: "jsonl", adapterVersion: "1.0.0" }],
+        }),
+      }),
+    });
+    apps.push(app);
+
+    const [graphResponse, snapshotResponse] = await Promise.all([
+      app.inject({ method: "GET", url: `/api/v1/traces/${traceId}/graph` }),
+      app.inject({ method: "GET", url: `/api/v1/traces/${traceId}/snapshot` }),
+    ]);
+    expect(graphResponse.statusCode).toBe(200);
+    const returnedEdges = graphResponse.json().edges as SemanticGraphSnapshot["edges"];
+    const outgoing = Object.values(Object.groupBy(returnedEdges, (edge) => edge.sourceNodeId));
+    const incoming = Object.values(Object.groupBy(returnedEdges, (edge) => edge.targetNodeId));
+    expect(outgoing.some((edges) => (edges?.length ?? 0) > 1)).toBe(true);
+    expect(incoming.some((edges) => (edges?.length ?? 0) > 1)).toBe(true);
+    expect(returnedEdges.every((edge) => edge.evidenceEventIds.length > 0)).toBe(true);
+    expect(returnedEdges.every((edge) => edge.provenance === "stated")).toBe(true);
+    expect(snapshotResponse.statusCode).toBe(200);
+    expect(snapshotResponse.json().topology.observed).toEqual({
+      lanes: 9,
+      lanesWithParent: 8,
+      spawnEdges: 8,
+      peerEdges: 0,
+    });
+  });
 });

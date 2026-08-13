@@ -59,7 +59,9 @@ describe("recorded topology demo acceptance", () => {
 
   it("is a versioned, complete and private canonical recording", () => {
     expect(events).toHaveLength(691);
-    expect(new Set(events.map((event) => event.traceId)).size).toBe(1);
+    expect(new Set(events.map((event) => event.traceId))).toEqual(
+      new Set(["c068ecd2-a3ab-58a3-9825-225c584cc83a"]),
+    );
     expect(new Set(events.map((event) => event.source.sourceEventId)).size).toBe(events.length);
     expect(events.every((event) => event.source.sourceInstanceId.endsWith("-topology-v2"))).toBe(
       true,
