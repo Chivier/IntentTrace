@@ -1,5 +1,5 @@
 import { gzipSync } from "node:zlib";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -244,6 +244,21 @@ describe("implemented trace adapters", () => {
     await expect(parse(adapter, await fixture(source, name))).rejects.toBeInstanceOf(
       UnsupportedAdapterVersionError,
     );
+  });
+  it("does not create SQLite sidecars in the committed fixture directory", async () => {
+    const fixtureDirectory = resolve(fixtureRoot, "opencode/topology");
+    const before = (await readdir(fixtureDirectory)).sort();
+    const records: AdapterRecord[] = [];
+    for await (const record of new OpenCodeSessionAdapter().parse({
+      parts: [
+        { path: "opencode.db", bytes: await fixture("opencode", "topology/opencode.db") },
+        { path: "opencode.db-wal", bytes: await fixture("opencode", "topology/opencode.db-wal") },
+        { path: "tool-output/tool-truncated", bytes: await fixture("opencode", "topology/tool-truncated") },
+      ],
+      sourceIdentity: "anonymous-fixture",
+    })) records.push(record);
+    expect(records.some((record) => record.type === "event")).toBe(true);
+    expect((await readdir(fixtureDirectory)).sort()).toEqual(before);
   });
   it("maps OMP lanes, excludes synthetic spawns, and keeps parent spans empty", async () => {
     const parts = [
