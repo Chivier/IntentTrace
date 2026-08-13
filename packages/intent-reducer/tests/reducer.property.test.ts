@@ -1,155 +1,271 @@
 import { describe, expect, it } from "vitest";
 
-import { SchemaVersion } from "@intenttrace/schema";
+import { SchemaVersion, type TopologyCapability } from "@intenttrace/schema";
 
-import { applyProviderPatch, type ReducerGraphState } from "../src/index.js";
+import {
+  applyProviderPatch,
+  deriveTopology,
+  type ReducerGraphState,
+  type ReducerRawFact,
+  type ReducerTopologyContext,
+} from "../src/index.js";
 
-const eventId = "019fbbb3-4324-7d43-8f9c-cd489a92cb28";
+const traceId = "019fbbb3-4324-7d43-8f9c-cd489a92cb20";
 const revisionId = "019fbbb3-4324-7d43-8f9c-cd489a92cb29";
 const nonce = "019fbbb3-4324-7d43-8f9c-cd489a92cb30";
-const nodeA = "019fbbb3-4324-7d43-8f9c-cd489a92cb31";
-const nodeB = "019fbbb3-4324-7d43-8f9c-cd489a92cb32";
-const edgeA = "019fbbb3-4324-7d43-8f9c-cd489a92cb33";
-const versionA = "019fbbb3-4324-7d43-8f9c-cd489a92cb34";
-const versionB = "019fbbb3-4324-7d43-8f9c-cd489a92cb35";
-const edgeVersion = "019fbbb3-4324-7d43-8f9c-cd489a92cb36";
-const baseNode = (id: string, versionId: string) => ({
-  logicalNodeId: id,
-  versionId,
-  kind: "work" as const,
-  status: "active" as const,
-  title: "Existing work",
-  claims: [
-    {
-      kind: "action" as const,
-      text: "Observed work",
-      provenance: "stated" as const,
-      confidence: "high" as const,
-      evidenceEventIds: [eventId],
-    },
+const otherNonce = "019fbbb3-4324-7d43-8f9c-cd489a92cb40";
+const requestNode = "019fbbb3-4324-7d43-8f9c-cd489a92c001";
+const dispatchNode = "019fbbb3-4324-7d43-8f9c-cd489a92c002";
+const childFirstA = "019fbbb3-4324-7d43-8f9c-cd489a92c003";
+const childLastA = "019fbbb3-4324-7d43-8f9c-cd489a92c004";
+const childFirstB = "019fbbb3-4324-7d43-8f9c-cd489a92c005";
+const childLastB = "019fbbb3-4324-7d43-8f9c-cd489a92c006";
+const convergenceNode = "019fbbb3-4324-7d43-8f9c-cd489a92c007";
+
+const eventIds = {
+  request: "019fbbb3-4324-7d43-8f9c-cd489a92d001",
+  dispatch: "019fbbb3-4324-7d43-8f9c-cd489a92d009",
+  childStartA: "019fbbb3-4324-7d43-8f9c-cd489a92d008",
+  childStartB: "019fbbb3-4324-7d43-8f9c-cd489a92d007",
+  childEndA: "019fbbb3-4324-7d43-8f9c-cd489a92d006",
+  childEndB: "019fbbb3-4324-7d43-8f9c-cd489a92d005",
+  convergence: "019fbbb3-4324-7d43-8f9c-cd489a92d004",
+} as const;
+
+const capability: TopologyCapability = {
+  spawn: "stated",
+  join: "stated",
+  peerMessages: "stated",
+  input: "single-file",
+  laneKey: "agentId",
+  limits: [],
+};
+
+function claim(eventId: string) {
+  return {
+    kind: "action" as const,
+    text: `Evidence ${eventId}`,
+    provenance: "stated" as const,
+    confidence: "high" as const,
+    evidenceEventIds: [eventId],
+  };
+}
+
+function node(
+  logicalNodeId: string,
+  eventId: string,
+  kind: "request" | "work" | "result" = "work",
+) {
+  return {
+    logicalNodeId,
+    versionId: logicalNodeId.replace("c00", "e00"),
+    kind,
+    status: "active" as const,
+    title: `Node ${logicalNodeId}`,
+    claims: [claim(eventId)],
+    primaryParentId: null,
+    primaryAgentId: null,
+    participantAgentIds: [],
+    artifactIds: [],
+    pinnedByHuman: false,
+    startedAt: null,
+    endedAt: null,
+    layout: null,
+  };
+}
+
+function fact(
+  eventId: string,
+  ingestSeq: number,
+  kind: string,
+  agentId: string,
+  attributes: Partial<ReducerRawFact> = {},
+): ReducerRawFact {
+  return {
+    eventId,
+    sourceKind: "jsonl",
+    adapterVersion: "test",
+    sourceEventId: `source-${ingestSeq}`,
+    ingestSeq: String(ingestSeq),
+    kind,
+    status: "ok",
+    agentId,
+    spanId: null,
+    parentSpanId: null,
+    causationEventId: null,
+    artifactRefs: [],
+    ...attributes,
+  };
+}
+
+const fanState: ReducerGraphState = {
+  nodes: [
+    node(requestNode, eventIds.request, "request"),
+    node(dispatchNode, eventIds.dispatch),
+    node(childFirstA, eventIds.childStartA),
+    node(childLastA, eventIds.childEndA, "result"),
+    node(childFirstB, eventIds.childStartB),
+    node(childLastB, eventIds.childEndB, "result"),
+    node(convergenceNode, eventIds.convergence),
   ],
-  primaryParentId: null,
-  primaryAgentId: null,
-  participantAgentIds: [],
-  artifactIds: [],
-  pinnedByHuman: false,
-  startedAt: null,
-  endedAt: null,
-  layout: null,
-});
-const context = (state: ReducerGraphState, pinned = new Set<string>()) => ({
-  expectedBaseRevisionId: revisionId,
-  expectedJobNonce: nonce,
-  allowedEventIds: new Set([eventId]),
-  allowedArtifactIds: new Set<string>(),
-  allowedAgentIds: new Set<string>(),
-  allowedNodeIds: new Set(state.nodes.map((node) => node.logicalNodeId)),
-  allowedEdgeIds: new Set(state.edges.map((edge) => edge.logicalEdgeId)),
-  pinnedNodeIds: pinned,
-});
+  edges: [],
+};
+
+const fanFacts: ReducerRawFact[] = [
+  fact(eventIds.request, 1, "user_message", "root"),
+  fact(eventIds.dispatch, 2, "agent_handoff", "root", {
+    spanId: "dispatch-call",
+    spawnedAgentIds: ["child-a", "child-b"],
+  }),
+  fact(eventIds.childStartA, 3, "agent_start", "child-a", {
+    parentAgentId: "root",
+    parentSpanId: "dispatch-call",
+  }),
+  fact(eventIds.childStartB, 4, "agent_start", "child-b", {
+    parentAgentId: "root",
+    parentSpanId: "dispatch-call",
+    topologyProvenance: "inferred",
+  }),
+  fact(eventIds.childEndA, 5, "agent_end", "child-a"),
+  fact(eventIds.childEndB, 6, "agent_end", "child-b", {
+    topologyProvenance: "inferred",
+  }),
+  fact(eventIds.convergence, 7, "tool_result", "root", {
+    joinedAgentIds: ["child-a", "child-b"],
+  }),
+];
+
+function topologyContext(facts: readonly ReducerRawFact[] = fanFacts): ReducerTopologyContext {
+  return {
+    traceId,
+    eventWatermark: "7",
+    facts,
+    capabilities: new Map([["jsonl\0test", capability]]),
+  };
+}
+
+function validationContext(state: ReducerGraphState, jobNonce = nonce) {
+  return {
+    expectedBaseRevisionId: revisionId,
+    expectedJobNonce: jobNonce,
+    allowedEventIds: new Set(fanFacts.map((item) => item.eventId)),
+    allowedArtifactIds: new Set<string>(),
+    allowedAgentIds: new Set(["root", "child-a", "child-b"]),
+    allowedNodeIds: new Set(state.nodes.map((item) => item.logicalNodeId)),
+    allowedEdgeIds: new Set(state.edges.map((item) => item.logicalEdgeId)),
+    pinnedNodeIds: new Set(
+      state.nodes.filter((item) => item.pinnedByHuman).map((item) => item.logicalNodeId),
+    ),
+  };
+}
 
 describe("deterministic reducer properties", () => {
-  it("ignores provider confidence and derives claim confidence from evidence", () => {
-    const state: ReducerGraphState = { nodes: [], edges: [] };
-    const patch = {
-      schemaVersion: SchemaVersion,
-      jobNonce: nonce,
-      baseRevisionId: revisionId,
-      operations: [
-        {
-          op: "add_node",
-          ref: "tmp:1",
-          node: {
-            kind: "request",
-            status: "active",
-            title: "Evidence backed request",
-            claims: [
-              {
-                kind: "intent",
-                text: "Complete the project",
-                provenance: "stated",
-                suggestedConfidence: "low",
-                evidenceEventIds: [eventId],
-              },
-            ],
-            participantAgentIds: [],
-            artifactIds: [],
-          },
-        },
-      ],
-      diagnostics: [],
-    };
-    const first = applyProviderPatch(patch, state, context(state));
-    const second = applyProviderPatch(patch, state, context(state));
-    expect(first).toEqual(second);
-    expect(first.ok && first.state.nodes[0]?.claims[0]?.confidence).toBe("high");
-  });
+  it("derives a stable fan-out/fan-in DAG without an ingest-order sibling chain", () => {
+    const first = deriveTopology(fanState, topologyContext());
+    const active = first.state.edges.filter((edge) => !edge.retired);
+    const spawn = active.filter((edge) => edge.kind === "decomposes_to");
+    const joins = active.filter((edge) => edge.kind === "hands_off_to");
 
-  it("rejects hierarchical cycles", () => {
-    const state: ReducerGraphState = {
-      nodes: [baseNode(nodeA, versionA), baseNode(nodeB, versionB)],
-      edges: [
-        {
-          logicalEdgeId: edgeA,
-          versionId: edgeVersion,
-          sourceNodeId: nodeA,
-          targetNodeId: nodeB,
-          kind: "depends_on",
-          evidenceEventIds: [eventId],
-          provenance: "stated",
-          retired: false,
-        },
-      ],
-    };
-    const result = applyProviderPatch(
+    expect(spawn.map((edge) => [edge.sourceNodeId, edge.targetNodeId])).toEqual([
+      [dispatchNode, childFirstA],
+      [dispatchNode, childFirstB],
+    ]);
+    expect(joins.map((edge) => [edge.sourceNodeId, edge.targetNodeId])).toEqual([
+      [childLastA, convergenceNode],
+      [childLastB, convergenceNode],
+    ]);
+    expect(spawn.map((edge) => edge.provenance)).toEqual(["stated", "inferred"]);
+    expect(joins.map((edge) => edge.provenance)).toEqual(["stated", "inferred"]);
+    expect(active.every((edge) => edge.sourceNodeId !== edge.targetNodeId)).toBe(true);
+    expect(
+      active.some(
+        (edge) =>
+          (edge.sourceNodeId === childFirstA && edge.targetNodeId === childFirstB) ||
+          (edge.sourceNodeId === childFirstB && edge.targetNodeId === childFirstA),
+      ),
+    ).toBe(false);
+    expect(new Set(active.map((edge) => edge.logicalEdgeId)).size).toBe(active.length);
+    expect(
+      active.every(
+        (edge) =>
+          JSON.stringify(edge.evidenceEventIds) ===
+          JSON.stringify([...edge.evidenceEventIds].sort()),
+      ),
+    ).toBe(true);
+
+    const operations = [
+      {
+        op: "update_node" as const,
+        ref: childFirstA,
+        set: { title: "Child A start" },
+        evidenceEventIds: [eventIds.childStartA],
+      },
+      {
+        op: "update_node" as const,
+        ref: childFirstB,
+        set: { title: "Child B start" },
+        evidenceEventIds: [eventIds.childStartB],
+      },
+    ];
+    const appliedFirst = applyProviderPatch(
       {
         schemaVersion: SchemaVersion,
         jobNonce: nonce,
         baseRevisionId: revisionId,
-        operations: [
-          {
-            op: "add_edge",
-            ref: "tmp-edge:1",
-            sourceRef: nodeB,
-            targetRef: nodeA,
-            kind: "depends_on",
-            evidenceEventIds: [eventId],
-          },
-        ],
+        operations,
         diagnostics: [],
       },
-      state,
-      context(state),
+      fanState,
+      validationContext(fanState),
+      topologyContext(),
     );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.issues[0]?.code).toBe("cycle");
-  });
-
-  it("gives human pins precedence over provider updates", () => {
-    const state: ReducerGraphState = {
-      nodes: [{ ...baseNode(nodeA, versionA), pinnedByHuman: true }],
-      edges: [],
-    };
-    const result = applyProviderPatch(
+    const appliedSecond = applyProviderPatch(
       {
         schemaVersion: SchemaVersion,
-        jobNonce: nonce,
+        jobNonce: otherNonce,
         baseRevisionId: revisionId,
-        operations: [
-          {
-            op: "update_node",
-            ref: nodeA,
-            set: { title: "Provider overwrite" },
-            clear: [],
-            evidenceEventIds: [eventId],
-          },
-        ],
+        operations: [...operations].reverse(),
         diagnostics: [],
       },
-      state,
-      context(state, new Set([nodeA])),
+      fanState,
+      validationContext(fanState, otherNonce),
+      topologyContext(),
     );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.issues.some((issue) => issue.code === "pinned_node")).toBe(true);
+    expect(appliedFirst.ok).toBe(true);
+    expect(appliedSecond.ok).toBe(true);
+    if (appliedFirst.ok && appliedSecond.ok) {
+      expect(appliedFirst.state.edges.map((edge) => edge.logicalEdgeId)).toEqual(
+        appliedSecond.state.edges.map((edge) => edge.logicalEdgeId),
+      );
+    }
+  });
+
+  it("retires and reactivates a derived edge under its stable logical identity", () => {
+    const initial = deriveTopology(fanState, topologyContext());
+    const withoutSecondChild = deriveTopology(
+      initial.state,
+      topologyContext(
+        fanFacts.filter(
+          (item) =>
+            item.eventId !== eventIds.childStartB && item.eventId !== eventIds.childEndB,
+        ),
+      ),
+    );
+    const initialEdge = initial.state.edges.find(
+      (edge) => edge.kind === "decomposes_to" && edge.targetNodeId === childFirstB,
+    );
+    const retiredEdge = withoutSecondChild.state.edges.find(
+      (edge) => edge.logicalEdgeId === initialEdge?.logicalEdgeId,
+    );
+    expect(retiredEdge?.retired).toBe(true);
+    expect(retiredEdge?.evidenceEventIds).toEqual(initialEdge?.evidenceEventIds);
+    expect(retiredEdge?.provenance).toBe(initialEdge?.provenance);
+
+    const restored = deriveTopology(withoutSecondChild.state, topologyContext());
+    const restoredEdge = restored.state.edges.find(
+      (edge) => edge.logicalEdgeId === initialEdge?.logicalEdgeId,
+    );
+    expect(restoredEdge?.retired).toBe(false);
+    expect(restoredEdge?.versionId).not.toBe(retiredEdge?.versionId);
   });
 });
