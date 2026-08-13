@@ -60,7 +60,6 @@ export class FoundationMockSummaryProvider implements SummaryProvider {
           ref: "tmp:1",
           node: {
             kind: "request",
-            status: "active",
             title: clipTitle(input.requestText, "User request"),
             claims: [
               {
@@ -71,8 +70,6 @@ export class FoundationMockSummaryProvider implements SummaryProvider {
                 evidenceEventIds: [input.requestEventId],
               },
             ],
-            participantAgentIds: [],
-            artifactIds: [],
           },
         },
       ],
@@ -93,7 +90,6 @@ export class FoundationMockSummaryProvider implements SummaryProvider {
     const isFinal = Boolean(completion);
     const isError = selected.status === "error" || selected.contentType === "error";
     const isRequest = selected.kind === "user_message" || selected.contentType === "user_message";
-    const priorNode = input.allowedNodeIds.at(-1);
     const evidenceEventIds = [
       selected.eventId,
       ...(completion && completion.eventId !== selected.eventId ? [completion.eventId] : []),
@@ -104,7 +100,6 @@ export class FoundationMockSummaryProvider implements SummaryProvider {
         ref: "tmp:1",
         node: {
           kind: isFinal ? "result" : isError ? "issue" : isRequest ? "request" : "work",
-          status: isFinal ? "completed" : isError ? "blocked" : "active",
           title: clipTitle(selected.name, isFinal ? "Trace result" : "Observed work"),
           claims: [
             {
@@ -115,27 +110,9 @@ export class FoundationMockSummaryProvider implements SummaryProvider {
               evidenceEventIds,
             },
           ],
-          primaryParentRef: priorNode,
-          primaryAgentId: input.allowedAgentIds.includes(selected.agentId)
-            ? selected.agentId
-            : undefined,
-          participantAgentIds: input.allowedAgentIds.includes(selected.agentId)
-            ? [selected.agentId]
-            : [],
-          artifactIds: selected.artifactIds.filter((id) => input.allowedArtifactIds.includes(id)),
         },
       },
     ];
-    if (priorNode) {
-      operations.push({
-        op: "add_edge",
-        ref: "tmp-edge:1",
-        sourceRef: priorNode,
-        targetRef: "tmp:1",
-        kind: isFinal ? "produces" : "attempts",
-        evidenceEventIds,
-      });
-    }
     return ProviderIntentGraphPatchSchema.parse({
       schemaVersion: SchemaVersion,
       jobNonce: input.jobNonce,

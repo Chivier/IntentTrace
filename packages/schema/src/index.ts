@@ -500,36 +500,10 @@ const AddNodeOperationSchema = z
     node: z
       .object({
         kind: SemanticNodeKindSchema,
-        status: SemanticNodeStatusSchema.exclude(["superseded"]),
         title: z.string().min(3).max(80),
         claims: z.array(ProviderClaimSchema).min(1).max(3),
-        primaryParentRef: NodeRefSchema.optional(),
-        primaryAgentId: IdentifierSchema.optional(),
-        participantAgentIds: z.array(IdentifierSchema).max(32),
-        artifactIds: z.array(UuidSchema).max(64),
       })
       .strict(),
-  })
-  .strict();
-
-const ClaimArrayUpdateSchema = z
-  .object({
-    operation: z.literal("replace"),
-    values: z.array(ProviderClaimSchema).min(1).max(3),
-  })
-  .strict();
-
-const AgentArrayUpdateSchema = z
-  .object({
-    operation: z.enum(["replace", "append_unique", "remove"]),
-    values: z.array(IdentifierSchema).max(32),
-  })
-  .strict();
-
-const ArtifactArrayUpdateSchema = z
-  .object({
-    operation: z.enum(["replace", "append_unique", "remove"]),
-    values: z.array(UuidSchema).max(64),
   })
   .strict();
 
@@ -539,52 +513,17 @@ const UpdateNodeOperationSchema = z
     ref: UuidSchema,
     set: z
       .object({
-        status: SemanticNodeStatusSchema.optional(),
+        kind: SemanticNodeKindSchema.optional(),
         title: z.string().min(3).max(80).optional(),
-        claims: ClaimArrayUpdateSchema.optional(),
-        primaryParentRef: NodeRefSchema.optional(),
-        primaryAgentId: IdentifierSchema.optional(),
-        participantAgentIds: AgentArrayUpdateSchema.optional(),
-        artifactIds: ArtifactArrayUpdateSchema.optional(),
+        claims: z.array(ProviderClaimSchema).min(1).max(3).optional(),
       })
       .strict(),
-    clear: z.array(z.enum(["primaryParentRef", "primaryAgentId"])).max(2),
     evidenceEventIds: z.array(UuidSchema).min(1).max(64),
   })
   .strict()
-  .refine((value) => Object.keys(value.set).length > 0 || value.clear.length > 0, {
-    message: "update_node must set or clear at least one field",
+  .refine((value) => Object.keys(value.set).length > 0, {
+    message: "update_node must set at least one field",
   });
-
-const AddEdgeOperationSchema = z
-  .object({
-    op: z.literal("add_edge"),
-    ref: z.string().regex(/^tmp-edge:[1-9][0-9]*$/u),
-    sourceRef: NodeRefSchema,
-    targetRef: NodeRefSchema,
-    kind: SemanticEdgeKindSchema,
-    evidenceEventIds: z.array(UuidSchema).min(1).max(64),
-  })
-  .strict();
-
-const RetireEdgeOperationSchema = z
-  .object({
-    op: z.literal("retire_edge"),
-    edgeId: UuidSchema,
-    reason: z.string().min(1).max(240),
-    evidenceEventIds: z.array(UuidSchema).min(1).max(64),
-  })
-  .strict();
-
-const SupersedeNodeOperationSchema = z
-  .object({
-    op: z.literal("supersede_node"),
-    fromNodeId: UuidSchema,
-    toRef: NodeRefSchema,
-    reason: z.string().min(1).max(240),
-    evidenceEventIds: z.array(UuidSchema).min(1).max(64),
-  })
-  .strict();
 
 const MergeSuggestionOperationSchema = z
   .object({
@@ -599,9 +538,6 @@ const MergeSuggestionOperationSchema = z
 export const PatchOperationSchema = z.discriminatedUnion("op", [
   AddNodeOperationSchema,
   UpdateNodeOperationSchema,
-  AddEdgeOperationSchema,
-  RetireEdgeOperationSchema,
-  SupersedeNodeOperationSchema,
   MergeSuggestionOperationSchema,
 ]);
 

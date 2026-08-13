@@ -346,13 +346,53 @@ describe("IntentGraphPatch contract", () => {
           op: "update_node",
           ref: ids.project,
           set: {},
-          clear: [],
           evidenceEventIds: [ids.event],
         },
       ],
       diagnostics: [],
     });
     expect(result.success).toBe(false);
+  });
+
+  it("limits provider patches to node semantics and merge advice", () => {
+    const base = {
+      schemaVersion: SchemaVersion,
+      jobNonce: ids.event,
+      baseRevisionId: ids.trace,
+      diagnostics: [],
+    };
+    expect(
+      ProviderIntentGraphPatchSchema.safeParse({
+        ...base,
+        operations: [
+          {
+            op: "add_node",
+            ref: "tmp:1",
+            node: {
+              kind: "work",
+              title: "Bounded node semantics",
+              claims: [
+                {
+                  kind: "action",
+                  text: "Observed work",
+                  provenance: "stated",
+                  suggestedConfidence: "high",
+                  evidenceEventIds: [ids.event],
+                },
+              ],
+            },
+          },
+        ],
+      }).success,
+    ).toBe(true);
+    for (const op of ["add_edge", "retire_edge", "supersede_node"]) {
+      expect(
+        ProviderIntentGraphPatchSchema.safeParse({
+          ...base,
+          operations: [{ op }],
+        }).success,
+      ).toBe(false);
+    }
   });
 });
 

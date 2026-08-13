@@ -63,7 +63,11 @@ describe("provider safety boundary", () => {
     });
     const node = result.operations.find((operation) => operation.op === "add_node");
     expect(node?.op === "add_node" ? node.node.title : null).toContain("durable session content");
-    expect(node?.op === "add_node" ? node.node.artifactIds : null).toEqual([artifactId]);
+    expect(node?.op === "add_node" ? Object.keys(node.node).sort() : null).toEqual([
+      "claims",
+      "kind",
+      "title",
+    ]);
     expect(node?.op === "add_node" ? node.node.claims[0]?.evidenceEventIds : null).toEqual([
       eventId,
       completionId,
