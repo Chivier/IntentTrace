@@ -13,6 +13,7 @@ import {
   discoverSessionCandidates,
   OpenCodeSessionAdapter,
   OmpSessionAdapter,
+  GrokSessionAdapter,
   OtlpHttpJsonAdapter,
   MalformedAdapterInputError,
   prepareSessionParts,
@@ -216,6 +217,21 @@ describe("implemented trace adapters", () => {
     const arrayEvents = array.filter((record) => record.type === "event");
     expect(arrayEvents).toHaveLength(lineEvents.length);
     expect(arrayEvents[0]?.event.traceId).toBe(lineEvents[0]?.event.traceId);
+  });
+  it("maps Grok vendor updates, resumed lanes, and structured joins", async () => {
+    const parts = [
+      { path: "parent/updates.jsonl", bytes: await fixture("grok", "topology/parent/updates.jsonl") },
+      { path: "parent/subagents/child/meta.json", bytes: await fixture("grok", "topology/parent/subagents/child/meta.json") },
+      { path: "parent/subagents/child/output.json", bytes: await fixture("grok", "topology/parent/subagents/child/output.json") },
+      { path: "child/updates.jsonl", bytes: await fixture("grok", "topology/child/updates.jsonl") },
+    ];
+    const records: AdapterRecord[] = [];
+    for await (const record of new GrokSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    const events = records.filter((record) => record.type === "event");
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["grok-root", "grok-child"]));
+    expect(events.some((record) => record.event.attributes.parentAgentId === "grok-root")).toBe(true);
+    expect(events.some((record) => record.event.attributes.joinedBy === "grok-child")).toBe(true);
+    expect(events.some((record) => record.event.parentSpanId === "prompt-child-1")).toBe(true);
   });
 
   it("accepts a single pretty-printed JSON object as one record", async () => {

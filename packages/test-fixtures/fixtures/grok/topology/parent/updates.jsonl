@@ -1,0 +1,3 @@
+{"timestamp":1,"method":"_x.ai/session/update","params":{"sessionId":"grok-root","update":{"sessionUpdate":"subagent_spawned","subagent_id":"grok-child","child_session_id":"grok-child","parent_session_id":"grok-root","parent_prompt_id":"prompt-child-1"}}}
+{"timestamp":2,"method":"_x.ai/session/update","params":{"sessionId":"grok-root","update":{"sessionUpdate":"subagent_finished","subagent_id":"grok-child","child_session_id":"grok-child","status":"completed","output":"done"}}}
+{"timestamp":3,"method":"session/update","params":{"sessionId":"grok-root","update":{"sessionUpdate":"agent_thought_chunk","content":"private"}}}
