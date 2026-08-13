@@ -466,19 +466,39 @@ export const CanonicalClaimSchema = ProviderClaimSchema.omit({ suggestedConfiden
   .strict();
 export type CanonicalClaim = z.infer<typeof CanonicalClaimSchema>;
 
+/**
+ * The full edge vocabulary. Only the members of `ReducerDerivedEdgeKindSchema`
+ * can appear in a committed graph today; the rest are reserved names kept for
+ * wire compatibility. Retiring an enum member is a major change, so reserved
+ * kinds stay declared rather than being pruned.
+ */
 export const SemanticEdgeKindSchema = z.enum([
   "decomposes_to",
-  "attempts",
+  "attempts", // reserved
   "depends_on",
-  "supports",
+  "supports", // reserved
   "blocks",
-  "resolved_by",
+  "resolved_by", // reserved
   "hands_off_to",
-  "revises",
+  "revises", // reserved
   "produces",
-  "supersedes",
+  "supersedes", // reserved
 ]);
 export type SemanticEdgeKind = z.infer<typeof SemanticEdgeKindSchema>;
+
+/**
+ * The structural relations the deterministic reducer actually derives from
+ * canonical topology facts. Single source of truth for consumers that must
+ * distinguish derivable relations from reserved names.
+ */
+export const ReducerDerivedEdgeKindSchema = z.enum([
+  "decomposes_to",
+  "depends_on",
+  "blocks",
+  "hands_off_to",
+  "produces",
+]);
+export type ReducerDerivedEdgeKind = z.infer<typeof ReducerDerivedEdgeKindSchema>;
 
 export const SemanticRevisionSchema = z
   .object({

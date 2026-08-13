@@ -35,15 +35,20 @@ export interface EdgeKindMeta {
   dash: string;
 }
 
+// Keyed by the full vocabulary for type completeness. Only the reducer-derived
+// relations can actually render; reserved kinds are styled neutrally so an
+// unexpected value degrades visibly rather than crashing.
 export const edgeKindMeta: Record<SemanticEdgeKind, EdgeKindMeta> = {
+  // Reducer-derived.
   decomposes_to: { color: "#3b4658", dash: "7 7" },
-  attempts: { color: "#3b4658", dash: "7 7" },
   depends_on: { color: "#3b4658", dash: "7 7" },
-  supports: { color: "var(--color-cyan)", dash: "7 7" },
   blocks: { color: "var(--color-red)", dash: "7 7" },
-  resolved_by: { color: "var(--color-red)", dash: "7 7" },
   hands_off_to: { color: "var(--color-pink)", dash: "3 8" },
-  revises: { color: "var(--color-amber)", dash: "7 7" },
   produces: { color: "var(--color-green)", dash: "7 7" },
+  // Reserved: no derivation rule emits these.
+  attempts: { color: "#3b4658", dash: "7 7" },
+  supports: { color: "var(--color-cyan)", dash: "7 7" },
+  resolved_by: { color: "var(--color-red)", dash: "7 7" },
+  revises: { color: "var(--color-amber)", dash: "7 7" },
   supersedes: { color: "var(--color-amber)", dash: "3 8" },
 };

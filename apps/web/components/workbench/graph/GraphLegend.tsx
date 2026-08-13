@@ -1,8 +1,12 @@
+// Edge swatches cover the structural relations the reducer derives and the
+// workbench can therefore actually render.
 const swatches: Array<{ color: string; label: string }> = [
   { color: "bg-accent", label: "Intent/work" },
   { color: "bg-red", label: "Issue" },
   { color: "bg-green", label: "Result" },
-  { color: "bg-pink", label: "Handoff edge (dashed)" },
+  { color: "bg-muted-2", label: "Spawn edge (decomposes_to)" },
+  { color: "bg-pink", label: "Handoff edge (hands_off_to)" },
+  { color: "bg-red", label: "Blocks edge" },
 ];
 
 export function GraphLegend() {

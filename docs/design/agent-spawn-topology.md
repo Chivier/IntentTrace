@@ -267,14 +267,15 @@ interface AdapterInput {
 | `decomposes_to` | 父 lane 的 handoff 节点 → 子 lane 的首节点     | 父侧派发记录 + 子侧 `agent_start.attributes.parentAgentId` |
 | `hands_off_to`  | 子 lane 的末节点 → 父 lane 收敛处的节点        | `agent_end` + 父侧收敛处的 `tool_result`                   |
 | `hands_off_to`  | 发送方 lane 的节点 → 接收方 lane 的节点        | 带发送方/接收方的 agent 间消息事件，且两者不同 lane        |
-| `depends_on`    | 消费方节点 → 持有该 artifact 的生产方节点      | 两个节点的 `artifactIds` 交集非空                          |
+| `depends_on`    | 消费方节点 → 该 artifact 的显式生产方节点      | 显式 producer 事实 + 双方命名同一个已注册 artifact         |
 | `produces`      | 代持写入节点 → 持有该 artifact 的节点          | `file_write.attributes.onBehalfOf` + `artifactRefs`        |
 | `blocks`        | 工具缺失的 issue 节点 → 被阻塞 lane 的后继节点 | `tool_result` 且 `status = "error"`                        |
-| `revises`       | 人的反馈 → 目标节点                            | `node_feedback` 行（`packages/db/src/schema.ts:421`）      |
+
+`revises` **不产出**：`node_feedback` 既没有语义源节点也没有 raw-event 证据，任何连线都只能是自环或凭空断言。人工编辑继续以 immutable human revision 表达。`SemanticEdgeKindSchema` 中的 `attempts`、`supports`、`resolved_by`、`revises`、`supersedes` 均为保留名，没有任何派生规则会产出它们；可派生集合以 `ReducerDerivedEdgeKindSchema` 为单一真源。
 
 三条兜底规则，都优先于"把边画出来"：
 
-- `depends_on` 只在 `artifactIds` 交集非空时生成。仅凭时间先后推断依赖是推断而非事实，宁可缺边。
+- `depends_on` 需要显式 producer 事实，并且双方命名的必须是同一个**已注册**的 artifact。仅凭 `artifactIds` 交集或时间先后推断依赖是推断而非事实，宁可缺边；未注册的 artifact UUID 一律不产边，以免证据路径指向不存在的数据。
 - 任何解析后源与目标落在同一节点的边一律丢弃：`semantic_edge_versions` 有 `semantic_edges_no_self_edge` 约束（`packages/db/src/schema.ts:255`），自环会让整个 patch 失败。`blocks` 在被阻塞 lane 没有后继节点时同样省略。
 - 声明为 `unsupported` 的关系不产边，也不尝试启发式补齐；缺失由 `topology.declared` 解释。
 

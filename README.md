@@ -74,10 +74,29 @@ The run went wrong in a way a chat log hides well. Three specialists — constru
 Open the trace and read it top-down:
 
 1. **Agent Gantt** — nine lanes, with all eight child lanes tied to explicit parentage. That is the parallelism itself, not a description of it.
-2. **Intent Graph** — reducer-owned topology derives audited `decomposes_to` fan-out and `hands_off_to` fan-in from the recorded spawn/join facts; every structural edge carries non-empty raw-event evidence and stated provenance.
+2. **Intent Graph** — the shape below is derived, not drawn by hand. The reducer reads the recorded spawn/join facts and emits 19 audited edges: eight `decomposes_to`, eight `hands_off_to` and three `blocks`. Every one carries the raw events it came from and `stated` provenance.
+
+```mermaid
+graph LR
+  D["Orchestrator · dispatch"]
+  D -->|decomposes_to| B[ImoBruteForce]
+  D -->|decomposes_to| C[ImoConstructions]
+  D -->|decomposes_to| I[ImoImpossibility]
+  D -->|decomposes_to| R["+5 more child lanes"]
+  B -->|hands_off_to| V["Orchestrator · convergence"]
+  C -->|hands_off_to| V
+  I -->|hands_off_to| V
+  R -->|hands_off_to| V
+  CI["ImoConstructions · issue"] -.->|blocks| CW["ImoConstructions · work"]
+```
+
+One dispatch node fans out to six child lanes and a second to the remaining two; convergence mirrors that as 5 + 3. The three `blocks` edges are not decoration — they land on exactly `ImoConstructions`, `ImoImpossibility` and `ImoVerifier`, the three specialists that had no `eval`, `write` or `bash` tool. The missing capability is a queryable edge, not a sentence buried in a log.
+
 3. **Evidence inspector** — select a node: every claim lists the raw events it came from with `#ingestSeq`, kind and agent, and `Open sanitized source payload` serves the stored tool arguments or output behind it.
 4. **Replay controls** — drag `Known at ingest watermark` back to 100 and the panels answer what was known then: `Raw Events` drops to 100 facts, the `eval` failure still cites `#50`, and the closing result node's evidence rows read `outside playhead` — the conclusion is on screen, the facts supporting it had not arrived yet.
 5. **Raw Events** — 691 immutable facts. The graph is derived from them; nothing above can rewrite them.
+
+A provider never proposes any of these edges. It returns node semantics only — `kind`, `title`, `claims` — and the deterministic reducer derives the structure, so a hallucinating model cannot invent a parent or a handoff. The reserved edge names in `SemanticEdgeKindSchema` (`attempts`, `supports`, `resolved_by`, `revises`, `supersedes`) have no derivation rule and therefore never appear.
 
 The two screenshots above come from exactly this trace.
 

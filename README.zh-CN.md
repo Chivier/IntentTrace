@@ -75,10 +75,29 @@ pnpm docker:down     # 停止服务，保留 named volumes
 打开这条 trace，自上而下地读：
 
 1. **Agent Gantt** —— 九条泳道，八条 child 泳道都有显式父级关系。这就是并行本身，而不是对并行的描述。
-2. **Intent Graph** —— reducer 从录制的 spawn/join 事实派生自己拥有的、可审计的 `decomposes_to` fan-out 与 `hands_off_to` fan-in；每条结构边都有非空 raw-event evidence 与 stated provenance。
+2. **Intent Graph** —— 下面这个形状是派生出来的，不是手画的。reducer 读取录制的 spawn/join 事实，产出 19 条可审计的边：八条 `decomposes_to`、八条 `hands_off_to`、三条 `blocks`。每一条都带着它派生自的原始事件与 `stated` provenance。
+
+```mermaid
+graph LR
+  D["Orchestrator · dispatch"]
+  D -->|decomposes_to| B[ImoBruteForce]
+  D -->|decomposes_to| C[ImoConstructions]
+  D -->|decomposes_to| I[ImoImpossibility]
+  D -->|decomposes_to| R["+5 more child lanes"]
+  B -->|hands_off_to| V["Orchestrator · convergence"]
+  C -->|hands_off_to| V
+  I -->|hands_off_to| V
+  R -->|hands_off_to| V
+  CI["ImoConstructions · issue"] -.->|blocks| CW["ImoConstructions · work"]
+```
+
+一个 dispatch 节点扇出到六条子泳道，另一个扇出剩下两条；收敛端对应为 5 + 3。三条 `blocks` 边不是装饰 —— 它们恰好落在 `ImoConstructions`、`ImoImpossibility`、`ImoVerifier`，也就是那三个没有 `eval`、`write`、`bash` 工具的专家 Agent。"缺少能力"在这里是一条可查询的边，而不是埋在日志里的一句话。
+
 3. **Evidence inspector** —— 选中节点：每条 claim 都列出其来源原始事件（`#ingestSeq`、kind、agent），`Open sanitized source payload` 提供该结论背后存储的工具入参或输出。
 4. **Replay controls** —— 把 `Known at ingest watermark` 拖回 100，各面板会回答当时已知什么：`Raw Events` 降到 100 条事实，`eval` 失败仍引用 `#50`，而收尾 result 节点的证据行显示 `outside playhead` —— 结论就在屏幕上，支撑它的事实当时还没到。
 5. **Raw Events** —— 691 条不可变事实。语义图由它们派生，上面的一切都不能改写它们。
+
+这些边没有一条是 provider 提出的。它只返回节点语义 —— `kind`、`title`、`claims` —— 结构由 deterministic reducer 派生，因此模型即使幻觉也无法凭空造出一个 parent 或一次 handoff。`SemanticEdgeKindSchema` 中的保留名（`attempts`、`supports`、`resolved_by`、`revises`、`supersedes`）没有任何派生规则，因此永不出现。
 
 上方两张截图正是取自这条 trace。
 

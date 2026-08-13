@@ -5,6 +5,7 @@ import {
   type CanonicalClaim,
   type ProviderClaim,
   type ProviderIntentGraphPatch,
+  type ReducerDerivedEdgeKind,
   type SemanticEdgeKind,
   type SemanticNodeKind,
   type SemanticNodeStatus,
@@ -399,8 +400,12 @@ function structuralProvenance(
   return "stated";
 }
 
+/**
+ * `kind` is deliberately narrowed to `ReducerDerivedEdgeKind`: the compiler,
+ * not a convention, is what keeps a reserved edge name out of a committed graph.
+ */
 interface DesiredEdge {
-  kind: SemanticEdgeKind;
+  kind: ReducerDerivedEdgeKind;
   sourceNodeId: string;
   targetNodeId: string;
   evidenceEventIds: string[];

@@ -5,7 +5,9 @@ import {
   ProviderIntentGraphPatchSchema,
   RawTraceEventInputSchema,
   RawTraceEventSchema,
+  ReducerDerivedEdgeKindSchema,
   SchemaVersion,
+  SemanticEdgeKindSchema,
   SemanticEdgeVersionSchema,
   SemanticRevisionSchema,
   SessionCatalogSchema,
@@ -228,6 +230,21 @@ describe("topology and evidence contracts", () => {
         traceStale: false,
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps reducer-derived edge kinds a subset of the declared vocabulary", () => {
+    const derived = ReducerDerivedEdgeKindSchema.options;
+    expect([...derived].sort()).toEqual(
+      ["blocks", "decomposes_to", "depends_on", "hands_off_to", "produces"].sort(),
+    );
+    for (const kind of derived) {
+      expect(SemanticEdgeKindSchema.safeParse(kind).success).toBe(true);
+    }
+    // Reserved names stay parseable for wire compatibility but are not derived.
+    for (const reserved of ["attempts", "supports", "resolved_by", "revises", "supersedes"]) {
+      expect(SemanticEdgeKindSchema.safeParse(reserved).success).toBe(true);
+      expect(ReducerDerivedEdgeKindSchema.safeParse(reserved).success).toBe(false);
+    }
   });
 });
 

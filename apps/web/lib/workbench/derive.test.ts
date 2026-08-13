@@ -1,3 +1,4 @@
+import { ReducerDerivedEdgeKindSchema, SemanticEdgeKindSchema } from "@intenttrace/schema";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -233,20 +234,12 @@ describe("graph meta tables", () => {
     expect(Object.keys(nodeStatusMeta).sort()).toEqual(
       ["abandoned", "active", "blocked", "completed", "proposed", "superseded"].sort(),
     );
-    expect(Object.keys(edgeKindMeta).sort()).toEqual(
-      [
-        "decomposes_to",
-        "attempts",
-        "depends_on",
-        "supports",
-        "blocks",
-        "resolved_by",
-        "hands_off_to",
-        "revises",
-        "produces",
-        "supersedes",
-      ].sort(),
-    );
+    // The styling table must cover the full vocabulary for type completeness,
+    // and must in particular cover every relation the reducer can derive.
+    expect(Object.keys(edgeKindMeta).sort()).toEqual([...SemanticEdgeKindSchema.options].sort());
+    for (const derived of ReducerDerivedEdgeKindSchema.options) {
+      expect(edgeKindMeta[derived]).toBeDefined();
+    }
   });
 });
 
