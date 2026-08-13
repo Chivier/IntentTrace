@@ -16,7 +16,7 @@ IntentTrace 是一个本地优先的 Agent 可观测性工作台：它把多智�
 
 ![IntentTrace workbench：Intent Graph、Agent Gantt 与 Evidence inspector](docs/assets/workbench.png)
 
-本 README 中的截图（上方 workbench 与 [trace 列表](docs/assets/trace-list.png)）均来自 [演示：六个 Agent，一道奥数题](#演示六个-agent一道奥数题) 中描述的录制 trace：一次真实 Agent 运行，并在录制时完成脱敏。栈启动并执行过 `pnpm demo:load` 后，用 `pnpm screenshots:readme` 可复现；脚本只提供该 demo trace，因此其它本地 trace 不会进入截图。
+本 README 中的截图（上方 workbench 与 [trace 列表](docs/assets/trace-list.png)）均来自 [演示：九条泳道，一道奥数题](#演示九条泳道一道奥数题) 中描述的录制 trace：一次真实 Agent 运行，并在录制时完成脱敏。栈启动并执行过 `pnpm demo:load` 后，用 `pnpm screenshots:readme` 可复现；脚本只提供该 demo trace，因此其它本地 trace 不会进入截图。
 
 ## 为什么使用 IntentTrace
 
@@ -48,7 +48,7 @@ pnpm demo:load
 pnpm docker:url
 ```
 
-在 `pnpm docker:url` 打印的地址上打开 `/traces` 页面。`demo:load` 回放一次 231 条事件的真实 Agent 运行录制；入库按内容寻址，重复执行不会新增任何事实。固定 seed 的合成验收 fixture 仍可用：`pnpm demo:load:synthetic`。
+在 `pnpm docker:url` 打印的地址上打开 `/traces` 页面。`demo:load` 回放一次 691 条事件的真实 Agent 运行录制；入库按内容寻址，重复执行不会新增任何事实。固定 seed 的合成验收 fixture 仍可用：`pnpm demo:load:synthetic`。
 
 默认只有 Web 映射到自动分配的 `127.0.0.1` 临时端口；API、PostgreSQL 与 worker 仅在 Compose 私有网络中可达。整栈只有两个镜像：`postgres`，以及 api/worker/web/migrate 四个服务共用的同一个应用镜像。需要固定 Web 端口时：
 
@@ -66,19 +66,19 @@ pnpm docker:down     # 停止服务，保留 named volumes
 
 这些命令统一使用根目录的 `docker-compose.yml`；需要时也可以直接运行 Docker Compose 命令。
 
-## 演示：六个 Agent，一道奥数题
+## 演示：九条泳道，一道奥数题
 
-`pnpm demo:load` 回放一次真实运行的录制：一个编排者与五个专家 Agent 并行求解 IMO 2025 第一题 —— 231 条原始事件、六条 Agent 泳道、24 分钟墙钟时间、八次失败的工具调用。这是录制而非模拟：每条事件都来自那次运行的会话记录；隐藏推理内容在录制时即被丢弃、从未落盘，主机路径也在提交前剥离。
+`pnpm demo:load` 回放一次真实运行的录制：一个编排者与八个并行子 Agent 求解并记录 IMO 2025 第一题 —— 691 条原始事件、九条 Agent 泳道、八条 canonical spawn 事实与八条 canonical join 事实。这是录制而非模拟：每条事件都来自已验证的根 transcript 与八个必需 child transcript；确定性 recorder 会丢弃隐藏推理、签名与 system prompt，把主机路径改写为 `~`，限制 payload 长度，用 canonical schema 验证每条事件，并且绝不回退到合成数据。
 
 这次运行出问题的方式，恰恰是聊天记录最容易掩盖的。三个专家 Agent —— 构造、不可能性、审计 —— 没有 `eval`、`write`、`bash` 工具，一次检查都跑不了；它们如实说明、改为手工推导，编排者代为执行了它们的脚本。最终答案（`k ∈ {0, 1, 3}`）是对的 —— 也正因如此，真正值得问的是*哪个 Agent 的结论真有证据支撑*。
 
 打开这条 trace，自上而下地读：
 
-1. **Agent Gantt** —— 六条泳道，第一波中有三条彼此重叠。这就是并行本身，而不是对并行的描述。
-2. **Intent Graph** —— 录制修订上共六个节点，其中三个是 `Issue` 卡片，标题就是工具失败原文（`Tool result: eval · Tool eval not found`）；不必读消息就能看出哪个 Agent 被卡住。
+1. **Agent Gantt** —— 九条泳道，八条 child 泳道都有显式父级关系。这就是并行本身，而不是对并行的描述。
+2. **Intent Graph** —— reducer 从录制的 spawn/join 事实派生自己拥有的、可审计的 `decomposes_to` fan-out 与 `hands_off_to` fan-in；每条结构边都有非空 raw-event evidence 与 stated provenance。
 3. **Evidence inspector** —— 选中节点：每条 claim 都列出其来源原始事件（`#ingestSeq`、kind、agent），`Open sanitized source payload` 提供该结论背后存储的工具入参或输出。
 4. **Replay controls** —— 把 `Known at ingest watermark` 拖回 100，各面板会回答当时已知什么：`Raw Events` 降到 100 条事实，`eval` 失败仍引用 `#50`，而收尾 result 节点的证据行显示 `outside playhead` —— 结论就在屏幕上，支撑它的事实当时还没到。
-5. **Raw Events** —— 231 条不可变事实。语义图由它们派生，上面的一切都不能改写它们。
+5. **Raw Events** —— 691 条不可变事实。语义图由它们派生，上面的一切都不能改写它们。
 
 上方两张截图正是取自这条 trace。
 

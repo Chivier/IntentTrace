@@ -16,7 +16,7 @@ The raw layer is the record; the semantic layer is derived from it. A model may 
 
 ![IntentTrace workbench: Intent Graph, Agent Gantt and Evidence inspector](docs/assets/workbench.png)
 
-The screenshots in this README — the workbench above and the [trace list](docs/assets/trace-list.png) — are captured from the recorded demo trace described in [Demo: six agents, one olympiad problem](#demo-six-agents-one-olympiad-problem): a real agent run, redacted at record time. Reproduce them with `pnpm screenshots:readme` once the stack is up and `pnpm demo:load` has run; the script serves only the demo trace, so other local traces cannot enter a screenshot.
+The screenshots in this README — the workbench above and the [trace list](docs/assets/trace-list.png) — are captured from the recorded demo trace described in [Demo: nine lanes, one olympiad problem](#demo-nine-lanes-one-olympiad-problem): a real agent run, redacted at record time. Reproduce them with `pnpm screenshots:readme` once the stack is up and `pnpm demo:load` has run; the script serves only the demo trace, so other local traces cannot enter a screenshot.
 
 ## Why IntentTrace
 
@@ -47,7 +47,7 @@ pnpm demo:load
 pnpm docker:url
 ```
 
-Open the `/traces` page at the origin that `pnpm docker:url` prints. `demo:load` replays a recorded real agent run of 231 events; ingestion is content-addressed, so re-running it inserts nothing new. The fixed-seed synthetic acceptance fixture is still one command away: `pnpm demo:load:synthetic`.
+Open the `/traces` page at the origin that `pnpm docker:url` prints. `demo:load` replays a recorded real agent run of 691 events; ingestion is content-addressed, so re-running it inserts nothing new. The fixed-seed synthetic acceptance fixture is still one command away: `pnpm demo:load:synthetic`.
 
 Only Web is published, on an automatically allocated `127.0.0.1` ephemeral port; the API, PostgreSQL and the worker are reachable only inside the Compose private network. The whole stack is two images: `postgres`, plus one application image shared by the api, worker, web and migrate services. When a stable Web port is required:
 
@@ -65,19 +65,19 @@ pnpm docker:down     # stop services, keep named volumes
 
 These commands target the root `docker-compose.yml`; direct Docker Compose commands remain available when needed.
 
-## Demo: six agents, one olympiad problem
+## Demo: nine lanes, one olympiad problem
 
-`pnpm demo:load` replays a recording of a real run: one orchestrator and five specialist agents solving IMO 2025 Problem 1 in parallel — 231 raw events, six agent lanes, 24 minutes of wall clock, eight failed tool calls. It is a recording, not a simulation. Every event comes from that run's session transcripts; hidden reasoning blocks were dropped at record time and never stored, and host paths were stripped before the file was committed.
+`pnpm demo:load` replays a recording of a real run: one orchestrator and eight parallel child agents solving and instrumenting IMO 2025 Problem 1 — 691 raw events, nine agent lanes, eight canonical spawn facts, and eight canonical join facts. It is a recording, not a simulation. Every event comes from the verified root transcript and its eight required child transcripts; the deterministic recorder drops hidden reasoning, signatures, and system prompts, rewrites host paths to `~`, bounds payloads, validates every event against the canonical schema, and never falls back to synthetic data.
 
 The run went wrong in a way a chat log hides well. Three specialists — constructions, impossibility, verification — had no `eval`, `write` or `bash` tool, so they could not run a single check; they said so, continued by hand, and the orchestrator executed their scripts instead. The final answer (`k ∈ {0, 1, 3}`) is correct, which is exactly why the interesting question is _which agent's claim is actually backed by evidence_.
 
 Open the trace and read it top-down:
 
-1. **Agent Gantt** — six lanes, three of them overlapping through the first wave. That is the parallelism itself, not a description of it.
-2. **Intent Graph** — six nodes on the recorded revision. Three are `Issue` cards whose titles are literal tool failures (`Tool result: eval · Tool eval not found`), so a blocked agent is visible before you read a single message.
+1. **Agent Gantt** — nine lanes, with all eight child lanes tied to explicit parentage. That is the parallelism itself, not a description of it.
+2. **Intent Graph** — reducer-owned topology derives audited `decomposes_to` fan-out and `hands_off_to` fan-in from the recorded spawn/join facts; every structural edge carries non-empty raw-event evidence and stated provenance.
 3. **Evidence inspector** — select a node: every claim lists the raw events it came from with `#ingestSeq`, kind and agent, and `Open sanitized source payload` serves the stored tool arguments or output behind it.
 4. **Replay controls** — drag `Known at ingest watermark` back to 100 and the panels answer what was known then: `Raw Events` drops to 100 facts, the `eval` failure still cites `#50`, and the closing result node's evidence rows read `outside playhead` — the conclusion is on screen, the facts supporting it had not arrived yet.
-5. **Raw Events** — 231 immutable facts. The graph is derived from them; nothing above can rewrite them.
+5. **Raw Events** — 691 immutable facts. The graph is derived from them; nothing above can rewrite them.
 
 The two screenshots above come from exactly this trace.
 

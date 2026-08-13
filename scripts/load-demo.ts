@@ -50,5 +50,5 @@ for (const event of events) {
   else inserted += 1;
 }
 process.stdout.write(
-  `Loaded the recorded six-agent IMO trace through ${origin}: ${inserted} inserted, ${duplicates} duplicates.\n`,
+  `Loaded the recorded nine-lane IMO trace (${events.length} events) through ${origin}: ${inserted} inserted, ${duplicates} duplicates.\n`,
 );

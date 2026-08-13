@@ -54,7 +54,7 @@ Risk closed 需要链接测试或环境证据，不能仅以“已有设计”�
 
 - [x] 根目录包含 GNU AGPL v3.0 官方全文与 `NOTICE`；npm/Cargo manifests 使用 `AGPL-3.0-only`。`private: true` 继续保留，防止 monorepo package 被误发布到 registry。许可证正文来自 GNU 官方 HTTPS 地址，SHA-256 为 `0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0`。
 - [x] README 描述能力、架构、快速开始、安全边界、平台状态、限制、验证命令与贡献入口。
-- [x] README 产品截图来自提交进仓库的真实录制 `imo-2025-p1-parallel-solve.jsonl`（六 Agent 并行求解 IMO 2025 P1，录制时已丢弃隐藏推理并剥离主机路径）；`pnpm screenshots:readme` 会把 trace list 响应过滤到该 trace，避免本地其它 session 出现在截图。
+- [x] README 产品截图的当前 demo trace 来自确定性 recorder 对已验证外部 session 的转换：`imo-2025-p1-parallel-solve.jsonl` 为 691 events、9 条泳道、8 个 child start、8 条 spawn 与 8 条 join；录制时已丢弃隐藏推理/签名/system prompt、把主机路径改写为 `~` 并限制 payload。fixture contract 与 reducer/API acceptance 锁定 fan-out/fan-in、非空 edge evidence 与 stated provenance；`pnpm screenshots:readme` 会把 trace list 响应过滤到该 trace，避免本地其它 session 出现在截图。
 - [x] `.github/CONTRIBUTING.md`、DCO、`.github/CODE_OF_CONDUCT.md`、`.github/SECURITY.md`、`.github/SUPPORT.md`、PR 模板与结构化 Issue 模板齐备。
 - [x] `CODEOWNERS`、Dependabot（pnpm/Cargo/GitHub Actions/Docker）与 least-privilege CI 已配置。
 - [x] `THIRD_PARTY_NOTICES.md` 记录 Inter OFL 以及 EPL/LGPL/MPL/CC-BY 等分发关注项；生产依赖 inventory 可由 `pnpm licenses list --prod` 重建。
