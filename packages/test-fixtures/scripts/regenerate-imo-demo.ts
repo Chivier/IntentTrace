@@ -146,7 +146,7 @@ function readJsonLines(path: string): TranscriptRecord[] {
       try {
         return JSON.parse(line) as TranscriptRecord;
       } catch (error) {
-        throw new Error(`${basename(path)}:${index + 1}: invalid JSON: ${String(error)}`);
+        throw new Error(`${basename(path)}:${index + 1}: invalid JSON`, { cause: error });
       }
     });
 }
