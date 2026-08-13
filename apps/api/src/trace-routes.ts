@@ -1,18 +1,17 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
 import {
+  aggregateTopologyCapabilities,
   buildCompletionMarker,
   classifySessionFailure,
   detectSourceKind,
-  aggregateTopologyCapabilities,
   OtlpHttpJsonAdapter,
-  prepareSessionBytes,
+  prepareSessionParts,
   redactCatalogEntry,
-  safeIdentifier,
+  sessionBundleContentSha256,
   uploadSessionKey,
-  type PreparedSessionBytes,
+  type PreparedTraceBundle,
 } from "@intenttrace/adapters";
 import {
   IntegrityConflictError,
@@ -28,7 +27,7 @@ import {
   RawTraceEventInputSchema,
   SemanticGraphSnapshotSchema,
   SemanticRevisionListSchema,
-  SessionImportOutcomeSchema,
+  SessionImportBatchOutcomeSchema,
   SessionUploadCandidateListSchema,
   SessionUploadCandidateRequestSchema,
   TraceListSchema,
@@ -40,6 +39,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
+import { parseSessionBundleFrame, SESSION_BUNDLE_MEDIA_TYPE } from "./session-bundle.js";
 import type { ApiServices } from "./services.js";
 
 const TraceParamsSchema = z.object({ traceId: UuidSchema }).strict();
@@ -73,12 +73,7 @@ const StreamQuerySchema = z
   })
   .strict();
 const DeleteTraceQuerySchema = z.object({ confirm: UuidSchema }).strict();
-const ImportUploadQuerySchema = z
-  .object({
-    source: z.enum(["auto", "jsonl", "otlp", "codex", "claude"]).default("auto"),
-    fileName: z.string().min(1).max(255),
-  })
-  .strict();
+const ImportUploadQuerySchema = z.object({}).strict();
 
 function problem(
   reply: FastifyReply,
@@ -152,6 +147,116 @@ function formatSse(event: {
     type: event.type,
     payload: event.payload,
   })}\n\n`;
+}
+
+function bundleSourceIdentity(parts: readonly { path: string; bytes: Uint8Array }[]): string {
+  return `bundle-${sessionBundleContentSha256(parts).slice(0, 32)}`;
+}
+
+function sessionCandidateId(source: TraceSourceKind, rootIdentity: string, paths: readonly string[]): string {
+  const hash = createHash("sha256")
+    .update("intenttrace-session-candidate-v2")
+    .update("\0")
+    .update(source)
+    .update("\0")
+    .update(rootIdentity);
+  for (const path of [...paths].sort()) hash.update("\0").update(path);
+  return hash.digest("hex").slice(0, 24);
+}
+
+interface ImportCandidate {
+  clientRef: string;
+  candidateId: string;
+  partRefs: string[];
+  source: TraceSourceKind;
+  prepared: PreparedTraceBundle;
+  partialHead: boolean;
+}
+
+async function discoverCandidates(
+  sourceHint: TraceSourceKind | "auto",
+  parts: readonly { clientRef: string; path: string; bytes: Uint8Array; modifiedAt: string; complete: boolean }[],
+): Promise<ImportCandidate[]> {
+  const candidates: ImportCandidate[] = [];
+  for (const part of [...parts].sort((left, right) => left.path.localeCompare(right.path))) {
+    const adapterParts = [{ path: part.path, bytes: part.bytes }];
+    const sourceIdentity = bundleSourceIdentity(adapterParts);
+    const source =
+      sourceHint === "auto"
+        ? await detectSourceKind({ parts: adapterParts, sourceIdentity })
+        : sourceHint;
+    if (!source) continue;
+    if (source === "opencode" && !part.complete) continue;
+    try {
+      const bundles = await prepareSessionParts(source, adapterParts, sourceIdentity, {
+        id: uploadSessionKey(source, sessionBundleContentSha256(adapterParts)),
+        byteLength: part.bytes.byteLength,
+        modifiedAt: part.modifiedAt,
+      });
+      for (const prepared of bundles) {
+        const partRefs = [part.clientRef];
+        candidates.push({
+          clientRef: part.clientRef,
+          candidateId: sessionCandidateId(source, prepared.events[0]!.event.traceId, [part.path]),
+          partRefs,
+          source,
+          prepared,
+          partialHead: !part.complete,
+        });
+      }
+    } catch {
+      continue;
+    }
+  }
+  return candidates.slice(0, 50);
+}
+
+async function persistPreparedBundle(
+  services: ApiServices,
+  prepared: PreparedTraceBundle,
+): Promise<{ inserted: number; duplicates: number; warnings: number; traceId: string }> {
+  const firstEvent = prepared.events[0]!.event;
+  await services.repository.ensureTrace(firstEvent);
+  const artifactIds = new Map<string, string>();
+  for (const artifact of prepared.artifacts) {
+    const metadata = await services.artifactStore.put({
+      traceId: firstEvent.traceId,
+      bytes: artifact.bytes,
+      mediaType: artifact.mediaType,
+    });
+    const registered = await services.repository.registerArtifact({
+      traceId: firstEvent.traceId,
+      sha256: metadata.sha256,
+      byteLength: metadata.byteLength,
+      mediaType: metadata.mediaType,
+      storageKey: metadata.sha256,
+    });
+    artifactIds.set(artifact.key, registered.id);
+  }
+  let inserted = 0;
+  let duplicates = 0;
+  let warnings = prepared.warnings.length;
+  const send = async (input: z.infer<typeof RawTraceEventInputSchema>) => {
+    const result = await services.repository.ingest(await persistPayload(services, input));
+    if (result.duplicate) duplicates += 1;
+    else inserted += 1;
+    warnings += result.warnings.length;
+  };
+  for (const preparedEvent of prepared.events) {
+    await send(
+      RawTraceEventInputSchema.parse({
+        ...preparedEvent.event,
+        artifactRefs: [
+          ...new Set([
+            ...preparedEvent.event.artifactRefs,
+            ...preparedEvent.artifactKeys.map((key) => artifactIds.get(key)!),
+          ]),
+        ],
+      }),
+    );
+  }
+  await send(prepared.completionMarker);
+  return { inserted, duplicates, warnings, traceId: firstEvent.traceId };
 }
 
 export interface TraceRouteOptions {
@@ -237,100 +342,70 @@ export async function registerTraceRoutes(
   app.post(
     "/api/v1/imports/candidates",
     {
+      bodyLimit: uploadMaxBytes,
       schema: {
         operationId: "inspectImportCandidates",
-        summary: "Inspect bounded session heads for source, preview, and import status",
-        body: SessionUploadCandidateRequestSchema,
+        summary: `Inspect session bundle metadata or ${SESSION_BUNDLE_MEDIA_TYPE} bytes`,
         response: { 200: SessionUploadCandidateListSchema },
       },
     },
     async (request, reply) => {
-      const body = SessionUploadCandidateRequestSchema.parse(request.body);
-      const candidates = await Promise.all(
-        body.candidates.map(async (input) => {
-          const base = {
-            clientRef: input.clientRef,
-            source: null as TraceSourceKind | null,
-            title: null as string | null,
-            projectHint: null as string | null,
-            firstPromptPreview: null as string | null,
-            lastPromptPreview: null as string | null,
-            partialHead: !input.complete,
-            traceId: null as string | null,
-            imported: false,
-            importedEventCount: null as string | null,
-            failureCode: null as string | null,
-            failureMessage: null as string | null,
-          };
-          let bytes = Buffer.from(input.headBase64, "base64");
-          if (!input.complete) {
-            // Drop the partial trailing record so the head parses as a whole file.
-            const cut = bytes.lastIndexOf(0x0a);
-            bytes = cut >= 0 ? bytes.subarray(0, cut + 1) : bytes;
+      let includePreviews = false;
+      let candidates: ImportCandidate[] = [];
+      if (Buffer.isBuffer(request.body)) {
+        try {
+          const frame = parseSessionBundleFrame(request.body);
+          if (frame.candidateIds.length !== 0) {
+            return problem(reply, request, 400, "invalid_session_bundle", "Candidate inspection requires candidateIds=[]");
           }
-          const sourceIdentity = safeIdentifier(basename(input.fileName), "upload");
-          const source = await detectSourceKind({
-            parts: [{ path: input.fileName, bytes }],
-            sourceIdentity,
-          });
-          if (!source) {
-            return {
-              ...base,
-              failureCode: "unknown_source_format",
-              failureMessage: "Unable to determine the session format",
-            };
-          }
-          const headSha256 = createHash("sha256").update(bytes).digest("hex");
-          try {
-            const prepared = await prepareSessionBytes(source, bytes, sourceIdentity, {
-              id: uploadSessionKey(source, headSha256),
-              byteLength: input.byteLength,
-              modifiedAt: input.modifiedAt,
-            });
-            const entry = redactCatalogEntry(prepared.descriptor, body.includePreviews);
-            return {
-              ...base,
-              source,
-              title: entry.title,
-              projectHint: entry.projectHint,
-              firstPromptPreview: entry.firstPromptPreview,
-              lastPromptPreview: entry.lastPromptPreview,
-              traceId: prepared.events[0]!.traceId,
-            };
-          } catch (error) {
-            const failure = classifySessionFailure(error);
-            return {
-              ...base,
-              source,
-              failureCode: failure.code,
-              failureMessage: failure.message,
-            };
-          }
-        }),
-      );
-      const traceIds = [
-        ...new Set(
-          candidates
-            .map((candidate) => candidate.traceId)
-            .filter((traceId): traceId is string => traceId !== null),
-        ),
-      ];
+          candidates = await discoverCandidates(
+            frame.source,
+            frame.parts.map((part) => ({ ...part, complete: true })),
+          );
+        } catch {
+          return problem(reply, request, 400, "invalid_session_bundle", "Invalid session bundle frame");
+        }
+      } else {
+        const body = SessionUploadCandidateRequestSchema.parse(request.body);
+        includePreviews = body.includePreviews;
+        const decodedParts = body.parts.map((part) => ({
+          clientRef: part.clientRef,
+          path: part.path,
+          bytes: part.headBase64 === undefined ? Buffer.alloc(0) : Buffer.from(part.headBase64, "base64"),
+          modifiedAt: part.modifiedAt,
+          complete: part.complete,
+        }));
+        candidates = await discoverCandidates("auto", decodedParts);
+      }
+      const traceIds = [...new Set(candidates.map((candidate) => candidate.prepared.events[0]!.event.traceId))];
       const known = new Map(
-        (await services.repository.listTracesByIds(traceIds)).map((trace) => [
-          trace.id,
-          trace.eventCount,
-        ]),
+        (await services.repository.listTracesByIds(traceIds)).map((trace) => [trace.id, trace.eventCount]),
       );
       let alreadyImportedCount = 0;
-      const resolved = candidates.map((candidate) => {
-        const eventCount = candidate.traceId === null ? undefined : known.get(candidate.traceId);
-        if (eventCount === undefined) return candidate;
-        alreadyImportedCount += 1;
-        return { ...candidate, imported: true, importedEventCount: eventCount };
-      });
       return reply.status(200).send({
-        protocolVersion: 1,
-        candidates: resolved,
+        protocolVersion: 2,
+        candidates: candidates.map((candidate) => {
+          const traceId = candidate.prepared.events[0]!.event.traceId;
+          const importedEventCount = known.get(traceId) ?? null;
+          if (importedEventCount !== null) alreadyImportedCount += 1;
+          const descriptor = redactCatalogEntry(candidate.prepared.descriptor, includePreviews);
+          return {
+            clientRef: candidate.clientRef,
+            candidateId: candidate.candidateId,
+            partRefs: candidate.partRefs,
+            source: candidate.source,
+            title: descriptor.title,
+            projectHint: descriptor.projectHint,
+            firstPromptPreview: descriptor.firstPromptPreview,
+            lastPromptPreview: descriptor.lastPromptPreview,
+            partialHead: candidate.partialHead,
+            traceId,
+            imported: importedEventCount !== null,
+            importedEventCount,
+            failureCode: null,
+            failureMessage: null,
+          };
+        }),
         alreadyImportedCount,
       });
     },
@@ -342,102 +417,58 @@ export async function registerTraceRoutes(
       bodyLimit: uploadMaxBytes,
       schema: {
         operationId: "importUploadedSession",
-        // jsonSchemaTransform emits nothing for a raw body, so the media type
-        // lives in the summary rather than an unrendered `consumes`.
-        summary: "Import one uploaded agent session file (application/octet-stream body)",
+        summary: `Import selected logical traces from ${SESSION_BUNDLE_MEDIA_TYPE}`,
         querystring: ImportUploadQuerySchema,
-        response: { 200: SessionImportOutcomeSchema },
+        response: { 200: SessionImportBatchOutcomeSchema },
       },
     },
     async (request, reply) => {
-      const bytes = request.body;
-      if (!Buffer.isBuffer(bytes)) {
-        return problem(
-          reply,
-          request,
-          415,
-          "unsupported_media_type",
-          "session upload requires application/octet-stream",
-        );
+      if (!Buffer.isBuffer(request.body)) {
+        return problem(reply, request, 415, "unsupported_media_type", `session upload requires ${SESSION_BUNDLE_MEDIA_TYPE}`);
       }
-      const query = ImportUploadQuerySchema.parse(request.query);
-      const sourceIdentity = safeIdentifier(basename(query.fileName), "upload");
-      const source =
-        query.source === "auto"
-          ? await detectSourceKind({
-              parts: [{ path: query.fileName, bytes }],
-              sourceIdentity,
-            })
-          : query.source;
-      if (!source) {
-        return problem(
-          reply,
-          request,
-          422,
-          "unknown_source_format",
-          "Unable to determine the session format",
-        );
-      }
-      const contentSha256 = createHash("sha256").update(bytes).digest("hex");
-      const sessionId = uploadSessionKey(source, contentSha256);
-
-      let prepared: PreparedSessionBytes;
+      let frame: ReturnType<typeof parseSessionBundleFrame>;
       try {
-        // The whole file is parsed before the first insert, so a malformed tail
-        // can never leave a partially imported trace.
-        prepared = await prepareSessionBytes(source, bytes, sourceIdentity, {
-          id: sessionId,
-          byteLength: bytes.byteLength,
-          modifiedAt: new Date().toISOString(),
+        frame = parseSessionBundleFrame(request.body);
+      } catch {
+        return problem(reply, request, 400, "invalid_session_bundle", "Invalid session bundle frame");
+      }
+      if (frame.candidateIds.length === 0) {
+        return problem(reply, request, 400, "invalid_session_bundle", "Import requires at least one candidate ID");
+      }
+      const candidates = await discoverCandidates(
+        frame.source,
+        frame.parts.map((part) => ({ ...part, complete: true })),
+      );
+      if (candidates.length === 0 && frame.source === "auto") {
+        return problem(reply, request, 422, "unknown_source_format", "Unable to determine the session format");
+      }
+      const byId = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+      if (frame.candidateIds.some((id) => !byId.has(id))) {
+        return problem(reply, request, 409, "stale_session", "Session changed after inspection; inspect again");
+      }
+      try {
+        const results = [];
+        for (const id of frame.candidateIds) {
+          const candidate = byId.get(id)!;
+          const result = await persistPreparedBundle(services, candidate.prepared);
+          results.push({
+            candidateId: id,
+            sessionId: candidate.prepared.descriptor.id,
+            ...result,
+          });
+        }
+        return reply.status(200).send({
+          protocolVersion: 2,
+          level: "result",
+          command: "upload",
+          results,
         });
       } catch (error) {
-        const failure = classifySessionFailure(error);
-        if (failure.code === "file_too_large") {
-          return problem(reply, request, 413, "payload_too_large", failure.message);
-        }
-        if (failure.code === "unsupported_version") {
-          return problem(reply, request, 422, "unsupported_source_version", failure.message);
-        }
-        if (failure.code === "no_visible_events") {
-          return problem(reply, request, 422, "no_visible_events", failure.message);
-        }
-        return problem(reply, request, 422, "preflight_failed", failure.message);
-      }
-
-      let inserted = 0;
-      let duplicates = 0;
-      let ingestWarnings = 0;
-      const ingest = async (event: z.infer<typeof RawTraceEventInputSchema>): Promise<void> => {
-        const result = await services.repository.ingest(await persistPayload(services, event));
-        if (result.duplicate) duplicates += 1;
-        else inserted += 1;
-        ingestWarnings += result.warnings.length;
-      };
-      try {
-        for (const event of prepared.events) await ingest(event);
-        await ingest(buildCompletionMarker(prepared.events.at(-1)!, contentSha256));
-      } catch (error) {
         if (error instanceof IntegrityConflictError) {
-          return problem(
-            reply,
-            request,
-            409,
-            error.code,
-            `${error.message}; existing=${error.existingEventId}; inserted=${inserted}; duplicates=${duplicates}`,
-          );
+          return problem(reply, request, 409, error.code, `${error.message}; existing=${error.existingEventId}`);
         }
         throw error;
       }
-      return reply.status(200).send({
-        protocolVersion: 1,
-        level: "result",
-        command: "upload",
-        sessionId,
-        traceId: prepared.events[0]!.traceId,
-        inserted,
-        duplicates,
-        warnings: prepared.warnings.length + ingestWarnings,
-      });
     },
   );
 

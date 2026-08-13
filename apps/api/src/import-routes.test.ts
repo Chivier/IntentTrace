@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -95,6 +96,37 @@ async function claudeFixture(): Promise<Buffer> {
   return readFile(resolve(fixtureRoot, "claude/valid.jsonl"));
 }
 
+function frame(parts: Array<{ clientRef: string; path: string; bytes: Buffer }>, source: string, candidateIds: string[]): Buffer {
+  let offset = 0;
+  const manifest = {
+    protocolVersion: 1,
+    source,
+    candidateIds,
+    parts: parts.map((part) => {
+      const framed = {
+        clientRef: part.clientRef,
+        path: part.path,
+        offset,
+        byteLength: part.bytes.byteLength,
+        modifiedAt: "2026-08-01T00:00:00.000Z",
+      };
+      offset += part.bytes.byteLength;
+      return framed;
+    }),
+  };
+  const manifestBytes = Buffer.from(JSON.stringify(manifest));
+  const header = Buffer.alloc(8);
+  header.write("ITB1", 0, "ascii");
+  header.writeUInt32BE(manifestBytes.byteLength, 4);
+  return Buffer.concat([header, manifestBytes, ...parts.map((part) => part.bytes)]);
+}
+
+function candidateId(source: string, rootIdentity: string, paths: readonly string[]): string {
+  const hash = createHash("sha256").update("intenttrace-session-candidate-v2").update("\0").update(source).update("\0").update(rootIdentity);
+  for (const path of [...paths].sort()) hash.update("\0").update(path);
+  return hash.digest("hex").slice(0, 24);
+}
+
 async function inspect(
   app: ReturnType<typeof buildApp>,
   bytes: Buffer,
@@ -105,12 +137,12 @@ async function inspect(
     method: "POST",
     url: "/api/v1/imports/candidates",
     payload: {
-      protocolVersion: 1,
+      protocolVersion: 2,
       includePreviews,
-      candidates: [
+      parts: [
         {
           clientRef: "c1",
-          fileName,
+          path: fileName,
           byteLength: bytes.byteLength,
           modifiedAt: "2026-08-01T00:00:00.000Z",
           headBase64: bytes.toString("base64"),
@@ -129,9 +161,10 @@ describe("browser session import routes", () => {
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.alreadyImportedCount).toBe(0);
-    expect(body.candidates).toHaveLength(1);
     expect(body.candidates[0]).toMatchObject({
       clientRef: "c1",
+      candidateId: expect.stringMatching(/^[a-f0-9]{24}$/u),
+      partRefs: ["c1"],
       source: "codex",
       title: "Codex session",
       firstPromptPreview: null,
@@ -163,19 +196,22 @@ describe("browser session import routes", () => {
     const app = buildApp({ services: services(order) });
     apps.push(app);
     const bytes = await codexFixture();
+    const inspection = await inspect(app, bytes, false);
+    const selectedId = inspection.json().candidates[0].candidateId as string;
     const response = await app.inject({
       method: "POST",
-      url: "/api/v1/imports/sessions?source=auto&fileName=valid.jsonl",
-      headers: { "content-type": "application/octet-stream" },
-      payload: bytes,
+      url: "/api/v1/imports/sessions",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "auto", [selectedId]),
     });
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body.command).toBe("upload");
-    expect(body.sessionId).toMatch(/^[a-f0-9]{24}$/u);
-    // Three fixture events plus the content-hash `trace_complete` marker.
-    expect(body.inserted).toBe(4);
-    expect(body.duplicates).toBe(0);
+    expect(body.protocolVersion).toBe(2);
+    expect(body.results).toHaveLength(1);
+    expect(body.results[0].sessionId).toMatch(/^[a-f0-9]{24}$/u);
+    expect(body.results[0].inserted).toBe(4);
+    expect(body.results[0].duplicates).toBe(0);
     expect(order.filter((entry) => entry === "ingest")).toHaveLength(4);
   });
 
@@ -188,15 +224,17 @@ describe("browser session import routes", () => {
     });
     apps.push(app);
 
+    const inspected = await inspect(app, bytes, false);
+    const selectedId = inspected.json().candidates[0].candidateId as string;
     const response = await app.inject({
       method: "POST",
-      url: "/api/v1/imports/sessions?source=codex&fileName=valid.jsonl",
-      headers: { "content-type": "application/octet-stream" },
-      payload: bytes,
+      url: "/api/v1/imports/sessions",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "codex", [selectedId]),
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().warnings).toBe(4);
+    expect(response.json().results[0].warnings).toBe(4);
   });
 
   it("reports every event as a duplicate when the same bytes were already imported", async () => {
@@ -204,10 +242,13 @@ describe("browser session import routes", () => {
     const second = buildApp({ services: services([], true) });
     apps.push(first, second);
     const bytes = await codexFixture();
-    const url = "/api/v1/imports/sessions?source=auto&fileName=valid.jsonl";
-    const headers = { "content-type": "application/octet-stream" };
-    const original = (await first.inject({ method: "POST", url, headers, payload: bytes })).json();
-    const repeat = (await second.inject({ method: "POST", url, headers, payload: bytes })).json();
+    const inspected = await inspect(first, bytes, false);
+    const selectedId = inspected.json().candidates[0].candidateId as string;
+    const url = "/api/v1/imports/sessions";
+    const headers = { "content-type": "application/vnd.intenttrace.session-bundle" };
+    const payload = frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "auto", [selectedId]);
+    const original = (await first.inject({ method: "POST", url, headers, payload })).json().results[0];
+    const repeat = (await second.inject({ method: "POST", url, headers, payload })).json().results[0];
     expect(repeat.inserted).toBe(0);
     expect(repeat.duplicates).toBe(4);
     expect(repeat.traceId).toBe(original.traceId);
@@ -220,9 +261,9 @@ describe("browser session import routes", () => {
     apps.push(app);
     const response = await app.inject({
       method: "POST",
-      url: "/api/v1/imports/sessions?source=auto&fileName=broken.jsonl",
-      headers: { "content-type": "application/octet-stream" },
-      payload: Buffer.from("{ not json"),
+      url: "/api/v1/imports/sessions",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: frame([{ clientRef: "c1", path: "broken.jsonl", bytes: Buffer.from("{ not json") }], "auto", ["a".repeat(24)]),
     });
     expect(response.statusCode).toBe(422);
     expect(response.json().code).toBe("unknown_source_format");
@@ -234,11 +275,58 @@ describe("browser session import routes", () => {
     apps.push(app);
     const response = await app.inject({
       method: "POST",
-      url: "/api/v1/imports/sessions?source=auto&fileName=big.jsonl",
-      headers: { "content-type": "application/octet-stream" },
+      url: "/api/v1/imports/sessions",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
       payload: Buffer.alloc(70_000, 0x61),
     });
     expect(response.statusCode).toBe(413);
     expect(response.json().code).toBe("payload_too_large");
+  });
+
+  it("rejects malformed frames and stale candidate IDs before inserting", async () => {
+    const order: string[] = [];
+    const app = buildApp({ services: services(order) });
+    apps.push(app);
+    const malformed = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: Buffer.from("ITB1\0\0\0\x02{}"),
+    });
+    expect(malformed.statusCode).toBe(400);
+    expect(malformed.json().code).toBe("invalid_session_bundle");
+
+    const bytes = await codexFixture();
+    const stale = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/sessions",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "codex", ["f".repeat(24)]),
+    });
+    expect(stale.statusCode).toBe(409);
+    expect(stale.json().code).toBe("stale_session");
+    expect(order.filter((entry) => entry === "ingest")).toEqual([]);
+  });
+
+  it("rejects gaps, overlaps, and non-covering payload ranges", async () => {
+    const app = buildApp({ services: services([]) });
+    apps.push(app);
+    const bytes = await codexFixture();
+    const valid = frame([{ clientRef: "c1", path: "valid.jsonl", bytes }], "codex", []);
+    const manifestLength = valid.readUInt32BE(4);
+    const manifest = JSON.parse(valid.subarray(8, 8 + manifestLength).toString()) as { parts: Array<{ offset: number }> };
+    manifest.parts[0]!.offset = 1;
+    const changedManifest = Buffer.from(JSON.stringify(manifest));
+    const header = Buffer.alloc(8);
+    header.write("ITB1", 0, "ascii");
+    header.writeUInt32BE(changedManifest.byteLength, 4);
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/candidates",
+      headers: { "content-type": "application/vnd.intenttrace.session-bundle" },
+      payload: Buffer.concat([header, changedManifest, bytes]),
+    });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().code).toBe("invalid_session_bundle");
   });
 });

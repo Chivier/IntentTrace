@@ -61,6 +61,13 @@ export function buildApp(options: BuildAppOptions = {}) {
       done(null, body);
     },
   );
+  app.addContentTypeParser(
+    "application/vnd.intenttrace.session-bundle",
+    { parseAs: "buffer", bodyLimit: uploadMaxBytes },
+    (_request, body, done) => {
+      done(null, body);
+    },
+  );
   app.addHook("preParsing", async (request, _reply, payload) => {
     if (request.headers["content-encoding"] !== "gzip") return payload;
     request.headers["content-encoding"] = "identity";
