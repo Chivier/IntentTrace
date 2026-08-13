@@ -64,6 +64,7 @@ function services(order: string[]): ApiServices {
           },
           duplicate: false,
           traceStale: false,
+          warnings: [],
         };
       },
       listTraces: async () => ({ traces: [], nextCursor: null }),

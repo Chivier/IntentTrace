@@ -24,6 +24,17 @@ export const TraceSourceKindSchema = z.enum([
 ]);
 export type TraceSourceKind = z.infer<typeof TraceSourceKindSchema>;
 
+export const ImportSourceKindSchema = z.enum([
+  "jsonl",
+  "otlp",
+  "codex",
+  "claude",
+  "opencode",
+  "omp",
+  "grok",
+]);
+export type ImportSourceKind = z.infer<typeof ImportSourceKindSchema>;
+
 export const TopologyFidelitySchema = z.enum([
   "stated",
   "inferred",
@@ -63,7 +74,7 @@ export const SessionCatalogIdSchema = z.string().regex(/^[a-f0-9]{24}$/u);
 export const SessionCatalogEntrySchema = z
   .object({
     id: SessionCatalogIdSchema,
-    source: TraceSourceKindSchema,
+    source: ImportSourceKindSchema,
     title: z.string().min(1).max(240),
     projectHint: z.string().min(1).max(120).nullable(),
     firstPromptPreview: z.string().min(1).max(160).nullable(),
@@ -98,7 +109,7 @@ export const SessionCatalogSchema = z
   .object({
     catalogVersion: z.literal(1),
     command: z.enum(["discover", "import"]),
-    source: TraceSourceKindSchema,
+    source: ImportSourceKindSchema,
     dryRun: z.literal(true).optional(),
     matchedFiles: z.number().int().nonnegative(),
     selectedFiles: z.number().int().nonnegative(),
@@ -131,7 +142,7 @@ export const SessionImportSummarySchema = z
     protocolVersion: z.literal(1),
     level: z.literal("summary"),
     command: z.literal("import"),
-    source: TraceSourceKindSchema,
+    source: ImportSourceKindSchema,
     files: z.number().int().nonnegative(),
     imported: z.number().int().nonnegative(),
     failed: z.number().int().nonnegative(),
@@ -171,7 +182,7 @@ export type SessionUploadCandidateRequest = z.infer<typeof SessionUploadCandidat
 export const SessionUploadCandidateSchema = z
   .object({
     clientRef: z.string().min(1).max(64),
-    source: TraceSourceKindSchema.nullable(),
+    source: ImportSourceKindSchema.nullable(),
     title: z.string().min(1).max(240).nullable(),
     projectHint: z.string().min(1).max(120).nullable(),
     firstPromptPreview: z.string().min(1).max(160).nullable(),

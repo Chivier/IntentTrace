@@ -347,6 +347,7 @@ export class IntentTraceRepository {
         event: mapRawEvent(existing[0]),
         duplicate: true,
         traceStale: trace.status === "stale",
+        warnings: [],
       };
     }
 
@@ -449,8 +450,7 @@ export class IntentTraceRepository {
       join projects p on p.id = t.project_id
       where e.id = ${eventId}
     `;
-    if (!inserted[0]) throw new Error("raw event insert returned no row");
-    return { event: mapRawEvent(inserted[0]), duplicate: false, traceStale: late };
+    return { event: mapRawEvent(inserted[0]), duplicate: false, traceStale: late, warnings: [] };
   }
 
   async listTraces(limit = 50): Promise<{ traces: TraceSummary[]; nextCursor: null }> {

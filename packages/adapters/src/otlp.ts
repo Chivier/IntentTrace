@@ -1,5 +1,6 @@
 import type { RawEventKind } from "@intenttrace/schema";
 
+import { lookupTopologyCapability } from "./topology.js";
 import { decodeAdapterBytes, normalizeEvent, objectRecord } from "./common.js";
 import {
   MalformedAdapterInputError,
@@ -43,16 +44,7 @@ export class OtlpHttpJsonAdapter implements TraceAdapter {
     adapterVersion: "1.0.0",
     supportedFormatVersions: ["1.11-json"],
     status: "implemented",
-    topology: {
-      spawn: "passthrough",
-      join: "passthrough",
-      peerMessages: "unsupported",
-      input: "single-file",
-      laneKey: "service.name",
-      limits: [
-        "Spawn and join require explicit canonical topology attributes; peer messages are unsupported.",
-      ],
-    },
+    topology: lookupTopologyCapability("otlp", "1.0.0"),
   };
 
   async sniff(input: AdapterInput): Promise<boolean> {

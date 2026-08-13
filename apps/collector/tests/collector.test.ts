@@ -34,6 +34,7 @@ function mockFetch() {
         },
         duplicate: false,
         traceStale: false,
+        warnings: [],
       }),
       { status: 201, headers: { "content-type": "application/json" } },
     );

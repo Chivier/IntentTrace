@@ -1,3 +1,4 @@
+import { lookupTopologyCapability } from "./topology.js";
 import type { RawEventKind } from "@intenttrace/schema";
 
 import {
@@ -172,18 +173,7 @@ export class ClaudeSessionAdapter implements TraceAdapter {
     adapterVersion: "2.0.0",
     supportedFormatVersions: ["claude-jsonl-v1"],
     status: "implemented",
-    topology: {
-      spawn: "stated",
-      join: "stated",
-      peerMessages: "inferred",
-      input: "bundle",
-      laneKey: "agentId",
-      limits: [
-        "Workflow sidecars without toolUseId cannot be linked to a parent turn.",
-        "Peer-message sender identity is inferred by pairing sender and recipient records.",
-        "Async task notifications may repeat and require task-id/tool-use-id deduplication.",
-      ],
-    },
+    topology: lookupTopologyCapability("claude", "2.0.0"),
   };
 
   async sniff(input: AdapterInput): Promise<boolean> {

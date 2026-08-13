@@ -38,10 +38,10 @@ function services(order: string[], duplicate = false): ApiServices {
             ...event,
             id: `00000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
             ingestSeq: String(sequence),
-            ingestedAt: "2026-08-03T00:00:01.000Z",
           },
-          duplicate,
+          duplicate: false,
           traceStale: false,
+          warnings: [],
         };
       },
       listTraces: async () => ({ traces: [], nextCursor: null }),

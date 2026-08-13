@@ -1,3 +1,4 @@
+import { lookupTopologyCapability } from "./topology.js";
 import type { RawEventKind } from "@intenttrace/schema";
 
 import {
@@ -184,18 +185,7 @@ export class CodexSessionAdapter implements TraceAdapter {
     adapterVersion: "2.0.0",
     supportedFormatVersions: ["codex-jsonl-v1"],
     status: "implemented",
-    topology: {
-      spawn: "stated",
-      join: "stated",
-      peerMessages: "stated",
-      input: "bundle",
-      laneKey: "session_meta.payload.id",
-      limits: [
-        "Full-history forks duplicate ancestor records and require payload-hash deduplication.",
-        "Paginated history may omit persisted sub_agent_activity, so affected spawn facts are inferred or absent.",
-        "Collaboration message bodies are encrypted and unavailable.",
-      ],
-    },
+    topology: lookupTopologyCapability("codex", "2.0.0"),
   };
 
   async sniff(input: AdapterInput): Promise<boolean> {
