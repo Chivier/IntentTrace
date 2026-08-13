@@ -20,7 +20,9 @@
         "otlp",
         "codex",
         "claude",
-        "custom"
+        "opencode",
+        "omp",
+        "grok"
       ]
     },
     "dryRun": {
@@ -53,7 +55,9 @@
               "otlp",
               "codex",
               "claude",
-              "custom"
+              "opencode",
+              "omp",
+              "grok"
             ]
           },
           "title": {

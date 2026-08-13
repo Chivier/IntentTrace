@@ -115,6 +115,10 @@
                       "otlp",
                       "codex",
                       "claude",
+                      "opencode",
+                      "omp",
+                      "grok",
+                      "pi",
                       "custom"
                     ]
                   },
@@ -425,13 +429,117 @@
           "type": "null"
         }
       ]
+    },
+    "topology": {
+      "type": "object",
+      "properties": {
+        "declared": {
+          "type": "object",
+          "properties": {
+            "spawn": {
+              "type": "string",
+              "enum": [
+                "stated",
+                "inferred",
+                "passthrough",
+                "unsupported"
+              ]
+            },
+            "join": {
+              "type": "string",
+              "enum": [
+                "stated",
+                "inferred",
+                "passthrough",
+                "unsupported"
+              ]
+            },
+            "peerMessages": {
+              "type": "string",
+              "enum": [
+                "stated",
+                "inferred",
+                "passthrough",
+                "unsupported"
+              ]
+            },
+            "input": {
+              "type": "string",
+              "enum": [
+                "single-file",
+                "bundle"
+              ]
+            },
+            "laneKey": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "limits": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 480
+              }
+            }
+          },
+          "required": [
+            "spawn",
+            "join",
+            "peerMessages",
+            "input",
+            "laneKey",
+            "limits"
+          ],
+          "additionalProperties": false
+        },
+        "observed": {
+          "type": "object",
+          "properties": {
+            "lanes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "lanesWithParent": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "spawnEdges": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "peerEdges": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "lanes",
+            "lanesWithParent",
+            "spawnEdges",
+            "peerEdges"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "declared",
+        "observed"
+      ],
+      "additionalProperties": false
     }
   },
   "required": [
     "trace",
     "raw",
     "agents",
-    "revision"
+    "revision",
+    "topology"
   ],
   "additionalProperties": false
 }

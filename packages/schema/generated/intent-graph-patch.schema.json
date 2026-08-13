@@ -47,14 +47,109 @@
                       "result"
                     ]
                   },
-                  "status": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 80
+                  },
+                  "claims": {
+                    "minItems": 1,
+                    "maxItems": 3,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "intent",
+                            "action",
+                            "outcome"
+                          ]
+                        },
+                        "text": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 480
+                        },
+                        "provenance": {
+                          "type": "string",
+                          "enum": [
+                            "stated",
+                            "inferred",
+                            "mixed"
+                          ]
+                        },
+                        "suggestedConfidence": {
+                          "type": "string",
+                          "enum": [
+                            "high",
+                            "medium",
+                            "low"
+                          ]
+                        },
+                        "evidenceEventIds": {
+                          "minItems": 1,
+                          "maxItems": 64,
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          }
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "text",
+                        "provenance",
+                        "suggestedConfidence",
+                        "evidenceEventIds"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "kind",
+                  "title",
+                  "claims"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "op",
+              "ref",
+              "node"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "op": {
+                "type": "string",
+                "const": "update_node"
+              },
+              "ref": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "set": {
+                "type": "object",
+                "properties": {
+                  "kind": {
                     "type": "string",
                     "enum": [
-                      "proposed",
-                      "active",
-                      "blocked",
-                      "completed",
-                      "abandoned"
+                      "request",
+                      "goal",
+                      "work",
+                      "decision",
+                      "issue",
+                      "handoff",
+                      "result"
                     ]
                   },
                   "title": {
@@ -118,245 +213,9 @@
                       ],
                       "additionalProperties": false
                     }
-                  },
-                  "primaryParentRef": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "format": "uuid",
-                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                      },
-                      {
-                        "type": "string",
-                        "pattern": "^tmp:[1-9][0-9]*$"
-                      }
-                    ]
-                  },
-                  "primaryAgentId": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
-                  },
-                  "participantAgentIds": {
-                    "maxItems": 32,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
-                    }
-                  },
-                  "artifactIds": {
-                    "maxItems": 64,
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "format": "uuid",
-                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                    }
-                  }
-                },
-                "required": [
-                  "kind",
-                  "status",
-                  "title",
-                  "claims",
-                  "participantAgentIds",
-                  "artifactIds"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "op",
-              "ref",
-              "node"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "op": {
-                "type": "string",
-                "const": "update_node"
-              },
-              "ref": {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              "set": {
-                "type": "object",
-                "properties": {
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "proposed",
-                      "active",
-                      "blocked",
-                      "completed",
-                      "abandoned",
-                      "superseded"
-                    ]
-                  },
-                  "title": {
-                    "type": "string",
-                    "minLength": 3,
-                    "maxLength": 80
-                  },
-                  "claims": {
-                    "type": "object",
-                    "properties": {
-                      "operation": {
-                        "type": "string",
-                        "const": "replace"
-                      },
-                      "values": {
-                        "minItems": 1,
-                        "maxItems": 3,
-                        "type": "array",
-                        "items": {
-                          "type": "object",
-                          "properties": {
-                            "kind": {
-                              "type": "string",
-                              "enum": [
-                                "intent",
-                                "action",
-                                "outcome"
-                              ]
-                            },
-                            "text": {
-                              "type": "string",
-                              "minLength": 1,
-                              "maxLength": 480
-                            },
-                            "provenance": {
-                              "type": "string",
-                              "enum": [
-                                "stated",
-                                "inferred",
-                                "mixed"
-                              ]
-                            },
-                            "suggestedConfidence": {
-                              "type": "string",
-                              "enum": [
-                                "high",
-                                "medium",
-                                "low"
-                              ]
-                            },
-                            "evidenceEventIds": {
-                              "minItems": 1,
-                              "maxItems": 64,
-                              "type": "array",
-                              "items": {
-                                "type": "string",
-                                "format": "uuid",
-                                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                              }
-                            }
-                          },
-                          "required": [
-                            "kind",
-                            "text",
-                            "provenance",
-                            "suggestedConfidence",
-                            "evidenceEventIds"
-                          ],
-                          "additionalProperties": false
-                        }
-                      }
-                    },
-                    "required": [
-                      "operation",
-                      "values"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "primaryParentRef": {
-                    "anyOf": [
-                      {
-                        "type": "string",
-                        "format": "uuid",
-                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                      },
-                      {
-                        "type": "string",
-                        "pattern": "^tmp:[1-9][0-9]*$"
-                      }
-                    ]
-                  },
-                  "primaryAgentId": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
-                  },
-                  "participantAgentIds": {
-                    "type": "object",
-                    "properties": {
-                      "operation": {
-                        "type": "string",
-                        "enum": [
-                          "replace",
-                          "append_unique",
-                          "remove"
-                        ]
-                      },
-                      "values": {
-                        "maxItems": 32,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "pattern": "^[A-Za-z0-9_.:-]{1,128}$"
-                        }
-                      }
-                    },
-                    "required": [
-                      "operation",
-                      "values"
-                    ],
-                    "additionalProperties": false
-                  },
-                  "artifactIds": {
-                    "type": "object",
-                    "properties": {
-                      "operation": {
-                        "type": "string",
-                        "enum": [
-                          "replace",
-                          "append_unique",
-                          "remove"
-                        ]
-                      },
-                      "values": {
-                        "maxItems": 64,
-                        "type": "array",
-                        "items": {
-                          "type": "string",
-                          "format": "uuid",
-                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                        }
-                      }
-                    },
-                    "required": [
-                      "operation",
-                      "values"
-                    ],
-                    "additionalProperties": false
                   }
                 },
                 "additionalProperties": false
-              },
-              "clear": {
-                "maxItems": 2,
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "primaryParentRef",
-                    "primaryAgentId"
-                  ]
-                }
               },
               "evidenceEventIds": {
                 "minItems": 1,
@@ -373,166 +232,6 @@
               "op",
               "ref",
               "set",
-              "clear",
-              "evidenceEventIds"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "op": {
-                "type": "string",
-                "const": "add_edge"
-              },
-              "ref": {
-                "type": "string",
-                "pattern": "^tmp-edge:[1-9][0-9]*$"
-              },
-              "sourceRef": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^tmp:[1-9][0-9]*$"
-                  }
-                ]
-              },
-              "targetRef": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^tmp:[1-9][0-9]*$"
-                  }
-                ]
-              },
-              "kind": {
-                "type": "string",
-                "enum": [
-                  "decomposes_to",
-                  "attempts",
-                  "depends_on",
-                  "supports",
-                  "blocks",
-                  "resolved_by",
-                  "hands_off_to",
-                  "revises",
-                  "produces",
-                  "supersedes"
-                ]
-              },
-              "evidenceEventIds": {
-                "minItems": 1,
-                "maxItems": 64,
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                }
-              }
-            },
-            "required": [
-              "op",
-              "ref",
-              "sourceRef",
-              "targetRef",
-              "kind",
-              "evidenceEventIds"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "op": {
-                "type": "string",
-                "const": "retire_edge"
-              },
-              "edgeId": {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              "reason": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240
-              },
-              "evidenceEventIds": {
-                "minItems": 1,
-                "maxItems": 64,
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                }
-              }
-            },
-            "required": [
-              "op",
-              "edgeId",
-              "reason",
-              "evidenceEventIds"
-            ],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "op": {
-                "type": "string",
-                "const": "supersede_node"
-              },
-              "fromNodeId": {
-                "type": "string",
-                "format": "uuid",
-                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-              },
-              "toRef": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                  },
-                  {
-                    "type": "string",
-                    "pattern": "^tmp:[1-9][0-9]*$"
-                  }
-                ]
-              },
-              "reason": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 240
-              },
-              "evidenceEventIds": {
-                "minItems": 1,
-                "maxItems": 64,
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                }
-              }
-            },
-            "required": [
-              "op",
-              "fromNodeId",
-              "toRef",
-              "reason",
               "evidenceEventIds"
             ],
             "additionalProperties": false

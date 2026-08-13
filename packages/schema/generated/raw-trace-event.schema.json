@@ -36,6 +36,10 @@
             "otlp",
             "codex",
             "claude",
+            "opencode",
+            "omp",
+            "grok",
+            "pi",
             "custom"
           ]
         },

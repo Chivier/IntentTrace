@@ -173,6 +173,10 @@ paths:
                         - otlp
                         - codex
                         - claude
+                        - opencode
+                        - omp
+                        - grok
+                        - pi
                         - custom
                     formatVersion:
                       type: string
@@ -279,6 +283,9 @@ paths:
                     type: string
                     maxLength: 128
                   additionalProperties: {}
+                causationSourceEventId:
+                  type: string
+                  pattern: ^[A-Za-z0-9_.:-]{1,128}$
                 workspaceName:
                   type: string
                   minLength: 1
@@ -346,6 +353,10 @@ paths:
                               - otlp
                               - codex
                               - claude
+                              - opencode
+                              - omp
+                              - grok
+                              - pi
                               - custom
                           formatVersion:
                             type: string
@@ -479,10 +490,26 @@ paths:
                     type: boolean
                   traceStale:
                     type: boolean
+                  warnings:
+                    maxItems: 64
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          pattern: ^[A-Za-z0-9_.:-]{1,128}$
+                        sourceEventId:
+                          type: string
+                          pattern: ^[A-Za-z0-9_.:-]{1,128}$
+                      required:
+                        - code
+                      additionalProperties: false
                 required:
                   - event
                   - duplicate
                   - traceStale
+                  - warnings
                 additionalProperties: false
         "201":
           description: Default Response
@@ -524,6 +551,10 @@ paths:
                               - otlp
                               - codex
                               - claude
+                              - opencode
+                              - omp
+                              - grok
+                              - pi
                               - custom
                           formatVersion:
                             type: string
@@ -657,10 +688,26 @@ paths:
                     type: boolean
                   traceStale:
                     type: boolean
+                  warnings:
+                    maxItems: 64
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          pattern: ^[A-Za-z0-9_.:-]{1,128}$
+                        sourceEventId:
+                          type: string
+                          pattern: ^[A-Za-z0-9_.:-]{1,128}$
+                      required:
+                        - code
+                      additionalProperties: false
                 required:
                   - event
                   - duplicate
                   - traceStale
+                  - warnings
                 additionalProperties: false
   /v1/traces:
     post:
@@ -786,7 +833,9 @@ paths:
                                 - otlp
                                 - codex
                                 - claude
-                                - custom
+                                - opencode
+                                - omp
+                                - grok
                             - type: "null"
                         title:
                           anyOf:
@@ -1329,6 +1378,20 @@ paths:
                             - supersedes
                         retired:
                           type: boolean
+                        evidenceEventIds:
+                          minItems: 1
+                          maxItems: 64
+                          type: array
+                          items:
+                            type: string
+                            format: uuid
+                            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                        provenance:
+                          type: string
+                          enum:
+                            - stated
+                            - inferred
+                            - mixed
                       required:
                         - id
                         - logicalEdgeId
@@ -1337,6 +1400,8 @@ paths:
                         - targetNodeId
                         - kind
                         - retired
+                        - evidenceEventIds
+                        - provenance
                       additionalProperties: false
                 required:
                   - revision
@@ -1505,6 +1570,10 @@ paths:
                                 - otlp
                                 - codex
                                 - claude
+                                - opencode
+                                - omp
+                                - grok
+                                - pi
                                 - custom
                             formatVersion:
                               type: string
@@ -1770,6 +1839,10 @@ paths:
                                     - otlp
                                     - codex
                                     - claude
+                                    - opencode
+                                    - omp
+                                    - grok
+                                    - pi
                                     - custom
                                 formatVersion:
                                   type: string
@@ -1998,11 +2071,91 @@ paths:
                           - stale
                         additionalProperties: false
                       - type: "null"
+                  topology:
+                    type: object
+                    properties:
+                      declared:
+                        type: object
+                        properties:
+                          spawn:
+                            type: string
+                            enum:
+                              - stated
+                              - inferred
+                              - passthrough
+                              - unsupported
+                          join:
+                            type: string
+                            enum:
+                              - stated
+                              - inferred
+                              - passthrough
+                              - unsupported
+                          peerMessages:
+                            type: string
+                            enum:
+                              - stated
+                              - inferred
+                              - passthrough
+                              - unsupported
+                          input:
+                            type: string
+                            enum:
+                              - single-file
+                              - bundle
+                          laneKey:
+                            type: string
+                            minLength: 1
+                            maxLength: 160
+                          limits:
+                            type: array
+                            items:
+                              type: string
+                              minLength: 1
+                              maxLength: 480
+                        required:
+                          - spawn
+                          - join
+                          - peerMessages
+                          - input
+                          - laneKey
+                          - limits
+                        additionalProperties: false
+                      observed:
+                        type: object
+                        properties:
+                          lanes:
+                            type: integer
+                            minimum: 0
+                            maximum: 9007199254740991
+                          lanesWithParent:
+                            type: integer
+                            minimum: 0
+                            maximum: 9007199254740991
+                          spawnEdges:
+                            type: integer
+                            minimum: 0
+                            maximum: 9007199254740991
+                          peerEdges:
+                            type: integer
+                            minimum: 0
+                            maximum: 9007199254740991
+                        required:
+                          - lanes
+                          - lanesWithParent
+                          - spawnEdges
+                          - peerEdges
+                        additionalProperties: false
+                    required:
+                      - declared
+                      - observed
+                    additionalProperties: false
                 required:
                   - trace
                   - raw
                   - agents
                   - revision
+                  - topology
                 additionalProperties: false
   /api/v1/traces/{traceId}/graph:
     get:
@@ -2274,6 +2427,20 @@ paths:
                             - supersedes
                         retired:
                           type: boolean
+                        evidenceEventIds:
+                          minItems: 1
+                          maxItems: 64
+                          type: array
+                          items:
+                            type: string
+                            format: uuid
+                            pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+                        provenance:
+                          type: string
+                          enum:
+                            - stated
+                            - inferred
+                            - mixed
                       required:
                         - id
                         - logicalEdgeId
@@ -2282,6 +2449,8 @@ paths:
                         - targetNodeId
                         - kind
                         - retired
+                        - evidenceEventIds
+                        - provenance
                       additionalProperties: false
                 required:
                   - revision
