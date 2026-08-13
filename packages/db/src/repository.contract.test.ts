@@ -102,6 +102,17 @@ describe.skipIf(!databaseUrl)("repository persistence contract", () => {
     };
   }
 
+  it("enumerates every trace ID without the UI list cap", async () => {
+    const ids = Array.from({ length: 201 }, () => scope());
+    try {
+      for (const item of ids) await repository.ensureTrace(event(item, "evt-seed"));
+      const all = new Set(await repository.listAllTraceIds());
+      expect(ids.every((item) => all.has(item.traceId))).toBe(true);
+    } finally {
+      for (const item of ids) await discard(item.traceId);
+    }
+  });
+
   /** Cleanup must never mask the failure that stopped a case mid-way. */
   async function discard(traceId: string): Promise<void> {
     try {

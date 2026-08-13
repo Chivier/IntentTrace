@@ -19,7 +19,7 @@ const sql = postgres(config.DATABASE_URL, { max: 1 });
 const repository = new IntentTraceRepository(sql, { lookupTopologyCapability });
 try {
   const traceIds = all
-    ? (await repository.listTraces(200)).traces.map((trace) => trace.id)
+    ? await repository.listAllTraceIds()
     : [UuidSchema.parse(args[traceIndex + 1])];
   let rebuilt = 0;
   let unchanged = 0;

@@ -624,6 +624,14 @@ export class IntentTraceRepository {
     return rows.map(mapTrace);
   }
 
+  /** Maintenance-only exhaustive trace enumeration; intentionally has no UI list cap. */
+  async listAllTraceIds(): Promise<string[]> {
+    const rows = await this.sql<Array<{ id: string }>>`
+      select id from traces order by created_at, id
+    `;
+    return rows.map((row) => row.id);
+  }
+
   async getTrace(traceId: string): Promise<TraceSummary> {
     const rows = await this.sql<Array<TraceRow>>`
       select t.id, t.project_id, t.title, t.status,
@@ -1392,8 +1400,6 @@ export class IntentTraceRepository {
       capabilities,
       registeredArtifactIds: new Set(artifactRows.map((row) => row.id)),
     });
-    if (derived.changedNodeIds.length === 0 && derived.changedEdgeIds.length === 0) return null;
-    assertAuditedEdges(derived.state);
 
     return this.sql.begin(async (tx) => {
       const latestRows = await tx<Array<{ id: string }>>`
@@ -1401,6 +1407,9 @@ export class IntentTraceRepository {
         order by created_at desc, id desc limit 1 for update
       `;
       if (latestRows[0]?.id !== base.revision.id) throw new StaleSummaryJobError();
+      if (derived.changedNodeIds.length === 0 && derived.changedEdgeIds.length === 0) {
+        return null;
+      }
       const branchKind = trace.status === "completed" ? "final" : "live";
       const sequenceRows = await tx<Array<{ value: number }>>`
         select coalesce(max(branch_sequence), -1)::int + 1 as value
