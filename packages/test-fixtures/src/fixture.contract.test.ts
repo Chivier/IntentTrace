@@ -105,16 +105,24 @@ describe("topology fixture policy", () => {
       }
     }
     expect(violations).toEqual([]);
-    const directViolations: string[] = [];
-    const directWalk = (value: unknown, path: string, hiddenContext = false): void => {
-      if (Array.isArray(value)) return value.forEach((item, index) => directWalk(item, `${path}[${index}]`, hiddenContext));
-      if (value === null || typeof value !== "object") { if (hiddenContext && typeof value === "string" && !marker.test(value)) directViolations.push(path); return; }
-      const object = value as Record<string, unknown>; const block = object.type === "thinking" || object.type === "encrypted_content";
-      for (const [key, item] of Object.entries(object)) directWalk(item, `${path}.${key}`, hiddenContext || hiddenKeys.has(key) || block);
+    const directWalk = (value: unknown, path: string, violations: string[], hiddenContext = false): void => {
+      if (Array.isArray(value)) return value.forEach((item, index) => directWalk(item, `${path}[${index}]`, violations, hiddenContext));
+      if (value === null || typeof value !== "object") { if (hiddenContext && typeof value === "string" && !marker.test(value)) violations.push(path); return; }
+      const object = value as Record<string, unknown>;
+      const block = object.type === "thinking" || object.type === "encrypted_content";
+      for (const [key, item] of Object.entries(object)) {
+        const discriminator = key === "type" && block;
+        directWalk(item, `${path}.${key}`, violations, discriminator ? false : hiddenContext || hiddenKeys.has(key) || block);
+      }
     };
-    directWalk({ thinking: { text: "real hidden" } }, "object");
-    directWalk({ thinking: ["real hidden"] }, "array");
-    directWalk({ type: "encrypted_content", value: "not-a-token" }, "encrypted");
-    expect(directViolations.length).toBeGreaterThanOrEqual(2);
+    const objectViolations: string[] = [];
+    directWalk({ thinking: { text: "real hidden" } }, "object", objectViolations);
+    expect(objectViolations).toEqual(["object.thinking.text"]);
+    const arrayViolations: string[] = [];
+    directWalk({ thinking: ["real hidden"] }, "array", arrayViolations);
+    expect(arrayViolations).toEqual(["array.thinking[0]"]);
+    const encryptedViolations: string[] = [];
+    directWalk({ type: "encrypted_content", value: "not-a-token" }, "encrypted", encryptedViolations);
+    expect(encryptedViolations).toEqual(["encrypted.value"]);
   });
 });
