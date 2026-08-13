@@ -2,7 +2,11 @@ import { gzipSync } from "node:zlib";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { SchemaVersion, type RawTraceEventInput } from "@intenttrace/schema";
+import {
+  SchemaVersion,
+  type RawTraceEventInput,
+  type SemanticGraphSnapshot,
+} from "@intenttrace/schema";
 
 import { buildApp } from "./app.js";
 import type { ApiServices } from "./services.js";
@@ -33,7 +37,10 @@ const eventInput: RawTraceEventInput = {
 const apps: ReturnType<typeof buildApp>[] = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
-function services(order: string[]): ApiServices {
+function services(
+  order: string[],
+  overrides: Partial<ApiServices["repository"]> = {},
+): ApiServices {
   let sequence = 0;
   return {
     repository: {
@@ -79,10 +86,15 @@ function services(order: string[]): ApiServices {
       listProviderCalls: async () => [],
       listRevisions: async () => [],
       getGraph: async () => null,
+      getObservedTopology: async () => ({
+        observed: { lanes: 0, lanesWithParent: 0, spawnEdges: 0, peerEdges: 0 },
+        sources: [],
+      }),
       editSemanticNode: async () => {
         throw new Error("unused");
       },
       deleteTraceData: async () => undefined,
+      ...overrides,
     },
     artifactStore: {
       put: async (input) => {
@@ -98,7 +110,7 @@ function services(order: string[]): ApiServices {
       getRange: async () => new Uint8Array(),
       deleteTrace: async () => undefined,
     },
-  };
+  } as ApiServices;
 }
 
 describe("trace API integration boundary", () => {
@@ -150,5 +162,92 @@ describe("trace API integration boundary", () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ partialSuccess: { rejectedSpans: 0, errorMessage: "" } });
     expect(order).toContain("ingest");
+  });
+
+  it("returns declared and observed topology in trace snapshots", async () => {
+    const order: string[] = [];
+    const app = buildApp({
+      services: services(order, {
+        getTrace: async () => ({
+          id: traceId,
+          projectId,
+          title: "Topology trace",
+          status: "active",
+          eventCount: "2",
+          latestIngestSeq: "2",
+          latestRevisionId: null,
+          createdAt: "2026-08-03T00:00:00.000Z",
+          updatedAt: "2026-08-03T00:00:01.000Z",
+        }),
+        getObservedTopology: async () => ({
+          observed: { lanes: 2, lanesWithParent: 1, spawnEdges: 1, peerEdges: 0 },
+          sources: [{ sourceKind: "jsonl", adapterVersion: "1.0.0" }],
+        }),
+      }),
+    });
+    apps.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/traces/${traceId}/snapshot`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().topology).toEqual({
+      declared: {
+        spawn: "passthrough",
+        join: "passthrough",
+        peerMessages: "passthrough",
+        input: "single-file",
+        laneKey: "agentId",
+        limits: [
+          "Topology requires explicit canonical fields; passthrough never infers a missing relationship.",
+        ],
+      },
+      observed: { lanes: 2, lanesWithParent: 1, spawnEdges: 1, peerEdges: 0 },
+    });
+  });
+
+  it("returns audited semantic edge evidence and provenance", async () => {
+    const evidenceEventId = "55555555-5555-4555-8555-555555555555";
+    const graph: SemanticGraphSnapshot = {
+      revision: {
+        id: "66666666-6666-4666-8666-666666666666",
+        traceId,
+        parentRevisionId: null,
+        branchKind: "live",
+        eventWatermark: "2",
+        createdAt: "2026-08-03T00:00:02.000Z",
+        sourceJobId: null,
+        stale: false,
+      },
+      nodes: [],
+      edges: [
+        {
+          id: "77777777-7777-4777-8777-777777777777",
+          logicalEdgeId: "88888888-8888-4888-8888-888888888888",
+          traceId,
+          sourceNodeId: projectId,
+          targetNodeId: workspaceId,
+          kind: "decomposes_to",
+          retired: false,
+          evidenceEventIds: [evidenceEventId],
+          provenance: "stated",
+        },
+      ],
+    };
+    const app = buildApp({ services: services([], { getGraph: async () => graph }) });
+    apps.push(app);
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/traces/${traceId}/graph`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().edges[0]).toMatchObject({
+      evidenceEventIds: [evidenceEventId],
+      provenance: "stated",
+    });
   });
 });

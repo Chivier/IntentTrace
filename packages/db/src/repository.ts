@@ -6,11 +6,14 @@ import {
   RawTraceEventInputSchema,
   type IngestResult,
   type HumanNodeEdit,
+  type Provenance,
   type RawTraceEvent,
   type RawTraceEventInput,
   type SemanticGraphSnapshot,
   type SemanticRevision,
+  type TraceSourceKind,
   type TraceSummary,
+  type TraceTopology,
 } from "@intenttrace/schema";
 
 import type postgres from "postgres";
@@ -159,6 +162,21 @@ function eventHashInput(input: RawTraceEventInput): unknown {
   delete event.projectName;
   delete event.traceTitle;
   return event;
+}
+
+type IngestWarning = IngestResult["warnings"][number];
+
+function causationWarnings(attributes: Record<string, unknown>): IngestWarning[] {
+  const value = attributes.intenttraceWarnings;
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (typeof candidate !== "object" || candidate === null) return [];
+    const warning = candidate as Record<string, unknown>;
+    if (warning.code !== "causation_source_event_unresolved") return [];
+    return typeof warning.sourceEventId === "string"
+      ? [{ code: warning.code, sourceEventId: warning.sourceEventId }]
+      : [{ code: warning.code }];
+  });
 }
 
 export interface StreamEventRecord {
@@ -347,8 +365,30 @@ export class IntentTraceRepository {
         event: mapRawEvent(existing[0]),
         duplicate: true,
         traceStale: trace.status === "stale",
-        warnings: [],
+        warnings: causationWarnings(existing[0].attributes ?? {}),
       };
+    }
+    let causationEventId = input.causationEventId ?? null;
+    const warnings: IngestWarning[] = [];
+    let attributes = input.attributes as Record<string, unknown>;
+    if (input.causationSourceEventId) {
+      const causalRows = await tx<Array<{ id: string }>>`
+        select id from raw_events
+        where trace_id = ${input.traceId}
+          and source_kind = ${input.source.kind}
+          and source_instance_id = ${input.source.sourceInstanceId}
+          and source_event_id = ${input.causationSourceEventId}
+        limit 1
+      `;
+      causationEventId = causalRows[0]?.id ?? null;
+      if (!causationEventId) {
+        const warning = {
+          code: "causation_source_event_unresolved" as const,
+          sourceEventId: input.causationSourceEventId,
+        };
+        warnings.push(warning);
+        attributes = { ...attributes, intenttraceWarnings: [warning] };
+      }
     }
 
     const eventId = randomUUID();
@@ -366,11 +406,11 @@ export class IntentTraceRepository {
         ${input.source.formatVersion}, ${input.source.adapterVersion},
         ${input.source.sourceInstanceId}, ${input.source.sourceEventId}, ${eventHash},
         ${input.occurredAt}, ${input.kind}, ${input.name}, ${input.status},
-        ${input.subjectId ?? null}, ${input.causationEventId ?? null}, ${input.agentId ?? null},
+        ${input.subjectId ?? null}, ${causationEventId}, ${input.agentId ?? null},
         ${input.spanId ?? null}, ${input.parentSpanId ?? null},
         ${input.payloadRef?.sha256 ?? null}, ${input.payloadRef?.artifactId ?? null},
         ${input.payloadRef?.byteLength ?? null}, ${tx.json(input.artifactRefs)},
-        ${tx.json(input.attributes as unknown as postgres.JSONValue)}
+        ${tx.json(attributes as postgres.JSONValue)}
       )
     `;
 
@@ -451,7 +491,7 @@ export class IntentTraceRepository {
       where e.id = ${eventId}
     `;
     if (!inserted[0]) throw new Error("raw event insert returned no row");
-    return { event: mapRawEvent(inserted[0]), duplicate: false, traceStale: late, warnings: [] };
+    return { event: mapRawEvent(inserted[0]), duplicate: false, traceStale: late, warnings };
   }
 
   async listTraces(limit = 50): Promise<{ traces: TraceSummary[]; nextCursor: null }> {
@@ -723,6 +763,8 @@ export class IntentTraceRepository {
       select e.* from revision_edge_members m
       join semantic_edge_versions e on e.id = m.edge_version_id
       where m.revision_id = ${id}
+        and e.evidence_event_ids is not null
+        and e.provenance is not null
       order by e.created_at, e.logical_edge_id
     `;
     return {
@@ -761,6 +803,78 @@ export class IntentTraceRepository {
         targetNodeId: String(row.target_node_id),
         kind: row.kind as SemanticGraphSnapshot["edges"][number]["kind"],
         retired: Boolean(row.retired),
+        evidenceEventIds: [...((row.evidence_event_ids as string[]) ?? [])],
+        provenance: row.provenance as Provenance,
+      })),
+    };
+  }
+
+  async getObservedTopology(
+    traceId: string,
+    revisionId?: string,
+  ): Promise<{
+    observed: TraceTopology["observed"];
+    sources: Array<{ sourceKind: TraceSourceKind; adapterVersion: string }>;
+  }> {
+    const revisionRows = revisionId
+      ? await this.sql<Array<{ id: string }>>`
+          select id from semantic_revisions where trace_id = ${traceId} and id = ${revisionId}
+        `
+      : await this.sql<Array<{ id: string }>>`
+          select id from semantic_revisions where trace_id = ${traceId}
+          order by created_at desc, id desc limit 1
+        `;
+    const selectedRevisionId = revisionRows[0]?.id ?? null;
+    const [rawCounts, edgeCounts, sourceRows] = await Promise.all([
+      this.sql<Array<{ lanes: number; lanes_with_parent: number }>>`
+        select
+          count(distinct agent_id)::int as lanes,
+          count(distinct agent_id) filter (
+            where agent_id is not null
+              and jsonb_typeof(attributes -> 'parentAgentId') = 'string'
+          )::int as lanes_with_parent
+        from raw_events where trace_id = ${traceId}
+      `,
+      selectedRevisionId
+        ? this.sql<Array<{ spawn_edges: number; peer_edges: number }>>`
+            select
+              count(*) filter (where e.kind = 'decomposes_to')::int as spawn_edges,
+              count(*) filter (
+                where e.kind = 'hands_off_to'
+                  and exists (
+                    select 1
+                    from jsonb_array_elements_text(e.evidence_event_ids) evidence(event_id)
+                    join raw_events raw on raw.id = evidence.event_id::uuid
+                    where raw.trace_id = ${traceId}
+                      and jsonb_typeof(raw.attributes -> 'senderAgentId') = 'string'
+                      and jsonb_typeof(raw.attributes -> 'recipientAgentId') = 'string'
+                      and raw.attributes ->> 'senderAgentId' <> raw.attributes ->> 'recipientAgentId'
+                  )
+              )::int as peer_edges
+            from revision_edge_members member
+            join semantic_edge_versions e on e.id = member.edge_version_id
+            where member.revision_id = ${selectedRevisionId}
+              and e.retired = false
+              and e.evidence_event_ids is not null
+              and e.provenance is not null
+          `
+        : Promise.resolve([{ spawn_edges: 0, peer_edges: 0 }]),
+      this.sql<Array<{ source_kind: TraceSourceKind; adapter_version: string }>>`
+        select distinct source_kind, adapter_version
+        from raw_events where trace_id = ${traceId}
+        order by source_kind, adapter_version
+      `,
+    ]);
+    return {
+      observed: {
+        lanes: rawCounts[0]?.lanes ?? 0,
+        lanesWithParent: rawCounts[0]?.lanes_with_parent ?? 0,
+        spawnEdges: edgeCounts[0]?.spawn_edges ?? 0,
+        peerEdges: edgeCounts[0]?.peer_edges ?? 0,
+      },
+      sources: sourceRows.map((row) => ({
+        sourceKind: row.source_kind,
+        adapterVersion: row.adapter_version,
       })),
     };
   }
@@ -906,6 +1020,8 @@ export class IntentTraceRepository {
           versionId: edge.id,
           sourceNodeId: edge.sourceNodeId,
           targetNodeId: edge.targetNodeId,
+          evidenceEventIds: [...edge.evidenceEventIds],
+          provenance: edge.provenance,
           kind: edge.kind,
           retired: edge.retired,
         })),
@@ -1030,10 +1146,12 @@ export class IntentTraceRepository {
       for (const edge of input.state.edges) {
         await tx`
           insert into semantic_edge_versions (
-            id, logical_edge_id, trace_id, source_node_id, target_node_id, kind, retired
+            id, logical_edge_id, trace_id, source_node_id, target_node_id, kind, retired,
+            evidence_event_ids, provenance
           ) values (
             ${edge.versionId}, ${edge.logicalEdgeId}, ${job.trace_id}, ${edge.sourceNodeId},
-            ${edge.targetNodeId}, ${edge.kind}, ${edge.retired}
+            ${edge.targetNodeId}, ${edge.kind}, ${edge.retired},
+            ${tx.json(edge.evidenceEventIds)}, ${edge.provenance}
           ) on conflict (id) do nothing
         `;
         await tx`

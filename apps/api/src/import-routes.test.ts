@@ -11,7 +11,11 @@ const fixtureRoot = resolve(import.meta.dirname, "../../../packages/test-fixture
 const apps: ReturnType<typeof buildApp>[] = [];
 afterEach(async () => Promise.all(apps.splice(0).map((app) => app.close())));
 
-function services(order: string[], duplicate = false): ApiServices {
+function services(
+  order: string[],
+  duplicate = false,
+  ingestWarnings: Array<{ code: string; sourceEventId?: string }> = [],
+): ApiServices {
   let sequence = 0;
   return {
     repository: {
@@ -42,7 +46,7 @@ function services(order: string[], duplicate = false): ApiServices {
           },
           duplicate,
           traceStale: false,
-          warnings: [],
+          warnings: ingestWarnings,
         };
       },
       listTraces: async () => ({ traces: [], nextCursor: null }),
@@ -60,6 +64,10 @@ function services(order: string[], duplicate = false): ApiServices {
       listProviderCalls: async () => [],
       listRevisions: async () => [],
       getGraph: async () => null,
+      getObservedTopology: async () => ({
+        observed: { lanes: 0, lanesWithParent: 0, spawnEdges: 0, peerEdges: 0 },
+        sources: [],
+      }),
       editSemanticNode: async () => {
         throw new Error("unused");
       },
@@ -169,6 +177,26 @@ describe("browser session import routes", () => {
     expect(body.inserted).toBe(4);
     expect(body.duplicates).toBe(0);
     expect(order.filter((entry) => entry === "ingest")).toHaveLength(4);
+  });
+
+  it("adds repository ingest warnings to upload warning totals", async () => {
+    const bytes = await codexFixture();
+    const app = buildApp({
+      services: services([], false, [
+        { code: "causation_source_event_unresolved", sourceEventId: "parent" },
+      ]),
+    });
+    apps.push(app);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/imports/sessions?source=codex&fileName=valid.jsonl",
+      headers: { "content-type": "application/octet-stream" },
+      payload: bytes,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().warnings).toBe(4);
   });
 
   it("reports every event as a duplicate when the same bytes were already imported", async () => {

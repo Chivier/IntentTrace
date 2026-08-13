@@ -6,6 +6,7 @@ import {
   buildCompletionMarker,
   classifySessionFailure,
   detectSourceKind,
+  aggregateTopologyCapabilities,
   OtlpHttpJsonAdapter,
   prepareSessionBytes,
   redactCatalogEntry,
@@ -405,10 +406,12 @@ export async function registerTraceRoutes(
 
       let inserted = 0;
       let duplicates = 0;
+      let ingestWarnings = 0;
       const ingest = async (event: z.infer<typeof RawTraceEventInputSchema>): Promise<void> => {
         const result = await services.repository.ingest(await persistPayload(services, event));
         if (result.duplicate) duplicates += 1;
         else inserted += 1;
+        ingestWarnings += result.warnings.length;
       };
       try {
         for (const event of prepared.events) await ingest(event);
@@ -433,7 +436,7 @@ export async function registerTraceRoutes(
         traceId: prepared.events[0]!.traceId,
         inserted,
         duplicates,
-        warnings: prepared.warnings.length,
+        warnings: prepared.warnings.length + ingestWarnings,
       });
     },
   );
@@ -570,13 +573,23 @@ export async function registerTraceRoutes(
     async (request) => {
       const { traceId } = TraceParamsSchema.parse(request.params);
       const query = EventQuerySchema.parse(request.query);
-      const [trace, raw, agents, graph] = await Promise.all([
+      const [trace, raw, agents, graph, topologyData] = await Promise.all([
         services.repository.getTrace(traceId),
         services.repository.listRawEvents(traceId, query.after, query.limit),
         services.repository.getAgentTimeline(traceId),
         services.repository.getGraph(traceId),
+        services.repository.getObservedTopology(traceId),
       ]);
-      return { trace, raw, agents, revision: graph?.revision ?? null };
+      return {
+        trace,
+        raw,
+        agents,
+        revision: graph?.revision ?? null,
+        topology: {
+          declared: aggregateTopologyCapabilities(topologyData.sources),
+          observed: topologyData.observed,
+        },
+      };
     },
   );
 

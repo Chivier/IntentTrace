@@ -177,6 +177,7 @@ async function ingestPreparedSession(
 ): Promise<{ inserted: number; duplicates: number; warnings: number; traceId: string }> {
   let inserted = 0;
   let duplicates = 0;
+  let ingestWarnings = 0;
 
   const send = async (event: RawTraceEventInput): Promise<void> => {
     let response: Response;
@@ -201,6 +202,7 @@ async function ingestPreparedSession(
     }
     if (result.duplicate) duplicates += 1;
     else inserted += 1;
+    ingestWarnings += result.warnings.length;
   };
 
   for (const warning of prepared.warnings) {
@@ -223,7 +225,7 @@ async function ingestPreparedSession(
   return {
     inserted,
     duplicates,
-    warnings: prepared.warnings.length,
+    warnings: prepared.warnings.length + ingestWarnings,
     traceId: prepared.events[0]!.traceId,
   };
 }

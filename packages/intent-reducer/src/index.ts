@@ -62,6 +62,8 @@ export interface ReducerEdge {
   sourceNodeId: string;
   targetNodeId: string;
   kind: SemanticEdgeKind;
+  evidenceEventIds: string[];
+  provenance: "stated" | "inferred" | "mixed";
   retired: boolean;
 }
 
@@ -327,7 +329,10 @@ export function applyProviderPatch(
     artifactIds: [...node.artifactIds],
     layout: node.layout ? { ...node.layout } : null,
   }));
-  const edges = current.edges.map((edge) => ({ ...edge }));
+  const edges = current.edges.map((edge) => ({
+    ...edge,
+    evidenceEventIds: [...edge.evidenceEventIds],
+  }));
   const temporaryNodeIds = new Map<string, string>();
   const changedNodeIds = new Set<string>();
   const changedEdgeIds = new Set<string>();
@@ -401,6 +406,8 @@ export function applyProviderPatch(
         targetNodeId: resolveNode(operation.targetRef),
         kind: operation.kind,
         retired: false,
+        evidenceEventIds: [...new Set(operation.evidenceEventIds)].sort(),
+        provenance: "inferred",
       });
       changedEdgeIds.add(logicalEdgeId);
       continue;
@@ -442,6 +449,8 @@ export function applyProviderPatch(
         targetNodeId: operation.fromNodeId,
         kind: "supersedes",
         retired: false,
+        evidenceEventIds: [...new Set(operation.evidenceEventIds)].sort(),
+        provenance: "inferred",
       });
       changedNodeIds.add(operation.fromNodeId);
       changedEdgeIds.add(edgeId);

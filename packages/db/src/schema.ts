@@ -248,6 +248,8 @@ export const semanticEdgeVersions = pgTable(
     targetNodeId: uuid("target_node_id").notNull(),
     kind: text("kind").notNull(),
     retired: boolean("retired").notNull().default(false),
+    evidenceEventIds: jsonb("evidence_event_ids"),
+    provenance: text("provenance"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [

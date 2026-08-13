@@ -137,6 +137,51 @@ describe("collector path boundary", () => {
     expect(output.at(-1)).toContain('"inserted":2');
   });
 
+  it("adds repository ingest warnings to import warning totals", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "intenttrace-collector-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "session.jsonl");
+    await writeFile(
+      path,
+      '{"type":"session_meta","version":"codex-jsonl-v1","timestamp":"2026-08-01T00:00:00.000Z","payload":{"id":"session-1","agent_id":"orchestrator"}}\n',
+    );
+    const output: string[] = [];
+    const repositoryWarningFetch = async (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const event = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      delete event.workspaceName;
+      delete event.projectName;
+      delete event.traceTitle;
+      delete event.payload;
+      return new Response(
+        JSON.stringify({
+          event: {
+            ...event,
+            id: "00000000-0000-4000-8000-000000000001",
+            ingestSeq: "1",
+            ingestedAt: "2026-08-03T00:00:00.000Z",
+          },
+          duplicate: false,
+          traceStale: false,
+          warnings: [{ code: "causation_source_event_unresolved", sourceEventId: "parent" }],
+        }),
+        { status: 201, headers: { "content-type": "application/json" } },
+      );
+    };
+
+    await expect(
+      runCollector(["import", "--source", "codex", "--path", path], {
+        fetch: repositoryWarningFetch as typeof fetch,
+        output: (line) => output.push(line),
+        environment: {},
+      }),
+    ).resolves.toBe(0);
+
+    expect(JSON.parse(output.at(-1)!)).toMatchObject({ warnings: 2 });
+  });
+
   it("discovers a sanitized recent-session catalog without contacting the API", async () => {
     const directory = await mkdtemp(join(tmpdir(), "intenttrace-collector-"));
     temporaryDirectories.push(directory);

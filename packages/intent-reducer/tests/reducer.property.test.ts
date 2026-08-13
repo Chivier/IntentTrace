@@ -95,6 +95,8 @@ describe("deterministic reducer properties", () => {
           sourceNodeId: nodeA,
           targetNodeId: nodeB,
           kind: "depends_on",
+          evidenceEventIds: [eventId],
+          provenance: "stated",
           retired: false,
         },
       ],

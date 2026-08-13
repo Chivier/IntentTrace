@@ -18,6 +18,7 @@ export interface ApiServices {
     | "listProviderCalls"
     | "listRevisions"
     | "getGraph"
+    | "getObservedTopology"
     | "editSemanticNode"
     | "deleteTraceData"
   >;
@@ -45,6 +46,7 @@ export function createUnavailableApiServices(): ApiServices {
       listProviderCalls: async () => unavailable(),
       listRevisions: async () => unavailable(),
       getGraph: async () => unavailable(),
+      getObservedTopology: async () => unavailable(),
       editSemanticNode: async () => unavailable(),
       deleteTraceData: async () => unavailable(),
     },
