@@ -12,6 +12,7 @@ import {
   computeSessionCandidateId,
   discoverSessionCandidates,
   OpenCodeSessionAdapter,
+  OmpSessionAdapter,
   OtlpHttpJsonAdapter,
   MalformedAdapterInputError,
   prepareSessionParts,
@@ -191,6 +192,20 @@ describe("implemented trace adapters", () => {
     await expect(parse(adapter, await fixture(source, name))).rejects.toBeInstanceOf(
       UnsupportedAdapterVersionError,
     );
+  });
+  it("maps OMP parent and child lanes, joins, and peer messages", async () => {
+    const parts = [
+      { path: "root.jsonl", bytes: await fixture("omp", "topology/root.jsonl") },
+      { path: "root/Child.jsonl", bytes: await fixture("omp", "topology/Child.jsonl") },
+      { path: "root/Sibling.jsonl", bytes: await fixture("omp", "topology/Sibling.jsonl") },
+    ];
+    const records: AdapterRecord[] = [];
+    for await (const record of new OmpSessionAdapter().parse({ parts, sourceIdentity: "anonymous-fixture" })) records.push(record);
+    const events = records.filter((record) => record.type === "event");
+    expect(new Set(events.map((record) => record.event.agentId))).toEqual(new Set(["Main", "Child", "Sibling"]));
+    expect(events.some((record) => record.event.attributes.parentAgentId === "Main" && record.event.attributes.topologyProvenance === "inferred")).toBe(true);
+    expect(events.some((record) => record.event.attributes.joinedBy === "Child")).toBe(true);
+    expect(events.some((record) => record.event.attributes.senderAgentId === "Sibling" && record.event.attributes.recipientAgentId === "Child")).toBe(true);
   });
 
   it("accepts a top-level JSON array as the same session as its JSONL form", async () => {

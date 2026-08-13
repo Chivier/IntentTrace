@@ -5,6 +5,7 @@ export * from "./otlp.js";
 export * from "./codex.js";
 export * from "./claude.js";
 export * from "./opencode.js";
+export * from "./omp.js";
 export * from "./registry.js";
 export * from "./session.js";
 export * from "./discovery.js";
