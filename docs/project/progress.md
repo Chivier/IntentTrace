@@ -1,7 +1,7 @@
 ---
 status: current
 owner: program
-last_reviewed: 2026-08-13
+last_reviewed: 2026-08-14
 normative: true
 milestone: Gate 5
 ---
@@ -70,6 +70,8 @@ milestone: Gate 5
 - Topological demo recorder（2026-08-13，automated）：`packages/test-fixtures/scripts/regenerate-imo-demo.ts` 只接受显式 session root，预检同名 root transcript 与 `ImoBruteForce`、`ImoConstructions`、`ImoImpossibility`、`ImoVerifier`、`ImoWriteup`、`WebUiSurface`、`IngestAndFixtures`、`DocsConventions` 八个 child JSONL，缺一项即在写文件前列出相对名并退出；没有 synthetic fallback。对已验证外部 session 重放得到 691 canonical events / 9 lanes / 8 child `agent_start` / 8 spawned IDs / 8 joined IDs；所有 `artifactRefs=[]`，source instance 使用 `-topology-v2`，每条输出经过 `RawTraceEventInputSchema`，并在写入前拒绝残留 host path、thinking/signature/reasoning/systemPrompt 字段。`packages/test-fixtures/src/{fixture,demo-topology}.contract.test.ts` 锁定上述实测计数、parent/span coverage、spawn/start 和 join/end 集合相等、source event 唯一、最终 marker 与 privacy。
 - Topological demo acceptance（2026-08-13，automated）：`packages/intent-reducer/tests/demo-fixture.acceptance.test.ts` 从提交的 691-event 录制构建 raw facts 与真实 lane endpoints，确定性 reducer 派生 8 条 `decomposes_to` 与 8 条 `hands_off_to`，并断言存在多出边 dispatch 与多入边 convergence、每条 edge evidence 非空且 provenance 为 `stated`；`apps/api/src/trace-routes.test.ts` 另锁定 `/graph` 的 fan-out/fan-in/evidence/provenance 与 `/snapshot.topology.observed={lanes:9,lanesWithParent:8,spawnEdges:8,peerEdges:0}`。测试不为缺 endpoint 的 lane 添加或伪造 node；少一条 endpoint 会使 exact-count assertion 失败。
 - Topology required gates（2026-08-13，本地 automated）：`pnpm format:check` pass；`pnpm lint` pass；typecheck `26/26`；unit `26 files passed + 1 skipped`、`242 passed + 7 skipped`；contract `8 files / 53 tests`；e2e `5 passed`；build `16/16`；`docs:check` `27 normative files`；`schema:check` no drift（JSON Schema、OpenAPI、Drizzle）。
+
+- CI audit and plugin history cleanup（2026-08-14，本地 automated）：`CI / quality` run `31759380987` 的根因是 `pnpm audit --prod` 报告 `postcss` 传递的 `nanoid@3.3.16` 高危公告；在 `pnpm-workspace.yaml` 将 `nanoid` override 到已修复的 `3.3.18` 并重新生成 `pnpm-lock.yaml` 后，`pnpm audit --prod` 输出 `No known vulnerabilities found`，`pnpm install --frozen-lockfile` 通过。`pnpm format:check`、`pnpm lint`、`pnpm typecheck`（26/26）、`pnpm test`（26 files / 243 passed / 7 skipped）、`pnpm test:contract`（7 passed / 1 skipped，47 passed / 7 skipped）、`pnpm test:e2e`（5 passed）、`pnpm build`（16/16）、`pnpm docs:check`（27 normative files）、`pnpm schema:check` 与 `pnpm docker:check` 均通过；`pnpm db:migrate` 未执行成功，原因是本机没有监听 `127.0.0.1:15432` 的 PostgreSQL，非代码失败。根 `.gitignore` 新增 `/.superpowers/`；用 `git filter-branch` 重写所有本地 refs 后删除 `refs/original/*`、过期 reflog 并 GC，当前 reachable history 与 HEAD 均无 `.superpowers`，本地忽略规则生效。当前 `main` 为重写后的新历史，推送远端必须使用经确认的 `--force-with-lease`。
 
 ## Environment verified
 
