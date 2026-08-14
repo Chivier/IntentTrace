@@ -25,7 +25,7 @@ import { useTraceStream } from "@/lib/workbench/use-trace-stream";
 import { useWorkbenchKeyboard } from "@/lib/workbench/use-workbench-keyboard";
 
 const panelClass =
-  "m-3 mt-0 flex min-h-0 flex-col overflow-hidden rounded-panel border border-line bg-panel/95";
+  "m-2 mt-0 flex min-h-0 flex-col overflow-hidden rounded-panel border border-line bg-panel/95";
 
 export function TraceWorkbench({ traceId }: { traceId: string }) {
   const snapshot = useWorkbenchStore((state) => state.snapshot);
@@ -84,18 +84,18 @@ export function TraceWorkbench({ traceId }: { traceId: string }) {
   const mainColumn = (
     <>
       {error ? (
-        <Banner tone="danger" role="alert" className="m-3 mb-0">
+        <Banner tone="danger" role="alert" className="m-2 mb-0">
           {error}
         </Banner>
       ) : null}
       {notice ? (
-        <Banner tone="warning" className="m-3 mb-0">
+        <Banner tone="warning" className="m-2 mb-0">
           {notice}
         </Banner>
       ) : null}
       <SummaryStrip />
       <section
-        className="m-3 grid grid-cols-[260px_1fr_auto] items-center gap-4 rounded-xl border border-line bg-panel px-4 py-3 max-[1023px]:grid-cols-1"
+        className="m-2 grid grid-cols-[260px_1fr_auto] items-center gap-4 rounded-xl border border-line bg-panel px-3 py-2 max-[1023px]:grid-cols-1"
         aria-label="Replay controls"
       >
         <label htmlFor="playhead" className="text-title">

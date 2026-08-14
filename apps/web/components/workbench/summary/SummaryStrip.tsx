@@ -24,7 +24,7 @@ export function SummaryStrip() {
 
   return (
     <section
-      className="m-3 mb-0 grid grid-cols-[minmax(200px,1fr)_repeat(6,minmax(72px,96px))] items-stretch gap-2 max-[1439px]:grid-cols-[minmax(200px,1fr)_repeat(4,minmax(72px,96px))] max-[1023px]:grid-cols-1"
+      className="m-2 mb-0 grid grid-cols-[minmax(200px,1fr)_repeat(6,minmax(72px,96px))] items-stretch gap-2 max-[1439px]:grid-cols-[minmax(200px,1fr)_repeat(4,minmax(72px,96px))] max-[1023px]:grid-cols-1"
       aria-label="Trace summary"
       data-testid="summary-strip"
     >

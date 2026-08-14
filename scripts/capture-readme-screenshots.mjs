@@ -35,7 +35,9 @@ const browser = await chromium.launch({ headless: true });
 try {
   const page = await browser.newPage({
     viewport: { width: 1200, height: 420 },
-    deviceScaleFactor: 1,
+    // 2x pixel density: README renders these at roughly half their CSS width,
+    // so 1x captures lose node-card text to downscaling.
+    deviceScaleFactor: 2,
     colorScheme: "dark",
   });
 
@@ -56,10 +58,18 @@ try {
   await page.getByRole("heading", { name: "Intent Graph" }).waitFor({ timeout: 30_000 });
   const firstNode = page.locator('[data-testid^="node-card-"]').first();
   await firstNode.waitFor({ timeout: 30_000 });
+  // Select the node while the graph is still fitted: every card is on screen
+  // and therefore clickable. Zooming first leaves the first card outside the
+  // viewport, where Playwright never sees it become stable.
   await page.getByRole("button", { name: "Fit", exact: true }).click();
   await page.waitForTimeout(750);
   await firstNode.click();
   await page.getByLabel("Evidence inspector").locator("section").first().waitFor();
+  // Then L1 (zoom 0.55) rather than Fit: fitting all 40 nodes lands at zoom
+  // 0.25, which renders a 246x123 node card at 62x31 and makes its text
+  // unreadable once the README downscales the capture.
+  await page.getByRole("button", { name: "L1", exact: true }).click();
+  await page.waitForTimeout(750);
   await page.screenshot({
     path: path.join(outputDirectory, "workbench.png"),
     animations: "disabled",
