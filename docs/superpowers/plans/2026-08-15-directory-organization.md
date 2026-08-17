@@ -1,3 +1,11 @@
+---
+status: accepted
+owner: maintainers
+last_reviewed: 2026-08-15
+normative: false
+milestone: repository organization
+---
+
 # Repository Organization Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
