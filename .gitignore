@@ -18,3 +18,4 @@ apps/desktop/src-tauri/resources/intenttrace-stack.tar.gz
 apps/desktop/src-tauri/target/
 /.superpowers/
 apps/web/next-env.d.ts
+/.worktrees/
