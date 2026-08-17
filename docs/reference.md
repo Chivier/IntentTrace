@@ -8,7 +8,7 @@ milestone: Gate 0-Gate 5
 
 # Reference
 
-The configuration key table and the glossary. The configuration table is validated key by key against `packages/config/src/index.ts` by `scripts/check-docs.mjs`; a new configuration key must update this file at the same time.
+The configuration key table and the glossary. The configuration table is validated key by key against `packages/config/src/index.ts` by `scripts/checks/check-docs.mjs`; a new configuration key must update this file at the same time.
 
 ## Configuration reference
 

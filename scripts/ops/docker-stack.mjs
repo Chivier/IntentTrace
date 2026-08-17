@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 function runCompose(arguments_, capture = false) {
   const result = spawnSync("docker", ["compose", "-f", "docker-compose.yml", ...arguments_], {

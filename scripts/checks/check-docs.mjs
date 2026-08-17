@@ -5,7 +5,7 @@ import process from "node:process";
 
 import GithubSlugger from "github-slugger";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "../..");
 const docsRoot = join(root, "docs");
 
 const required = [

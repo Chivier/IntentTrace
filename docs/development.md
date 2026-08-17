@@ -41,7 +41,22 @@ Security issues follow [`.github/SECURITY.md`](../.github/SECURITY.md); do not p
 
 `apps/web` is the status page and the Trace Workbench, `apps/api` is the Fastify REST/OTLP/SSE service, `apps/worker` is the asynchronous semantic pipeline, `apps/collector` is the explicit-path CLI, and `apps/desktop` is the Tauri Docker launch shell. Shared packages are layered by dependency direction: schema/config → db/storage/ingest/adapters → summarizer/reducer/layout/ui/fixtures. An app may compose packages; a lower-layer package does not depend on an app.
 
-`docs/design/source` keeps historical inputs only; the `generated/` JSON Schema, OpenAPI, and Drizzle migrations are artifacts that must be committed. The root `docker-compose.yml` defines the local stack; `infra` keeps the multi-stage Dockerfile and image lock. Real `.env` files, sessions, artifact volumes, and provider keys are never committed.
+Root scripts are grouped by operational responsibility:
+
+| Directory          | Responsibility                                                    |
+| ------------------ | ----------------------------------------------------------------- |
+| `scripts/checks/`  | Static and synthetic checks                                       |
+| `scripts/data/`    | Explicit data-maintenance commands                                |
+| `scripts/demo/`    | Demo loading and README screenshot capture                        |
+| `scripts/ops/`     | Docker, desktop packaging, backup, and restore operations          |
+
+Repository artifacts fall into three classes:
+
+- **Tracked source:** authored application, package, script, configuration, test, fixture, and normative documentation files.
+- **Committed generated artifacts:** JSON Schema under `packages/schema/generated/`, OpenAPI under `docs/contracts/api/`, and Drizzle migrations under `packages/db/migrations/`. Regenerate rather than hand-edit them, and commit their changes with the source contract.
+- **Disposable local output:** `node_modules/`, `dist/`, `.turbo/`, `.next/`, `*.tsbuildinfo`, `.intenttrace/`, `.cache/`, `coverage/`, `playwright-report/`, and `test-results/`. These paths remain local and must not be committed.
+
+`docs/design/source/` and `docs/design/prototype/` keep historical, non-normative inputs at stable paths. The root `docker-compose.yml` defines the local stack; `infra` keeps the multi-stage Dockerfile and image lock. Real `.env` files, sessions, artifact volumes, and provider keys are never committed.
 
 When a contract changes, update the code, the tests, the generated artifacts, and the corresponding normative document at the same time. Do not copy prototype HTML/CSS into Next; when rebuilding a component, accessibility and real state are authoritative.
 

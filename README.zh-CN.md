@@ -66,6 +66,22 @@ pnpm docker:down     # 停止服务，保留 named volumes
 
 这些命令统一使用根目录的 `docker-compose.yml`；需要时也可以直接运行 Docker Compose 命令。
 
+## 仓库导航
+
+| 需要           | 前往                                                                                                                        |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 启动或开发     | [`docs/development.md`](docs/development.md)                                                                                |
+| 架构与数据流   | [`docs/architecture.md`](docs/architecture.md)                                                                              |
+| API 与领域契约 | [`docs/contracts.md`](docs/contracts.md)、[`docs/contracts/api/`](docs/contracts/api/)                                      |
+| 持久化与迁移   | [`docs/database.md`](docs/database.md)、[`packages/db/migrations/`](packages/db/migrations/)                                |
+| 运维与恢复     | [`docs/operations.md`](docs/operations.md)、[`docs/operations/`](docs/operations/)                                          |
+| 质量门禁       | [`docs/testing.md`](docs/testing.md)                                                                                        |
+| 状态与证据     | [`docs/project/progress.md`](docs/project/progress.md)、[`docs/project/readiness.md`](docs/project/readiness.md)             |
+| 演示与截图     | [`scripts/demo/`](scripts/demo/)                                                                                            |
+| 检查与维护     | [`scripts/checks/`](scripts/checks/)、[`scripts/data/`](scripts/data/)、[`scripts/ops/`](scripts/ops/)                       |
+| 运行时应用     | [`apps/`](apps/)                                                                                                            |
+| 共享能力       | [`packages/`](packages/)                                                                                                    |
+
 ## 演示：九条泳道，一道奥数题
 
 `pnpm demo:load` 回放一次真实运行的录制：一个编排者与八个并行子 Agent 求解并记录 IMO 2025 第一题 —— 691 条原始事件、九条 Agent 泳道、八条 canonical spawn 事实与八条 canonical join 事实。这是录制而非模拟：每条事件都来自已验证的根 transcript 与八个必需 child transcript；确定性 recorder 会丢弃隐藏推理、签名与 system prompt，把主机路径改写为 `~`，限制 payload 长度，用 canonical schema 验证每条事件，并且绝不回退到合成数据。

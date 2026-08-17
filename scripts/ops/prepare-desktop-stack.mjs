@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 import process from "node:process";
 
-const root = resolve(import.meta.dirname, "..");
+const root = resolve(import.meta.dirname, "../..");
 const outputDirectory = resolve(root, "apps/desktop/src-tauri/resources");
 const output = resolve(outputDirectory, "intenttrace-stack.tar.gz");
 const includes = [
@@ -20,9 +20,9 @@ const includes = [
   "apps/worker",
   "apps/collector",
   "packages",
-  "scripts/check-docs.mjs",
-  "scripts/check-compose.mjs",
-  "scripts/docker-stack.mjs",
+  "scripts/checks/check-docs.mjs",
+  "scripts/checks/check-compose.mjs",
+  "scripts/ops/docker-stack.mjs",
 ];
 await mkdir(outputDirectory, { recursive: true });
 await rm(output, { force: true });

@@ -19,3 +19,6 @@ apps/desktop/src-tauri/target/
 /.superpowers/
 apps/web/next-env.d.ts
 /.worktrees/
+!/.vscode/
+/.vscode/*
+!/.vscode/settings.json

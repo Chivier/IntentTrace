@@ -1,8 +1,8 @@
-import { lookupTopologyCapability } from "../packages/adapters/src/index.js";
-import { loadRuntimeConfig } from "../packages/config/src/index.js";
-import { IntentTraceRepository } from "../packages/db/src/index.js";
-import { UuidSchema } from "../packages/schema/src/index.js";
-import postgres from "../packages/db/node_modules/postgres/src/index.js";
+import { lookupTopologyCapability } from "../../packages/adapters/src/index.js";
+import { loadRuntimeConfig } from "../../packages/config/src/index.js";
+import { IntentTraceRepository } from "../../packages/db/src/index.js";
+import { UuidSchema } from "../../packages/schema/src/index.js";
+import postgres from "../../packages/db/node_modules/postgres/src/index.js";
 
 function usage(): never {
   throw new Error("Usage: pnpm topology:rebuild -- --trace <uuid> | --all");

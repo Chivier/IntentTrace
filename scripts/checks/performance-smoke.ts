@@ -3,9 +3,9 @@ import { performance } from "node:perf_hooks";
 import {
   applyProviderPatch,
   type ReducerGraphState,
-} from "../packages/intent-reducer/src/index.js";
-import { SchemaVersion } from "../packages/schema/src/index.js";
-import { generateAcceptanceFixture } from "../packages/test-fixtures/src/index.js";
+} from "../../packages/intent-reducer/src/index.js";
+import { SchemaVersion } from "../../packages/schema/src/index.js";
+import { generateAcceptanceFixture } from "../../packages/test-fixtures/src/index.js";
 
 const started = performance.now();
 const events = generateAcceptanceFixture(10_000);

@@ -65,6 +65,22 @@ pnpm docker:down     # stop services, keep named volumes
 
 These commands target the root `docker-compose.yml`; direct Docker Compose commands remain available when needed.
 
+## Repository navigation
+
+| Need                       | Go to                                                                                                                       |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Start or develop           | [`docs/development.md`](docs/development.md)                                                                                |
+| Architecture and data flow | [`docs/architecture.md`](docs/architecture.md)                                                                              |
+| API and domain contracts   | [`docs/contracts.md`](docs/contracts.md), [`docs/contracts/api/`](docs/contracts/api/)                                      |
+| Persistence and migrations | [`docs/database.md`](docs/database.md), [`packages/db/migrations/`](packages/db/migrations/)                                |
+| Operations and recovery    | [`docs/operations.md`](docs/operations.md), [`docs/operations/`](docs/operations/)                                          |
+| Quality gates              | [`docs/testing.md`](docs/testing.md)                                                                                        |
+| Status and evidence        | [`docs/project/progress.md`](docs/project/progress.md), [`docs/project/readiness.md`](docs/project/readiness.md)             |
+| Demos and screenshots      | [`scripts/demo/`](scripts/demo/)                                                                                            |
+| Checks and maintenance     | [`scripts/checks/`](scripts/checks/), [`scripts/data/`](scripts/data/), [`scripts/ops/`](scripts/ops/)                       |
+| Runtime apps               | [`apps/`](apps/)                                                                                                            |
+| Shared capabilities        | [`packages/`](packages/)                                                                                                    |
+
 ## Demo: nine lanes, one olympiad problem
 
 `pnpm demo:load` replays a recording of a real run: one orchestrator and eight parallel child agents solving and instrumenting IMO 2025 Problem 1 — 691 raw events, nine agent lanes, eight canonical spawn facts, and eight canonical join facts. It is a recording, not a simulation. Every event comes from the verified root transcript and its eight required child transcripts; the deterministic recorder drops hidden reasoning, signatures, and system prompts, rewrites host paths to `~`, bounds payloads, validates every event against the canonical schema, and never falls back to synthetic data.
