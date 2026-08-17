@@ -68,19 +68,19 @@ pnpm docker:down     # 停止服务，保留 named volumes
 
 ## 仓库导航
 
-| 需要           | 前往                                                                                                                        |
-| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| 启动或开发     | [`docs/development.md`](docs/development.md)                                                                                |
-| 架构与数据流   | [`docs/architecture.md`](docs/architecture.md)                                                                              |
-| API 与领域契约 | [`docs/contracts.md`](docs/contracts.md)、[`docs/contracts/api/`](docs/contracts/api/)                                      |
-| 持久化与迁移   | [`docs/database.md`](docs/database.md)、[`packages/db/migrations/`](packages/db/migrations/)                                |
-| 运维与恢复     | [`docs/operations.md`](docs/operations.md)、[`docs/operations/`](docs/operations/)                                          |
-| 质量门禁       | [`docs/testing.md`](docs/testing.md)                                                                                        |
-| 状态与证据     | [`docs/project/progress.md`](docs/project/progress.md)、[`docs/project/readiness.md`](docs/project/readiness.md)             |
-| 演示与截图     | [`scripts/demo/`](scripts/demo/)                                                                                            |
-| 检查与维护     | [`scripts/checks/`](scripts/checks/)、[`scripts/data/`](scripts/data/)、[`scripts/ops/`](scripts/ops/)                       |
-| 运行时应用     | [`apps/`](apps/)                                                                                                            |
-| 共享能力       | [`packages/`](packages/)                                                                                                    |
+| 需要           | 前往                                                                                                             |
+| -------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 启动或开发     | [`docs/development.md`](docs/development.md)                                                                     |
+| 架构与数据流   | [`docs/architecture.md`](docs/architecture.md)                                                                   |
+| API 与领域契约 | [`docs/contracts.md`](docs/contracts.md)、[`docs/contracts/api/`](docs/contracts/api/)                           |
+| 持久化与迁移   | [`docs/database.md`](docs/database.md)、[`packages/db/migrations/`](packages/db/migrations/)                     |
+| 运维与恢复     | [`docs/operations.md`](docs/operations.md)、[`docs/operations/`](docs/operations/)                               |
+| 质量门禁       | [`docs/testing.md`](docs/testing.md)                                                                             |
+| 状态与证据     | [`docs/project/progress.md`](docs/project/progress.md)、[`docs/project/readiness.md`](docs/project/readiness.md) |
+| 演示与截图     | [`scripts/demo/`](scripts/demo/)                                                                                 |
+| 检查与维护     | [`scripts/checks/`](scripts/checks/)、[`scripts/data/`](scripts/data/)、[`scripts/ops/`](scripts/ops/)           |
+| 运行时应用     | [`apps/`](apps/)                                                                                                 |
+| 共享能力       | [`packages/`](packages/)                                                                                         |
 
 ## 演示：九条泳道，一道奥数题
 

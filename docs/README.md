@@ -12,19 +12,19 @@ This is the entry point for engineering and product facts. Implementation status
 
 ## Route by need
 
-| Need                                | Entry point                                                                                           |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Start or develop                    | [`development.md`](development.md)                                                                    |
-| Understand architecture and data flow | [`architecture.md`](architecture.md)                                                                |
-| Change an API or domain contract    | [`contracts.md`](contracts.md), [`contracts/api/`](contracts/api/)                                    |
-| Change persistence or migrations    | [`database.md`](database.md), [`../packages/db/migrations/`](../packages/db/migrations/)               |
-| Operate, back up, or recover        | [`operations.md`](operations.md), [`operations/`](operations/)                                        |
-| Run quality gates                   | [`testing.md`](testing.md)                                                                            |
-| Check project status and evidence   | [`project/progress.md`](project/progress.md), [`project/readiness.md`](project/readiness.md)           |
-| Run demos and screenshots           | [`../scripts/demo/`](../scripts/demo/)                                                                |
-| Run checks and maintenance          | [`../scripts/checks/`](../scripts/checks/), [`../scripts/data/`](../scripts/data/), [`../scripts/ops/`](../scripts/ops/) |
-| Locate runtime apps                 | [`../apps/`](../apps/)                                                                                |
-| Locate shared capabilities          | [`../packages/`](../packages/)                                                                        |
+| Need                                  | Entry point                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Start or develop                      | [`development.md`](development.md)                                                                                       |
+| Understand architecture and data flow | [`architecture.md`](architecture.md)                                                                                     |
+| Change an API or domain contract      | [`contracts.md`](contracts.md), [`contracts/api/`](contracts/api/)                                                       |
+| Change persistence or migrations      | [`database.md`](database.md), [`../packages/db/migrations/`](../packages/db/migrations/)                                 |
+| Operate, back up, or recover          | [`operations.md`](operations.md), [`operations/`](operations/)                                                           |
+| Run quality gates                     | [`testing.md`](testing.md)                                                                                               |
+| Check project status and evidence     | [`project/progress.md`](project/progress.md), [`project/readiness.md`](project/readiness.md)                             |
+| Run demos and screenshots             | [`../scripts/demo/`](../scripts/demo/)                                                                                   |
+| Run checks and maintenance            | [`../scripts/checks/`](../scripts/checks/), [`../scripts/data/`](../scripts/data/), [`../scripts/ops/`](../scripts/ops/) |
+| Locate runtime apps                   | [`../apps/`](../apps/)                                                                                                   |
+| Locate shared capabilities            | [`../packages/`](../packages/)                                                                                           |
 
 Current normative engineering documents are the topic-based documents and generated contracts indexed below. [`design/source/`](design/source/) and [`design/prototype/`](design/prototype/) are historical, non-normative inputs excluded from implementation evidence; they intentionally remain at these stable paths for provenance and validation.
 

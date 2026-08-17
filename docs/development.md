@@ -43,12 +43,12 @@ Security issues follow [`.github/SECURITY.md`](../.github/SECURITY.md); do not p
 
 Root scripts are grouped by operational responsibility:
 
-| Directory          | Responsibility                                                    |
-| ------------------ | ----------------------------------------------------------------- |
-| `scripts/checks/`  | Static and synthetic checks                                       |
-| `scripts/data/`    | Explicit data-maintenance commands                                |
-| `scripts/demo/`    | Demo loading and README screenshot capture                        |
-| `scripts/ops/`     | Docker, desktop packaging, backup, and restore operations          |
+| Directory         | Responsibility                                            |
+| ----------------- | --------------------------------------------------------- |
+| `scripts/checks/` | Static and synthetic checks                               |
+| `scripts/data/`   | Explicit data-maintenance commands                        |
+| `scripts/demo/`   | Demo loading and README screenshot capture                |
+| `scripts/ops/`    | Docker, desktop packaging, backup, and restore operations |
 
 Repository artifacts fall into three classes:
 

@@ -67,19 +67,19 @@ These commands target the root `docker-compose.yml`; direct Docker Compose comma
 
 ## Repository navigation
 
-| Need                       | Go to                                                                                                                       |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Start or develop           | [`docs/development.md`](docs/development.md)                                                                                |
-| Architecture and data flow | [`docs/architecture.md`](docs/architecture.md)                                                                              |
-| API and domain contracts   | [`docs/contracts.md`](docs/contracts.md), [`docs/contracts/api/`](docs/contracts/api/)                                      |
-| Persistence and migrations | [`docs/database.md`](docs/database.md), [`packages/db/migrations/`](packages/db/migrations/)                                |
-| Operations and recovery    | [`docs/operations.md`](docs/operations.md), [`docs/operations/`](docs/operations/)                                          |
-| Quality gates              | [`docs/testing.md`](docs/testing.md)                                                                                        |
-| Status and evidence        | [`docs/project/progress.md`](docs/project/progress.md), [`docs/project/readiness.md`](docs/project/readiness.md)             |
-| Demos and screenshots      | [`scripts/demo/`](scripts/demo/)                                                                                            |
-| Checks and maintenance     | [`scripts/checks/`](scripts/checks/), [`scripts/data/`](scripts/data/), [`scripts/ops/`](scripts/ops/)                       |
-| Runtime apps               | [`apps/`](apps/)                                                                                                            |
-| Shared capabilities        | [`packages/`](packages/)                                                                                                    |
+| Need                       | Go to                                                                                                            |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Start or develop           | [`docs/development.md`](docs/development.md)                                                                     |
+| Architecture and data flow | [`docs/architecture.md`](docs/architecture.md)                                                                   |
+| API and domain contracts   | [`docs/contracts.md`](docs/contracts.md), [`docs/contracts/api/`](docs/contracts/api/)                           |
+| Persistence and migrations | [`docs/database.md`](docs/database.md), [`packages/db/migrations/`](packages/db/migrations/)                     |
+| Operations and recovery    | [`docs/operations.md`](docs/operations.md), [`docs/operations/`](docs/operations/)                               |
+| Quality gates              | [`docs/testing.md`](docs/testing.md)                                                                             |
+| Status and evidence        | [`docs/project/progress.md`](docs/project/progress.md), [`docs/project/readiness.md`](docs/project/readiness.md) |
+| Demos and screenshots      | [`scripts/demo/`](scripts/demo/)                                                                                 |
+| Checks and maintenance     | [`scripts/checks/`](scripts/checks/), [`scripts/data/`](scripts/data/), [`scripts/ops/`](scripts/ops/)           |
+| Runtime apps               | [`apps/`](apps/)                                                                                                 |
+| Shared capabilities        | [`packages/`](packages/)                                                                                         |
 
 ## Demo: nine lanes, one olympiad problem
 
