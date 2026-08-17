@@ -26,6 +26,7 @@
 ### Task 1: Reorganize Root Scripts
 
 **Files:**
+
 - Move: `scripts/check-docs.mjs` → `scripts/checks/check-docs.mjs`
 - Move: `scripts/check-compose.mjs` → `scripts/checks/check-compose.mjs`
 - Move: `scripts/performance-smoke.ts` → `scripts/checks/performance-smoke.ts`
@@ -40,6 +41,7 @@
 - Modify: `package.json:22-42`
 
 **Interfaces:**
+
 - Consumes: repository root layout and existing public pnpm script names.
 - Produces: `scripts/checks/*`, `scripts/data/*`, `scripts/demo/*`, `scripts/ops/*`; unchanged commands `docs:check`, `docker:*`, `demo:*`, `screenshots:readme`, `desktop:prepare`, `backup*`, `performance:smoke`, and `topology:rebuild`.
 
@@ -129,6 +131,7 @@ git commit -m "refactor: organize repository scripts"
 ### Task 2: Add Repository Navigation and Artifact Hiding
 
 **Files:**
+
 - Create: `.vscode/settings.json`
 - Modify: `README.md`
 - Modify: `README.zh-CN.md`
@@ -137,6 +140,7 @@ git commit -m "refactor: organize repository scripts"
 - Modify: `docs/reference.md:11`
 
 **Interfaces:**
+
 - Consumes: Task 1's exact target directories `scripts/checks/`, `scripts/data/`, `scripts/demo/`, and `scripts/ops/`.
 - Produces: bilingual root navigation; authoritative engineering repository map; current docs-check path; VS Code explorer/search exclusions for disposable outputs.
 
@@ -236,10 +240,12 @@ git commit -m "docs: clarify repository navigation"
 ### Task 3: Integrate, Verify, and Record Evidence
 
 **Files:**
+
 - Modify: `docs/project/progress.md`
 - Verify only: all files changed by Tasks 1-2
 
 **Interfaces:**
+
 - Consumes: completed script and navigation changes.
 - Produces: evidence-backed progress entry and a repository state satisfying all mandatory checks.
 

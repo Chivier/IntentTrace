@@ -109,19 +109,19 @@ The directory names describe use, not implementation layers. The existing `packa
 
 ## Migration mapping
 
-| Current path | Target path | Change required |
-| --- | --- | --- |
-| `scripts/check-docs.mjs` | `scripts/checks/check-docs.mjs` | Update root `docs:check`; update any direct references. |
-| `scripts/check-compose.mjs` | `scripts/checks/check-compose.mjs` | Update root `docker:check`; update any direct references. |
-| `scripts/performance-smoke.ts` | `scripts/checks/performance-smoke.ts` | Update root `performance:smoke`. |
-| `scripts/rebuild-topology.ts` | `scripts/data/rebuild-topology.ts` | Update root `topology:rebuild`. |
-| `scripts/capture-readme-screenshots.mjs` | `scripts/demo/capture-readme-screenshots.mjs` | Update root `screenshots:readme`; preserve output behavior. |
-| `scripts/load-demo.ts` | `scripts/demo/load-demo.ts` | Update root `demo:load`. |
-| `scripts/load-demo-synthetic.ts` | `scripts/demo/load-demo-synthetic.ts` | Update root `demo:load:synthetic`. |
-| `scripts/backup.mjs` | `scripts/ops/backup.mjs` | Update root `backup`; preserve arguments and destination semantics. |
-| `scripts/docker-stack.mjs` | `scripts/ops/docker-stack.mjs` | Update `docker:*` commands; audit path resolution because the script currently resolves from its own location. |
-| `scripts/prepare-desktop-stack.mjs` | `scripts/ops/prepare-desktop-stack.mjs` | Update root `desktop:prepare`; preserve archive generation path. |
-| `scripts/verify-backup.mjs` | `scripts/ops/verify-backup.mjs` | Update root `backup:verify`; preserve restore verification behavior. |
+| Current path                             | Target path                                   | Change required                                                                                                |
+| ---------------------------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `scripts/check-docs.mjs`                 | `scripts/checks/check-docs.mjs`               | Update root `docs:check`; update any direct references.                                                        |
+| `scripts/check-compose.mjs`              | `scripts/checks/check-compose.mjs`            | Update root `docker:check`; update any direct references.                                                      |
+| `scripts/performance-smoke.ts`           | `scripts/checks/performance-smoke.ts`         | Update root `performance:smoke`.                                                                               |
+| `scripts/rebuild-topology.ts`            | `scripts/data/rebuild-topology.ts`            | Update root `topology:rebuild`.                                                                                |
+| `scripts/capture-readme-screenshots.mjs` | `scripts/demo/capture-readme-screenshots.mjs` | Update root `screenshots:readme`; preserve output behavior.                                                    |
+| `scripts/load-demo.ts`                   | `scripts/demo/load-demo.ts`                   | Update root `demo:load`.                                                                                       |
+| `scripts/load-demo-synthetic.ts`         | `scripts/demo/load-demo-synthetic.ts`         | Update root `demo:load:synthetic`.                                                                             |
+| `scripts/backup.mjs`                     | `scripts/ops/backup.mjs`                      | Update root `backup`; preserve arguments and destination semantics.                                            |
+| `scripts/docker-stack.mjs`               | `scripts/ops/docker-stack.mjs`                | Update `docker:*` commands; audit path resolution because the script currently resolves from its own location. |
+| `scripts/prepare-desktop-stack.mjs`      | `scripts/ops/prepare-desktop-stack.mjs`       | Update root `desktop:prepare`; preserve archive generation path.                                               |
+| `scripts/verify-backup.mjs`              | `scripts/ops/verify-backup.mjs`               | Update root `backup:verify`; preserve restore verification behavior.                                           |
 
 `apps/api/scripts/`, `apps/desktop/scripts/`, `packages/schema/scripts/`, and `packages/test-fixtures/scripts/` remain package-local. They are coupled to one workspace and should not be mixed with root operational scripts.
 
@@ -129,17 +129,17 @@ The directory names describe use, not implementation layers. The existing `packa
 
 `docs/README.md` remains the documentation index. The implementation should add a short “Find your way around” section to the root `README.md` and a matching repository map to `docs/development.md`:
 
-| Need | Entry point |
-| --- | --- |
-| Start the local stack | `docs/development.md` |
-| Understand boundaries and data flow | `docs/architecture.md` |
-| Change an API or domain contract | `docs/contracts.md`, `docs/contracts/api/` |
-| Change persistence or migrations | `docs/database.md`, `packages/db/migrations/` |
-| Operate, back up, or recover | `docs/operations.md`, `docs/operations/` |
-| Run quality gates | `docs/testing.md` |
-| Check project status and evidence | `docs/project/progress.md`, `docs/project/readiness.md` |
-| Run demos and screenshots | `scripts/demo/` |
-| Run checks and maintenance | `scripts/checks/`, `scripts/data/`, `scripts/ops/` |
+| Need                                | Entry point                                             |
+| ----------------------------------- | ------------------------------------------------------- |
+| Start the local stack               | `docs/development.md`                                   |
+| Understand boundaries and data flow | `docs/architecture.md`                                  |
+| Change an API or domain contract    | `docs/contracts.md`, `docs/contracts/api/`              |
+| Change persistence or migrations    | `docs/database.md`, `packages/db/migrations/`           |
+| Operate, back up, or recover        | `docs/operations.md`, `docs/operations/`                |
+| Run quality gates                   | `docs/testing.md`                                       |
+| Check project status and evidence   | `docs/project/progress.md`, `docs/project/readiness.md` |
+| Run demos and screenshots           | `scripts/demo/`                                         |
+| Run checks and maintenance          | `scripts/checks/`, `scripts/data/`, `scripts/ops/`      |
 
 The documentation index should explicitly state that `docs/design/source/` and `docs/design/prototype/` are historical inputs, not current implementation evidence. They must remain at their current paths in this first reorganization because `scripts/check-docs.mjs` excludes those exact directories from the normative scan and validates the source archive hash and manifest there. Renaming them requires a separate migration with corresponding checker changes and hash/path verification.
 
